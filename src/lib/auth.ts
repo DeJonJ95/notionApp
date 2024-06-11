@@ -4,13 +4,39 @@ import EmailProvider from 'next-auth/providers/email';
 import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from './prisma';
 
+const emailServerPort = process.env.EMAIL_SERVER_PORT ? Number(process.env.EMAIL_SERVER_PORT) : undefined;
+
+if (process.env.NODE_ENV === 'production') {
+  const required = [
+    'NEXTAUTH_URL',
+    'NEXTAUTH_SECRET',
+    'EMAIL_SERVER_HOST',
+    'EMAIL_SERVER_PORT',
+    'EMAIL_SERVER_USER',
+    'EMAIL_SERVER_PASSWORD',
+    'EMAIL_FROM',
+  ];
+
+  const missing = required.filter((name) => !process.env[name]);
+  if (missing.length) {
+    throw new Error(
+      `Missing required environment variables for authentication: ${missing.join(', ')}`
+    );
+  }
+
+  if (Number.isNaN(emailServerPort)) {
+    throw new Error('EMAIL_SERVER_PORT must be set to a valid port number');
+  }
+}
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
+  secret: process.env.NEXTAUTH_SECRET,
   providers: [
     EmailProvider({
       server: {
         host: process.env.EMAIL_SERVER_HOST,
-        port: Number(process.env.EMAIL_SERVER_PORT),
+        port: emailServerPort,
         auth: {
           user: process.env.EMAIL_SERVER_USER,
           pass: process.env.EMAIL_SERVER_PASSWORD,
