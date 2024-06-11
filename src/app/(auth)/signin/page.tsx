@@ -5,10 +5,23 @@ import { useState } from 'react';
 export default function SignInPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    await signIn('email', { email, redirect: false });
+    setError(null);
+
+    const result = await signIn('email', {
+      email,
+      redirect: false,
+      callbackUrl: window.location.origin,
+    });
+
+    if (result?.error) {
+      setError(result.error);
+      return;
+    }
+
     setSent(true);
   };
 
@@ -42,6 +55,13 @@ export default function SignInPage() {
                 Send magic link
               </button>
             </form>
+
+            {error ? (
+              <div className="mt-4 rounded-lg border border-red-400 bg-red-50 p-3 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
+
             <div className="my-6 flex items-center gap-3">
               <div className="flex-1 h-px bg-border" />
               <span className="text-xs text-muted">or</span>
