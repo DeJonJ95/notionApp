@@ -43,6 +43,7 @@ export const authOptions: NextAuthOptions = {
       server: {
         host: process.env.EMAIL_SERVER_HOST,
         port: emailServerPort,
+        secure: emailServerPort === 465, // true for 465 (SSL), false for 587 (TLS)
         auth: {
           user: process.env.EMAIL_SERVER_USER,
           pass: process.env.EMAIL_SERVER_PASSWORD,
