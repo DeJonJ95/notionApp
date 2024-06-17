@@ -1,11 +1,22 @@
 'use client';
 import { signIn } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
+const errorMessages: Record<string, string> = {
+  Configuration: 'There is a problem with the sign-in configuration.',
+  AccessDenied: 'Access denied. Please try again or contact support.',
+  Verification: 'The magic link is invalid or has expired. Request a new one.',
+  Default: 'Unable to sign in. Please request another magic link.',
+};
+
 export default function SignInPage() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const queryError = searchParams.get('error');
+  const displayError = error || (queryError ? errorMessages[queryError] ?? errorMessages.Default : null);
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -14,7 +25,7 @@ export default function SignInPage() {
     const result = await signIn('email', {
       email,
       redirect: false,
-      callbackUrl: window.location.origin,
+      callbackUrl: '/',
     });
 
     if (result?.error) {
@@ -56,9 +67,9 @@ export default function SignInPage() {
               </button>
             </form>
 
-            {error ? (
+            {displayError ? (
               <div className="mt-4 rounded-lg border border-red-400 bg-red-50 p-3 text-sm text-red-700">
-                {error}
+                {displayError}
               </div>
             ) : null}
 
@@ -68,7 +79,7 @@ export default function SignInPage() {
               <div className="flex-1 h-px bg-border" />
             </div>
             <button
-              onClick={() => signIn('google')}
+              onClick={() => signIn('google', { callbackUrl: '/' })}
               className="w-full px-3 py-2 rounded-lg border border-border hover:bg-surface"
             >
               Continue with Google
