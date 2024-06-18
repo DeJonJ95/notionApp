@@ -25,7 +25,7 @@ export default function SignInPage() {
     const result = await signIn('email', {
       email,
       redirect: false,
-      callbackUrl: '/',
+      callbackUrl: `${window.location.origin}/`,
     });
 
     if (result?.error) {
@@ -79,7 +79,7 @@ export default function SignInPage() {
               <div className="flex-1 h-px bg-border" />
             </div>
             <button
-              onClick={() => signIn('google', { callbackUrl: '/' })}
+              onClick={() => signIn('google', { callbackUrl: `${window.location.origin}/` })}
               className="w-full px-3 py-2 rounded-lg border border-border hover:bg-surface"
             >
               Continue with Google
