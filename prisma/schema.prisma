@@ -54,12 +54,13 @@ model Property {
   name       String
   type       String   // text, number, date, select, etc.
   formula    String?  // formula expression
+  position   Float    @default(0)
   databaseId String
   database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   values     PropertyValue[]
   createdAt  DateTime @default(now())
 
-  @@index([databaseId])
+  @@index([databaseId, position])
 }
 
 model PropertyValue {
