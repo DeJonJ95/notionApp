@@ -1,13 +1,8 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-<<<<<<< Updated upstream
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronRight, ChevronDown, Plus, Trash2 } from 'lucide-react';
-=======
-import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
-import { useRouter } from 'next/navigation';
->>>>>>> Stashed changes
 import { cn } from '@/lib/utils';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
