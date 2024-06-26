@@ -1,8 +1,13 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+<<<<<<< Updated upstream
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronRight, ChevronDown, Plus, Trash2 } from 'lucide-react';
+=======
+import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+>>>>>>> Stashed changes
 import { cn } from '@/lib/utils';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
@@ -27,6 +32,7 @@ export function PageTree({
   onNavigate?: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const router = useRouter();
   const topLevel = pages
     .filter((p) => p.parentId === null)
     .sort((a, b) => a.position - b.position);
@@ -40,7 +46,8 @@ export function PageTree({
     if (res.ok) {
       const page = await res.json();
       onChange();
-      window.location.href = `/page/${page.id}`;
+      // Use client-side navigation to preserve React state instead of a full reload.
+      router.push(`/page/${page.id}`);
     }
   };
 

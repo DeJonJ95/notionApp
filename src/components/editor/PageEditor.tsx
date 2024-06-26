@@ -50,6 +50,7 @@ export function PageEditor({
   const [slashRange, setSlashRange] = useState<{ from: number; to: number } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const hasMountedRef = useRef(false);
   const lastSavedRef = useRef<{ title: string; content: any }>({
     title: page.title,
     content: initialContent,
@@ -190,7 +191,10 @@ export function PageEditor({
   };
 
   const save = useCallback(
-    async (data: { title?: string; icon?: string | null; isFavorite?: boolean; content?: any }) => {
+    async (
+      data: { title?: string; icon?: string | null; isFavorite?: boolean; content?: any },
+      { refresh = false }: { refresh?: boolean } = {}
+    ) => {
       setSavingState('saving');
       try {
         const res = await fetch(`/api/pages/${page.id}`, {
@@ -198,8 +202,12 @@ export function PageEditor({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data),
         });
-        if (res.ok) setSavingState('saved');
-        router.refresh();
+        if (res.ok) {
+          setSavingState('saved');
+          // Only refresh server components when metadata visible in the sidebar
+          // (icon, title, favorite) changes — not on every content auto-save.
+          if (refresh) router.refresh();
+        }
       } catch {
         setSavingState('idle');
       }
@@ -226,6 +234,11 @@ export function PageEditor({
   }, [editor, title, save]);
 
   useEffect(() => {
+    // Skip the initial mount — only schedule a save when the title actually changes.
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true;
+      return;
+    }
     scheduleSave();
   }, [title, scheduleSave]);
 
@@ -251,14 +264,14 @@ export function PageEditor({
   const toggleFavorite = async () => {
     const next = !favorite;
     setFavorite(next);
-    await save({ isFavorite: next });
+    await save({ isFavorite: next }, { refresh: true });
   };
 
   const changeIcon = async () => {
     const newIcon = prompt('Enter an emoji', icon ?? '📄');
     if (newIcon !== null) {
       setIcon(newIcon || null);
-      await save({ icon: newIcon || null });
+      await save({ icon: newIcon || null }, { refresh: true });
     }
   };
 

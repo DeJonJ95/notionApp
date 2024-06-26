@@ -23,12 +23,21 @@ export function Sidebar() {
   const [pages, setPages] = useState<Page[]>([]);
 
   useEffect(() => {
-    fetch('/api/workspaces').then(r => r.json()).then(setWorkspaces);
-    fetch('/api/pages').then(r => r.json()).then(setPages);
+    fetch('/api/workspaces')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(setWorkspaces)
+      .catch((err) => console.error('Failed to load workspaces:', err));
+    fetch('/api/pages')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(setPages)
+      .catch((err) => console.error('Failed to load pages:', err));
   }, []);
 
   const refresh = () => {
-    fetch('/api/pages').then(r => r.json()).then(setPages);
+    fetch('/api/pages')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(setPages)
+      .catch((err) => console.error('Failed to refresh pages:', err));
   };
 
   const favorites = pages.filter((p) => p.isFavorite);
