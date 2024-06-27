@@ -1,9 +1,10 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { PageTree } from './PageTree';
+import { SearchModal } from '@/components/search/SearchModal';
 import { cn } from '@/lib/utils';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
@@ -19,8 +20,21 @@ type Page = {
 
 export function Sidebar() {
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
+
+  // Global Cmd+K / Ctrl+K shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   useEffect(() => {
     fetch('/api/workspaces')
@@ -44,6 +58,8 @@ export function Sidebar() {
 
   return (
     <>
+      {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
+
       {/* Mobile toggle */}
       <button
         onClick={() => setOpen(true)}
@@ -69,14 +85,34 @@ export function Sidebar() {
       >
         <div className="flex items-center justify-between p-3 border-b border-border">
           <span className="font-semibold text-sm">My Workspace</span>
-          <button
-            onClick={() => setOpen(false)}
-            className="md:hidden p-1 rounded hover:bg-bg"
-            aria-label="Close menu"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="p-1.5 rounded hover:bg-bg text-muted hover:text-text transition-colors"
+              aria-label="Search (⌘K)"
+              title="Search (⌘K)"
+            >
+              <Search size={15} />
+            </button>
+            <button
+              onClick={() => setOpen(false)}
+              className="md:hidden p-1 rounded hover:bg-bg"
+              aria-label="Close menu"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
+
+        {/* Search trigger row — visible inside the sidebar nav */}
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="mx-2 mt-2 flex items-center gap-2 px-2 py-1.5 rounded text-sm text-muted hover:bg-bg w-[calc(100%-1rem)] transition-colors"
+        >
+          <Search size={14} />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="text-xs font-mono bg-bg border border-border rounded px-1 py-0.5 hidden md:inline">⌘K</kbd>
+        </button>
 
         <nav className="flex-1 overflow-y-auto p-2 space-y-1 text-sm">
           <Link
