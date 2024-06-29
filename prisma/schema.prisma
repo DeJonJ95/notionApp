@@ -89,11 +89,12 @@ model View {
 }
 
 model Page {
-  id          String    @id @default(cuid())
-  title       String    @default("Untitled")
-  icon        String?
-  cover       String?
-  workspaceId String
+  id           String                  @id @default(cuid())
+  title        String                  @default("Untitled")
+  icon         String?
+  cover        String?
+  workspaceId  String
+  searchVector Unsupported("tsvector")? @map("search_vector")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   databaseId  String?
   database    Database? @relation(fields: [databaseId], references: [id], onDelete: SetNull)
@@ -116,15 +117,16 @@ model Page {
 }
 
 model Block {
-  id        String   @id @default(cuid())
-  pageId    String
-  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  type      String
-  content   Json
-  position  Float
-  parentId  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String                   @id @default(cuid())
+  pageId       String
+  page         Page                     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type         String
+  content      Json
+  position     Float
+  parentId     String?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  searchVector Unsupported("tsvector")? @map("search_vector")
 
   @@index([pageId, position])
 }

@@ -43,6 +43,9 @@ export function PageEditor({
   const [slashOpen, setSlashOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [slashRange, setSlashRange] = useState<{ from: number; to: number } | null>(null);
+  // Shadow ref keeps slash state accessible inside the editor's stable (stale-closure) keydown handler.
+  // React state setters are stable so writing them is fine; reading state is not — use this ref instead.
+  const slashRef = useRef({ open: false, cmd: 0, range: null as { from: number; to: number } | null });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const hasMountedRef = useRef(false);
@@ -130,10 +133,13 @@ export function PageEditor({
       handleDOMEvents: {
         keydown: (view, event) => {
           if (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey) {
-            const { from } = view.state.selection;
+            const { from, $from } = view.state.selection;
+            // parentOffset === 0 means cursor is at the start of its block (empty line, new paragraph, etc.)
+            const atBlockStart = $from.parentOffset === 0;
             const before = from > 0 ? view.state.doc.textBetween(from - 1, from, '\0', '\0') : '';
-            if (from === 0 || /\s/.test(before)) {
+            if (atBlockStart || /\s/.test(before)) {
               event.preventDefault();
+              slashRef.current = { open: true, cmd: 0, range: { from, to: from } };
               setSlashOpen(true);
               setSlashRange({ from, to: from });
               setSelectedCommand(0);
@@ -141,27 +147,37 @@ export function PageEditor({
             }
           }
 
-          if (slashOpen) {
+          // Read from ref — state values here are the stale initial-render snapshot
+          if (slashRef.current.open) {
             if (event.key === 'ArrowDown') {
               event.preventDefault();
-              setSelectedCommand((current) => (current + 1) % commandItems.length);
+              const next = (slashRef.current.cmd + 1) % commandItems.length;
+              slashRef.current.cmd = next;
+              setSelectedCommand(next);
               return true;
             }
             if (event.key === 'ArrowUp') {
               event.preventDefault();
-              setSelectedCommand((current) =>
-                current === 0 ? commandItems.length - 1 : current - 1
-              );
+              const prev = slashRef.current.cmd === 0 ? commandItems.length - 1 : slashRef.current.cmd - 1;
+              slashRef.current.cmd = prev;
+              setSelectedCommand(prev);
               return true;
             }
             if (event.key === 'Enter') {
               event.preventDefault();
-              const command = commandItems[selectedCommand];
-              if (command) executeSlashCommand(command.action);
+              const command = commandItems[slashRef.current.cmd];
+              if (command && editor) {
+                if (slashRef.current.range) editor.commands.deleteRange(slashRef.current.range);
+                command.action(editor);
+              }
+              slashRef.current = { open: false, cmd: 0, range: null };
+              setSlashOpen(false);
+              setSelectedCommand(0);
               return true;
             }
             if (event.key === 'Escape') {
               event.preventDefault();
+              slashRef.current.open = false;
               setSlashOpen(false);
               return true;
             }
@@ -177,10 +193,10 @@ export function PageEditor({
 
   const executeSlashCommand = (action: (editor: any) => void) => {
     if (!editor) return;
-    if (slashRange) {
-      editor.commands.deleteRange(slashRange);
-    }
+    const range = slashRef.current.range ?? slashRange;
+    if (range) editor.commands.deleteRange(range);
     action(editor);
+    slashRef.current = { open: false, cmd: 0, range: null };
     setSlashOpen(false);
     setSelectedCommand(0);
   };
