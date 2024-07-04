@@ -1,10 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
+import { TemplateModal } from '@/components/templates/TemplateModal';
 import { cn } from '@/lib/utils';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
@@ -21,6 +22,7 @@ type Page = {
 export function Sidebar() {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [todayJournalId, setTodayJournalId] = useState<string | null>(null);
@@ -79,6 +81,12 @@ export function Sidebar() {
   return (
     <>
       {searchOpen && <SearchModal onClose={() => setSearchOpen(false)} />}
+      {templateOpen && (
+        <TemplateModal
+          onClose={() => setTemplateOpen(false)}
+          onCreated={refresh}
+        />
+      )}
 
       {/* Mobile toggle */}
       <button
@@ -142,6 +150,13 @@ export function Sidebar() {
           >
             <Home size={14} /> Home
           </Link>
+
+          <button
+            onClick={() => { setTemplateOpen(true); setOpen(false); }}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg text-left"
+          >
+            <LayoutTemplate size={14} /> Templates
+          </button>
 
           {todayJournalId && (
             <Link
