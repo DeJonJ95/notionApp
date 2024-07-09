@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { X, ChevronLeft } from 'lucide-react';
-import { TEMPLATES, type Template } from '@/lib/templates';
+import { DB_TEMPLATES, type DbTemplate } from '@/lib/dbTemplates';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
 
@@ -14,12 +14,12 @@ type Props = {
 export function TemplateModal({ onClose, onCreated }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<'pick' | 'configure'>('pick');
-  const [selected, setSelected] = useState<Template | null>(null);
-  const [title, setTitle] = useState('');
+  const [selected, setSelected] = useState<DbTemplate | null>(null);
+  const [name, setName] = useState('');
   const [workspaceId, setWorkspaceId] = useState('');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [creating, setCreating] = useState(false);
-  const titleRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch('/api/workspaces')
@@ -33,11 +33,10 @@ export function TemplateModal({ onClose, onCreated }: Props) {
 
   useEffect(() => {
     if (step === 'configure') {
-      setTimeout(() => titleRef.current?.focus(), 50);
+      setTimeout(() => nameRef.current?.focus(), 50);
     }
   }, [step]);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -46,37 +45,30 @@ export function TemplateModal({ onClose, onCreated }: Props) {
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  function pick(template: Template) {
+  function pick(template: DbTemplate) {
     setSelected(template);
-    setTitle(template.defaultTitle);
+    setName(template.name);
     setStep('configure');
   }
 
   async function create() {
-    if (!selected || !workspaceId || !title.trim()) return;
+    if (!selected || !workspaceId) return;
     setCreating(true);
     try {
-      const pageRes = await fetch('/api/pages', {
+      const res = await fetch('/api/databases/from-template', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          templateId: selected.id,
+          name: name.trim() || selected.name,
           workspaceId,
-          title: title.trim(),
-          icon: selected.icon,
         }),
       });
-      if (!pageRes.ok) throw new Error('Failed to create page');
-      const page = await pageRes.json();
-
-      await fetch(`/api/pages/${page.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: selected.content }),
-      });
-
+      if (!res.ok) throw new Error('Failed to create database');
+      const { databaseId } = await res.json();
       onCreated?.();
       onClose();
-      router.push(`/page/${page.id}`);
+      router.push(`/database/${databaseId}`);
     } catch (err) {
       console.error(err);
       setCreating(false);
@@ -105,7 +97,7 @@ export function TemplateModal({ onClose, onCreated }: Props) {
               </button>
             )}
             <h2 className="font-semibold text-sm">
-              {step === 'pick' ? 'Choose a template' : `New page from "${selected?.name}"`}
+              {step === 'pick' ? 'New database from template' : `Set up "${selected?.name}"`}
             </h2>
           </div>
           <button
@@ -120,7 +112,7 @@ export function TemplateModal({ onClose, onCreated }: Props) {
         {/* Step 1 — template grid */}
         {step === 'pick' && (
           <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
-            {TEMPLATES.map((t) => (
+            {DB_TEMPLATES.map((t) => (
               <button
                 key={t.id}
                 onClick={() => pick(t)}
@@ -132,6 +124,16 @@ export function TemplateModal({ onClose, onCreated }: Props) {
                     {t.name}
                   </div>
                   <div className="text-xs text-muted mt-0.5 leading-snug">{t.description}</div>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {t.properties.map((p) => (
+                      <span
+                        key={p.name}
+                        className="text-[10px] bg-bg border border-border rounded px-1.5 py-0.5 text-muted"
+                      >
+                        {p.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </button>
             ))}
@@ -141,17 +143,50 @@ export function TemplateModal({ onClose, onCreated }: Props) {
         {/* Step 2 — configure */}
         {step === 'configure' && selected && (
           <div className="p-5 space-y-4">
+            {/* Property preview */}
+            <div className="rounded-lg border border-border bg-bg p-3">
+              <p className="text-xs text-muted mb-2 font-medium uppercase tracking-wide">
+                Included properties
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {selected.properties.map((p) => (
+                  <span
+                    key={p.name}
+                    className="flex items-center gap-1 text-xs bg-surface border border-border rounded px-2 py-1"
+                  >
+                    <span className="text-muted">
+                      {p.type === 'select' ? '≡' : p.type === 'date' ? '📅' : p.type === 'number' ? '#' : p.type === 'checkbox' ? '☑' : 'T'}
+                    </span>
+                    {p.name}
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-muted mt-2 font-medium uppercase tracking-wide">
+                Views
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {selected.views.map((v) => (
+                  <span
+                    key={v.name}
+                    className="text-xs bg-surface border border-border rounded px-2 py-1"
+                  >
+                    {v.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <div>
               <label className="block text-xs text-muted mb-1.5 font-medium uppercase tracking-wide">
-                Page title
+                Database name
               </label>
               <input
-                ref={titleRef}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                ref={nameRef}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && create()}
                 className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-                placeholder="Page title"
+                placeholder="Database name"
               />
             </div>
 
@@ -183,10 +218,10 @@ export function TemplateModal({ onClose, onCreated }: Props) {
               </button>
               <button
                 onClick={create}
-                disabled={creating || !title.trim()}
+                disabled={creating}
                 className="px-4 py-2 rounded-lg text-sm bg-accent text-white hover:opacity-90 disabled:opacity-50 transition-opacity font-medium"
               >
-                {creating ? 'Creating…' : 'Create page'}
+                {creating ? 'Creating…' : 'Create database'}
               </button>
             </div>
           </div>
