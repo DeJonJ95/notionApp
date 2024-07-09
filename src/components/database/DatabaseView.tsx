@@ -479,13 +479,13 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
             {selectProperties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory -mx-1 px-1">
           {columns.map((col) => {
             const colPages = getColPages(col.id);
             return (
               <div
                 key={col.id}
-                className="flex-shrink-0 w-64"
+                className="flex-shrink-0 w-[80vw] sm:w-64 snap-start"
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => handleBoardDrop(col.id, boardGroupProperty.id)}
               >
@@ -596,29 +596,30 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
         </div>
         <div className="border border-border rounded-lg overflow-hidden">
           <div className="grid grid-cols-7">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
-              <div key={d} className="bg-surface px-2 py-2 text-xs font-semibold text-muted text-center border-b border-border">
-                {d}
+            {(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const).map((d, i) => (
+              <div key={d} className="bg-surface px-1 py-2 text-xs font-semibold text-muted text-center border-b border-border">
+                <span className="hidden sm:inline">{d}</span>
+                <span className="sm:hidden">{['S','M','T','W','T','F','S'][i]}</span>
               </div>
             ))}
             {cells.map((cell, i) => (
               <div
                 key={i}
-                className={`min-h-24 p-1.5 border-b border-r border-border last:border-r-0 bg-bg ${!cell ? 'bg-surface/40' : ''}`}
+                className={`min-h-14 sm:min-h-24 p-1 sm:p-1.5 border-b border-r border-border last:border-r-0 bg-bg ${!cell ? 'bg-surface/40' : ''}`}
               >
                 {cell && (
                   <>
-                    <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${cell.dateStr === todayStr ? 'bg-accent text-white' : 'text-muted'}`}>
+                    <div className={`text-[10px] sm:text-xs font-medium mb-0.5 sm:mb-1 w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full ${cell.dateStr === todayStr ? 'bg-accent text-white' : 'text-muted'}`}>
                       {cell.day}
                     </div>
                     <div className="space-y-0.5">
                       {cell.pages.map((page) => (
                         <div
                           key={page.id}
-                          className="text-xs bg-accent/15 text-accent rounded px-1.5 py-0.5 truncate font-medium"
+                          className="text-[10px] sm:text-xs bg-accent/15 text-accent rounded px-1 sm:px-1.5 py-0.5 truncate font-medium leading-tight"
                           title={page.title}
                         >
-                          {page.icon} {page.title}
+                          <span className="hidden sm:inline">{page.icon} </span>{page.title}
                         </div>
                       ))}
                     </div>
@@ -675,7 +676,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
             value={newPageTitle}
             onChange={(e) => setNewPageTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addPage()}
-            className="px-3 py-1.5 bg-bg text-text border border-border rounded focus:outline-none focus:ring-1 focus:ring-accent text-sm"
+            className="flex-1 min-w-0 sm:flex-none px-3 py-1.5 bg-bg text-text border border-border rounded focus:outline-none focus:ring-1 focus:ring-accent text-sm"
           />
           <button
             onClick={addPage}
@@ -688,13 +689,15 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
             onClick={() => setShowAddProperty(true)}
             className="px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border transition-colors text-sm"
           >
-            Add Property
+            <span className="hidden sm:inline">Add Property</span>
+            <span className="sm:hidden">+ Prop</span>
           </button>
           <button
             onClick={() => setShowAddView(true)}
             className="px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border transition-colors text-sm"
           >
-            Add View
+            <span className="hidden sm:inline">Add View</span>
+            <span className="sm:hidden">+ View</span>
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -742,8 +745,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
       {/* View content: single or split */}
       {splitEnabled && splitView ? (
-        <div className="grid grid-cols-2 gap-6 min-w-0">
-          <div className="min-w-0 border-r border-border pr-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 min-w-0">
+          <div className="min-w-0 border-b md:border-b-0 md:border-r border-border pb-4 md:pb-0 md:pr-6">
             {renderViewPane(selectedView, setSelectedViewId)}
           </div>
           <div className="min-w-0">
