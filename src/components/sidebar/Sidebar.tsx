@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
 import { TemplateModal } from '@/components/templates/TemplateModal';
+import { ExtractFromNotes } from '@/components/extract/ExtractFromNotes';
 import { cn } from '@/lib/utils';
 
 type Database = { id: string; name: string };
@@ -24,6 +25,7 @@ export function Sidebar() {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [extractOpen, setExtractOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [todayJournalId, setTodayJournalId] = useState<string | null>(null);
@@ -92,6 +94,7 @@ export function Sidebar() {
           onCreated={refresh}
         />
       )}
+      {extractOpen && <ExtractFromNotes onClose={() => setExtractOpen(false)} />}
 
       {/* Mobile toggle */}
       <button
@@ -161,6 +164,13 @@ export function Sidebar() {
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg text-left"
           >
             <LayoutTemplate size={14} /> Templates
+          </button>
+
+          <button
+            onClick={() => { setExtractOpen(true); setOpen(false); }}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg text-left"
+          >
+            <Sparkles size={14} /> Extract from notes
           </button>
 
           {todayJournalId && (
