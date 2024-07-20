@@ -2,10 +2,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
-import { ChevronRight, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, Plus, Trash2, LayoutGrid } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
+type Database = { id: string; name: string };
 type Page = {
   id: string;
   title: string;
@@ -18,11 +19,13 @@ type Page = {
 export function PageTree({
   workspace,
   pages,
+  databases = [],
   onChange,
   onNavigate,
 }: {
   workspace: Workspace;
   pages: Page[];
+  databases?: Database[];
   onChange: () => void;
   onNavigate?: () => void;
 }) {
@@ -76,7 +79,21 @@ export function PageTree({
 
       {expanded && (
         <div className="ml-2">
-          {topLevel.length === 0 ? (
+          {/* Databases */}
+          {databases.map((db) => (
+            <Link
+              key={db.id}
+              href={`/database/${db.id}`}
+              onClick={onNavigate}
+              className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-bg text-sm text-text group/db"
+            >
+              <LayoutGrid size={12} className="text-muted shrink-0" />
+              <span className="truncate flex-1">{db.name}</span>
+            </Link>
+          ))}
+
+          {/* Pages */}
+          {topLevel.length === 0 && databases.length === 0 ? (
             <button
               onClick={() => createPage(null)}
               className="text-xs text-muted px-2 py-1 hover:bg-bg rounded w-full text-left"
