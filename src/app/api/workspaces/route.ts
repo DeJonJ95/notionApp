@@ -10,6 +10,12 @@ export async function GET() {
   const workspaces = await prisma.workspace.findMany({
     where: { ownerId: userId },
     orderBy: { createdAt: 'asc' },
+    include: {
+      databases: {
+        select: { id: true, name: true },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
   });
   return NextResponse.json(workspaces);
 }
