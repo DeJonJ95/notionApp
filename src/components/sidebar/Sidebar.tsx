@@ -131,6 +131,14 @@ export function Sidebar() {
               <Search size={15} />
             </button>
             <button
+              onClick={() => { setExtractOpen(true); setOpen(false); }}
+              className="p-1.5 rounded hover:bg-bg text-muted hover:text-text transition-colors"
+              aria-label="Extract from notes"
+              title="Extract from notes"
+            >
+              <Sparkles size={15} />
+            </button>
+            <button
               onClick={() => setOpen(false)}
               className="md:hidden p-1 rounded hover:bg-bg"
               aria-label="Close menu"
