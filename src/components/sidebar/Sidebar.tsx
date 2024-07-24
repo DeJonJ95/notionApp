@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles } from 'lucide-react';
-import { signOut } from 'next-auth/react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2 } from 'lucide-react';
+import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
 import { TemplateModal } from '@/components/templates/TemplateModal';
@@ -21,7 +21,11 @@ type Page = {
   position: number;
 };
 
+const ADMIN_EMAIL = 'dejonj95@gmail.com';
+
 export function Sidebar() {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as any)?.email === ADMIN_EMAIL;
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -180,6 +184,16 @@ export function Sidebar() {
           >
             <Sparkles size={14} /> Extract from notes
           </button>
+
+          {isAdmin && (
+            <Link
+              href="/admin"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
+            >
+              <BarChart2 size={14} /> Usage
+            </Link>
+          )}
 
           {todayJournalId && (
             <Link

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { logDeepSeek } from '@/lib/logUsage';
 
 export type PropertyInfo = { id: string; type: string };
 
@@ -127,6 +128,7 @@ Rules:
   }
 
   const aiJson = await aiRes.json();
+  if (aiJson.usage) logDeepSeek('extract', aiJson.usage, userId);
   const raw = aiJson.choices?.[0]?.message?.content ?? '[]';
 
   let proposed: AiChange[];

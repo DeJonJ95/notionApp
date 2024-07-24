@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { logDeepSeek } from '@/lib/logUsage';
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -46,6 +47,8 @@ Rules:
   }
 
   const aiJson = await aiRes.json();
+  const userId = (session?.user as any)?.id;
+  if (aiJson.usage) logDeepSeek('organize', aiJson.usage, userId);
   const html = (aiJson.choices?.[0]?.message?.content ?? '').trim();
 
   return NextResponse.json({ html });
