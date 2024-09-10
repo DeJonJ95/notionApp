@@ -1,12 +1,20 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   Plus, GripHorizontal, Trash2, ChevronLeft, ChevronRight,
   Eye, EyeOff, X, Settings, Columns, ExternalLink,
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
+
+type SplitPageData = { id: string; title: string; icon: string | null; cover: string | null; isFavorite: boolean; content: any };
+
+const PageEditorPanel = dynamic(
+  () => import('@/components/editor/PageEditor').then((m) => m.PageEditor),
+  { ssr: false, loading: () => <div className="flex items-center justify-center h-32 text-sm text-muted">Loading editor…</div> }
+);
 
 interface Database {
   id: string;
@@ -136,6 +144,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>('Monthly');
   const [budgetWindowDate, setBudgetWindowDate] = useState(() => new Date());
   const [inspectPageId, setInspectPageId] = useState<string | null>(null);
+  const [splitPageData, setSplitPageData] = useState<SplitPageData | null>(null);
+  const [splitWidth, setSplitWidth] = useState(440);
   const [dragColId, setDragColId] = useState<string | null>(null);
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
     try {
@@ -323,6 +333,34 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     if (!dragPageId) return;
     await updatePropertyValue(dragPageId, groupPropId, columnValue || null, 'select');
     setDragPageId(null);
+  };
+
+  // Fetch page content when a row is opened in the split editor.
+  useEffect(() => {
+    if (!inspectPageId) { setSplitPageData(null); return; }
+    fetch(`/api/pages/${inspectPageId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) return;
+        setSplitPageData({ id: d.id, title: d.title, icon: d.icon, cover: d.cover ?? null, isFavorite: d.isFavorite, content: d.content });
+      })
+      .catch(() => {});
+  }, [inspectPageId]);
+
+  const startSplitResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = splitWidth;
+    const onMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX; // dragging left = wider
+      setSplitWidth(Math.max(300, Math.min(window.innerWidth * 0.65, startW + delta)));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   };
 
   const handleColDrop = (targetId: string) => {
@@ -1098,7 +1136,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   );
 
   return (
-    <div className="space-y-4">
+    <div className={inspectPageId ? 'flex items-start gap-0' : ''}>
+    <div className={`space-y-4${inspectPageId ? ' flex-1 min-w-0 overflow-x-auto' : ''}`}>
       {/* Toolbar */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
@@ -1359,63 +1398,52 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
         </div>
       )}
 
-      {/* Row inspector panel */}
-      {inspectPageId && (() => {
-        const page = renderedPages.find((p) => p.id === inspectPageId);
-        if (!page) return null;
-        return (
-          <div className="fixed inset-y-0 right-0 w-80 z-50 bg-bg border-l border-border shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span className="font-semibold text-sm text-text">Page details</span>
-              <div className="flex items-center gap-2">
-                <Link
-                  href={`/page/${page.id}`}
-                  className="flex items-center gap-1 text-xs text-accent hover:underline"
-                >
-                  Open full page <ExternalLink size={11} />
-                </Link>
-                <button
-                  onClick={() => setInspectPageId(null)}
-                  className="p-1 rounded hover:bg-surface text-muted"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <div>
-                <div className="text-xs text-muted uppercase tracking-wide mb-1">Title</div>
-                <input
-                  key={page.id + '-title'}
-                  type="text"
-                  defaultValue={page.title}
-                  onBlur={async (e) => {
-                    const v = e.target.value.trim();
-                    if (v && v !== page.title) {
-                      await fetch(`/api/pages/${page.id}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ title: v }),
-                      });
-                      onUpdate();
-                    }
-                  }}
-                  className="w-full bg-bg text-text border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-                />
-              </div>
-              {database.properties.map((prop) => {
-                const pv = page.properties.find((v) => v.property.id === prop.id) ?? { property: prop, value: '' };
-                return (
-                  <div key={prop.id}>
-                    <div className="text-xs text-muted uppercase tracking-wide mb-1">{prop.name}</div>
-                    {renderPropertyInput(page, pv)}
-                  </div>
-                );
-              })}
-            </div>
+    </div>{/* end space-y-4 */}
+
+    {/* Split editor panel */}
+    {inspectPageId && (
+      <>
+        {/* drag handle */}
+        <div
+          className="w-1 shrink-0 self-stretch cursor-col-resize bg-border hover:bg-accent/50 transition-colors"
+          onMouseDown={startSplitResize}
+        />
+        {/* editor panel */}
+        <div
+          style={{ width: splitWidth }}
+          className="shrink-0 flex flex-col sticky top-0 max-h-screen overflow-hidden border-l border-border bg-bg"
+        >
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border bg-surface shrink-0">
+            <span className="text-sm font-medium text-text truncate flex-1">
+              {splitPageData?.title ?? '…'}
+            </span>
+            <Link
+              href={`/page/${inspectPageId}`}
+              className="flex items-center gap-1 text-xs text-accent hover:underline shrink-0"
+            >
+              Full page <ExternalLink size={11} />
+            </Link>
+            <button
+              onClick={() => setInspectPageId(null)}
+              className="p-1 rounded hover:bg-bg text-muted shrink-0"
+            >
+              <X size={14} />
+            </button>
           </div>
-        );
-      })()}
-    </div>
+          <div className="flex-1 overflow-y-auto">
+            {splitPageData ? (
+              <PageEditorPanel
+                key={splitPageData.id}
+                page={splitPageData}
+                initialContent={splitPageData.content}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-32 text-sm text-muted">Loading…</div>
+            )}
+          </div>
+        </div>
+      </>
+    )}
+    </div>{/* end outer flex */}
   );
 }
