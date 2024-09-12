@@ -11,13 +11,15 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Maximize2, Minimize2 } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Maximize2, Minimize2, Mic, ClipboardList } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { DatabaseEmbed } from '@/components/editor/extensions/DatabaseEmbed';
 import { DragHandleOverlay } from '@/components/editor/extensions/DragHandle';
 import { HeadingCollapseExtension, CollapsibleHeadingOverlay } from '@/components/editor/extensions/CollapsibleHeading';
 import { TableOfContents } from '@/components/editor/extensions/TableOfContents';
+import { AudioRecorder } from '@/components/editor/AudioRecorder';
+import { SummarizeModal } from '@/components/editor/SummarizeModal';
 
 type PageData = {
   id: string;
@@ -48,6 +50,8 @@ export function PageEditor({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
+  const [summarizeOpen, setSummarizeOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [slashRange, setSlashRange] = useState<{ from: number; to: number } | null>(null);
   // Shadow ref keeps slash state accessible inside the editor's stable (stale-closure) keydown handler.
@@ -406,13 +410,41 @@ export function PageEditor({
         <div className="w-px bg-border mx-1 self-stretch" />
         <button
           type="button"
+          onClick={() => setRecordOpen((v) => !v)}
+          className={`flex items-center gap-1.5 rounded-lg border px-3 py-1 transition-colors ${
+            recordOpen
+              ? 'bg-red-500/10 border-red-400 text-red-500'
+              : 'border-border hover:bg-surface'
+          }`}
+        >
+          <Mic size={13} />
+          Record
+        </button>
+        <button
+          type="button"
+          onClick={() => setSummarizeOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface text-accent"
+        >
+          <ClipboardList size={13} />
+          Summarize
+        </button>
+        <button
+          type="button"
           onClick={() => setOrganizeOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface text-accent"
         >
           <Sparkles size={13} />
-          Organize with AI
+          Organize
         </button>
       </div>
+
+      {/* Audio recorder panel — inline below toolbar */}
+      {recordOpen && editor && (
+        <div className="mb-4">
+          <AudioRecorder editor={editor} onClose={() => setRecordOpen(false)} />
+        </div>
+      )}
+
       <input
         ref={imageInputRef}
         type="file"
@@ -431,6 +463,17 @@ export function PageEditor({
           onClose={() => setOrganizeOpen(false)}
           onAccept={(html) => {
             editor.commands.setContent(html);
+            scheduleSave();
+          }}
+        />
+      )}
+
+      {summarizeOpen && editor && (
+        <SummarizeModal
+          rawText={editor.getText()}
+          onClose={() => setSummarizeOpen(false)}
+          onInsert={(html) => {
+            editor.chain().focus().setTextSelection(0).insertContentAt(0, html).run();
             scheduleSave();
           }}
         />
