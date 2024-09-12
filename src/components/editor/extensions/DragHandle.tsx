@@ -14,6 +14,7 @@ export function DragHandleOverlay({ editor }: { editor: Editor }) {
   const nodePosRef = useRef<number | null>(null);
   const draggingRef = useRef(false);
   const rafRef = useRef<number>(0);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const resolveBlock = useCallback(
     (clientX: number, clientY: number) => {
@@ -59,7 +60,10 @@ export function DragHandleOverlay({ editor }: { editor: Editor }) {
     };
 
     const onMouseLeave = () => {
-      if (!draggingRef.current) setHandleStyle(null);
+      // Delay hiding so the mouse can travel to the handle without it vanishing
+      hideTimerRef.current = setTimeout(() => {
+        if (!draggingRef.current) setHandleStyle(null);
+      }, 300);
     };
 
     editorEl.addEventListener('mousemove', onMouseMove);
@@ -119,6 +123,8 @@ export function DragHandleOverlay({ editor }: { editor: Editor }) {
       draggable
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
+      onMouseEnter={() => { if (hideTimerRef.current) clearTimeout(hideTimerRef.current); }}
+      onMouseLeave={() => { if (!draggingRef.current) setHandleStyle(null); }}
       className="w-5 h-6 flex items-center justify-center cursor-grab text-muted/40 hover:text-muted select-none rounded hover:bg-surface transition-colors"
       title="Drag to reorder"
     >
