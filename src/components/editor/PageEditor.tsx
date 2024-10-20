@@ -329,8 +329,12 @@ export function PageEditor({
     router.refresh();
   };
 
-  // Shared editor body used in both normal and fullscreen layouts
-  const editorBody = (
+  // Single return below — do NOT split into two JSX trees based on isFullscreen.
+  // Switching trees unmounts TipTap's DOM and drops all node views (DatabaseEmbed, etc.).
+  // Instead, the outer shell changes classes only, keeping the editor subtree stable.
+  return (
+    <div className={isFullscreen ? 'fixed inset-0 z-50 bg-bg flex overflow-hidden' : ''}>
+      <div className={isFullscreen ? 'flex-1 overflow-y-auto' : ''}>
     <div className={isFullscreen ? 'max-w-4xl mx-auto px-8 md:px-20 py-10' : 'max-w-3xl mx-auto px-6 md:px-12 py-10'}>
       <div className="flex items-center justify-between mb-4 text-xs text-muted">
         <span>
@@ -508,23 +512,8 @@ export function PageEditor({
         {editor && <CollapsibleHeadingOverlay editor={editor} />}
       </div>
     </div>
-  );
-
-  if (isFullscreen) {
-    return (
-      <div className="fixed inset-0 z-50 bg-bg flex overflow-hidden">
-        <div className="flex-1 overflow-y-auto">
-          {editorBody}
-        </div>
-        {editor && <TableOfContents editor={editor} isFullscreen />}
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {editorBody}
-      {editor && <TableOfContents editor={editor} />}
-    </>
+    </div>
+    {editor && <TableOfContents editor={editor} isFullscreen={isFullscreen} />}
+  </div>
   );
 }
