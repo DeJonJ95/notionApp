@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripHorizontal, X, Plus } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -83,52 +83,80 @@ type PageData = {
 
 // ——— Auto-migrate old single-document blocks ————————————————————————————
 
+// Rough height estimate for vertical stacking on migration.
+function estimateNodeHeight(node: any): number {
+  if (node.type === 'heading') {
+    const lvl = node.attrs?.level ?? 1;
+    return lvl === 1 ? 56 : lvl === 2 ? 44 : 36;
+  }
+  if (node.type === 'paragraph') {
+    const chars = (node.content ?? []).reduce(
+      (n: number, c: any) => n + (c.text?.length ?? 0), 0
+    );
+    return 30 + Math.floor(chars / 60) * 26;
+  }
+  if (node.type === 'bulletList' || node.type === 'orderedList' || node.type === 'taskList') {
+    return Math.max(1, node.content?.length ?? 1) * 28;
+  }
+  if (node.type === 'codeBlock') return 80;
+  if (node.type === 'blockquote') return 60;
+  if (node.type === 'image') return 200;
+  return 32;
+}
+
+// Default column for stacked content (Notion-style left margin).
+const DOC_X = 80;
+const DOC_W_TEXT = 720;
+const DOC_W_DB = 720;
+const BLOCK_GAP = 18;
+
 function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
   const nodes: any[] = doc?.content ?? [];
   const out: Omit<CanvasBlockData, 'id'>[] = [];
+  let y = 60;
   let j = 0;
 
   while (j < nodes.length) {
     const n = nodes[j];
-    const lvl = n.type === 'heading' ? (n.attrs?.level ?? 99) : 99;
 
     if (n.type === 'databaseEmbed') {
       out.push({
         type: 'database',
         content: { databaseId: n.attrs?.databaseId ?? null },
-        canvasX: 40 + (out.length % 2) * 680,
-        canvasY: 60 + Math.floor(out.length / 2) * 460,
-        canvasWidth: 640,
+        canvasX: DOC_X,
+        canvasY: y,
+        canvasWidth: DOC_W_DB,
       });
+      y += 420 + BLOCK_GAP;
       j++;
-    } else if (n.type === 'heading' && lvl <= 2) {
-      // Group heading + its following content into one card
-      const group: any[] = [n];
-      j++;
+      continue;
+    }
+
+    // Group a heading with the content that follows it, up to the next same-level heading
+    const isHeading = n.type === 'heading';
+    const lvl = isHeading ? (n.attrs?.level ?? 99) : 99;
+    const group: any[] = [n];
+    let groupH = estimateNodeHeight(n);
+    j++;
+    if (isHeading && lvl <= 2) {
       while (j < nodes.length) {
         const nx = nodes[j];
         if (nx.type === 'heading' && (nx.attrs?.level ?? 99) <= lvl) break;
         if (nx.type === 'databaseEmbed') break;
         group.push(nx);
+        groupH += estimateNodeHeight(nx);
         j++;
       }
-      out.push({
-        type: 'text',
-        content: { type: 'doc', content: group },
-        canvasX: 40 + (out.length % 3) * 460,
-        canvasY: 60 + Math.floor(out.length / 3) * 380,
-        canvasWidth: 420,
-      });
-    } else {
-      out.push({
-        type: 'text',
-        content: { type: 'doc', content: [n] },
-        canvasX: 40 + (out.length % 3) * 360,
-        canvasY: 60 + Math.floor(out.length / 3) * 320,
-        canvasWidth: 320,
-      });
-      j++;
     }
+
+    out.push({
+      type: 'text',
+      content: { type: 'doc', content: group },
+      canvasX: DOC_X,
+      canvasY: y,
+      canvasWidth: DOC_W_TEXT,
+    });
+    y += Math.max(40, groupH) + BLOCK_GAP;
   }
   return out;
 }
@@ -170,43 +198,45 @@ function CanvasCard({
         top: block.canvasY,
         width: block.canvasWidth,
         zIndex: 2,
-        cursor: 'default',
       }}
-      className="bg-surface border border-border rounded-xl shadow-md flex flex-col group"
+      className="group"
       onPointerDown={handlePointerDown}
     >
-      {/* Card toolbar — shown on hover */}
-      <div className="absolute -top-7 left-0 hidden group-hover:flex items-center gap-1 bg-surface border border-border rounded-lg px-1.5 py-0.5 shadow-sm z-10">
-        <span
+      {/* Notion-style hover handle on the left — no card chrome on the block itself */}
+      <div className="absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10">
+        <button
           data-drag-handle
-          className="p-0.5 rounded cursor-grab active:cursor-grabbing text-muted hover:text-text"
-          title="Drag (or hold Alt + drag)"
+          className="p-1 rounded cursor-grab active:cursor-grabbing text-muted hover:text-text hover:bg-surface transition-colors"
+          title="Drag to move (or hold Alt and drag anywhere on the block)"
         >
-          <GripHorizontal size={13} />
-        </span>
+          <GripVertical size={14} />
+        </button>
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onDelete(block.id)}
-          className="p-0.5 rounded text-muted hover:text-red-500"
+          className="p-1 rounded text-muted hover:text-red-500 hover:bg-surface transition-colors"
           title="Delete block"
         >
-          <X size={13} />
+          <X size={12} />
         </button>
       </div>
 
-      <div className="p-4 overflow-y-auto max-h-[520px]">
-        {block.type === 'database' ? (
+      {block.type === 'database' ? (
+        // Databases keep their own border since they're a structured thing
+        <div className="rounded-lg border border-border bg-surface overflow-hidden">
           <CanvasDatabaseBlock databaseId={block.content?.databaseId} />
-        ) : (
-          <CanvasTextBlock
-            blockId={block.id}
-            initialContent={block.content}
-            onUpdate={onContentUpdate}
-            onEmpty={onBlockEmpty}
-            getEditorRef={registerEditor}
-          />
-        )}
-      </div>
+        </div>
+      ) : (
+        // Text blocks render flush — no card, no border, no padding.
+        // Looks like normal document content.
+        <CanvasTextBlock
+          blockId={block.id}
+          initialContent={block.content}
+          onUpdate={onContentUpdate}
+          onEmpty={onBlockEmpty}
+          getEditorRef={registerEditor}
+        />
+      )}
     </div>
   );
 }
@@ -257,8 +287,8 @@ export function CanvasPageEditor({
     }
 
     if (!hasOldDoc && initialBlocks.length === 0) {
-      // New empty page — create one starter block
-      createBlock(60, 60, 420);
+      // New empty page — create one starter block at the doc column
+      createBlock(DOC_X, 60, DOC_W_TEXT);
       return;
     }
 
@@ -268,8 +298,7 @@ export function CanvasPageEditor({
 
     if (converted.length === 0) {
       // Empty doc
-      createBlock(60, 60, 420);
-      // Delete the old document block
+      createBlock(DOC_X, 60, DOC_W_TEXT);
       fetch(`/api/blocks/${oldBlock.id}`, { method: 'DELETE' }).catch(() => {});
       return;
     }
@@ -289,9 +318,17 @@ export function CanvasPageEditor({
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Compute the next vertical slot below all existing blocks ──────────
+  const nextStackY = useCallback(() => {
+    if (blocks.length === 0) return 60;
+    return Math.max(
+      ...blocks.map((b) => b.canvasY + (b.type === 'database' ? 440 : 120))
+    ) + BLOCK_GAP;
+  }, [blocks]);
+
   // ── Block creation ─────────────────────────────────────────────────────
   const createBlock = useCallback(
-    async (x: number, y: number, width = 320, type = 'text', content?: any) => {
+    async (x: number, y: number, width = DOC_W_TEXT, type = 'text', content?: any) => {
       const body = {
         pageId: page.id,
         type,
@@ -437,16 +474,14 @@ export function CanvasPageEditor({
     router.refresh();
   };
 
-  // ── Add a database embed block ────────────────────────────────────────
+  // ── Add a database embed block (stacked below existing content) ───────
   const addDatabaseBlock = () => {
-    const x = 60 + (blocks.length % 2) * 700;
-    const y = Math.max(...blocks.map((b) => b.canvasY + 460), 60);
-    createBlock(x, y, 640, 'database', { databaseId: null });
+    createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null });
   };
 
-  // ── Canvas size (expands to fit all blocks) ───────────────────────────
-  const canvasW = Math.max(2400, ...blocks.map((b) => b.canvasX + b.canvasWidth + 120));
-  const canvasH = Math.max(1600, ...blocks.map((b) => b.canvasY + 560));
+  // ── Canvas size — grows with content ──────────────────────────────────
+  const canvasW = Math.max(900, ...blocks.map((b) => b.canvasX + b.canvasWidth + 80));
+  const canvasH = Math.max(600, ...blocks.map((b) => b.canvasY + 400));
 
   // ── Handle "organize" result: replace all text blocks ─────────────────
   const handleOrganize = (html: string) => {
@@ -463,8 +498,8 @@ export function CanvasPageEditor({
 
   // ── Handle summarize insert ────────────────────────────────────────────
   const handleSummarizeInsert = async (html: string) => {
-    // Insert a new text block at top-left
-    const block = await createBlock(60, 60, 500, 'text', {
+    // Insert a new text block at top of the doc column
+    const block = await createBlock(DOC_X, 60, DOC_W_TEXT, 'text', {
       type: 'doc',
       content: [{ type: 'paragraph', content: [{ type: 'text', text: '(Summary)' }] }],
     });
@@ -497,7 +532,7 @@ export function CanvasPageEditor({
         <div className="flex items-center gap-1.5 flex-wrap">
           {/* Block-type buttons */}
           <button
-            onClick={() => createBlock(60, Math.max(...blocks.map((b) => b.canvasY + 340), 60), 420)}
+            onClick={() => createBlock(DOC_X, nextStackY(), DOC_W_TEXT)}
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
           >
             <Plus size={12} /> Text
@@ -545,13 +580,10 @@ export function CanvasPageEditor({
           {/* AudioRecorder needs an editor prop — give it a proxy that inserts a new block */}
           <AudioRecorderProxy
             onTranscript={(text) => {
-              createBlock(
-                60,
-                Math.max(...blocks.map((b) => b.canvasY + 340), 60),
-                420,
-                'text',
-                { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] }
-              );
+              createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
+                type: 'doc',
+                content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
+              });
             }}
             onClose={() => setRecordOpen(false)}
           />
@@ -572,9 +604,7 @@ export function CanvasPageEditor({
             position: 'relative',
             width: canvasW,
             height: canvasH,
-            backgroundImage: 'radial-gradient(rgba(150,150,150,0.15) 1.5px, transparent 1.5px)',
-            backgroundSize: '28px 28px',
-            cursor: 'crosshair',
+            cursor: 'text',
           }}
           onClick={handleCanvasClick}
         >
@@ -592,8 +622,8 @@ export function CanvasPageEditor({
 
           {/* Hint when canvas is empty */}
           {blocks.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-              <p className="text-muted text-sm">Click anywhere to start writing</p>
+            <div style={{ position: 'absolute', left: DOC_X, top: 60 }} className="text-muted/60 text-sm pointer-events-none select-none">
+              Click anywhere to start writing
             </div>
           )}
         </div>
