@@ -123,6 +123,9 @@ model Block {
   type         String
   content      Json
   position     Float
+  canvasX      Float?
+  canvasY      Float?
+  canvasWidth  Float?
   parentId     String?
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt

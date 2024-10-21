@@ -11,7 +11,7 @@ const updateSchema = z.object({
   isArchived: z.boolean().optional(),
   parentId: z.string().nullable().optional(),
   position: z.number().optional(),
-  content: z.any().optional(), // TipTap JSON document
+  content: z.any().optional(), // legacy: TipTap JSON document (kept for backwards compat)
 });
 
 async function ensureOwner(pageId: string, userId: string) {
@@ -29,16 +29,12 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   const page = await ensureOwner(params.id, userId);
   if (!page) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Single document model: store the whole TipTap JSON in one block (simpler than per-block rows).
-  // Block table is still here for future granular collab — but MVP uses one block per page.
-  const doc = await prisma.block.findFirst({
-    where: { pageId: params.id, type: 'document' },
+  const blocks = await prisma.block.findMany({
+    where: { pageId: params.id },
+    orderBy: { position: 'asc' },
   });
 
-  return NextResponse.json({
-    ...page,
-    content: doc?.content ?? null,
-  });
+  return NextResponse.json({ ...page, blocks });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
