@@ -9,10 +9,58 @@ import { AudioRecorder } from '@/components/editor/AudioRecorder';
 import { SummarizeModal } from '@/components/editor/SummarizeModal';
 
 // Break circular dep: CanvasPageEditor → DatabaseView → CanvasPageEditor
-const DatabaseView = dynamic(
+const DatabaseViewDynamic = dynamic(
   () => import('@/components/database/DatabaseView').then((m) => m.DatabaseView),
   { ssr: false, loading: () => <div className="p-4 text-muted text-sm">Loading database…</div> }
 );
+
+// Fetches database by ID then renders DatabaseView — mirrors DatabaseEmbedView logic
+function CanvasDatabaseBlock({ databaseId }: { databaseId: string | null }) {
+  const [data, setData] = useState<any | null>(null);
+  const [workspaceDbs, setWorkspaceDbs] = useState<{ id: string; name: string }[]>([]);
+
+  const load = useCallback(() => {
+    if (!databaseId) return;
+    fetch(`/api/databases/${databaseId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setData)
+      .catch(() => {});
+  }, [databaseId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (databaseId) return;
+    fetch('/api/workspaces')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((ws: any[]) => setWorkspaceDbs(ws.flatMap((w) => w.databases ?? [])))
+      .catch(() => {});
+  }, [databaseId]);
+
+  if (!databaseId) {
+    return (
+      <div className="rounded-lg border border-border bg-surface p-4">
+        <div className="text-sm font-medium text-text mb-2">Embed a database</div>
+        {workspaceDbs.length === 0 ? (
+          <div className="text-sm text-muted">No databases found. Create one first.</div>
+        ) : (
+          <select
+            className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none"
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) setData(null); /* handled via databaseId prop */ }}
+          >
+            <option value="" disabled>Choose a database…</option>
+            {workspaceDbs.map((db) => <option key={db.id} value={db.id}>{db.name}</option>)}
+          </select>
+        )}
+      </div>
+    );
+  }
+
+  if (!data) return <div className="p-3 text-sm text-muted">Loading…</div>;
+
+  return <DatabaseViewDynamic database={data} onUpdate={load} />;
+}
 
 // ——— Types ————————————————————————————————————————————————————————————————
 
@@ -148,7 +196,7 @@ function CanvasCard({
 
       <div className="p-4 overflow-y-auto max-h-[520px]">
         {block.type === 'database' ? (
-          <DatabaseView databaseId={block.content?.databaseId} embedded />
+          <CanvasDatabaseBlock databaseId={block.content?.databaseId} />
         ) : (
           <CanvasTextBlock
             blockId={block.id}
