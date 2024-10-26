@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { Loader2, X, ClipboardList } from 'lucide-react';
 
+type Mode = 'short' | 'long';
+
 interface Props {
   rawText: string;
   onClose: () => void;
@@ -9,19 +11,22 @@ interface Props {
 }
 
 export function SummarizeModal({ rawText, onClose, onInsert }: Props) {
+  const [mode, setMode] = useState<Mode>('short');
   const [html, setHtml] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError('');
+    setHtml('');
     (async () => {
-      setLoading(true);
       try {
         const res = await fetch('/api/summarize', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: rawText }),
+          body: JSON.stringify({ text: rawText, mode }),
         });
         const json = await res.json();
         if (!cancelled) {
@@ -35,7 +40,7 @@ export function SummarizeModal({ rawText, onClose, onInsert }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [rawText]);
+  }, [rawText, mode]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
@@ -46,9 +51,30 @@ export function SummarizeModal({ rawText, onClose, onInsert }: Props) {
             <ClipboardList size={16} className="text-accent" />
             Summary
           </span>
-          <button onClick={onClose} className="p-1 rounded hover:bg-surface text-muted">
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Short / Long toggle */}
+            <div className="flex items-center rounded-lg border border-border overflow-hidden text-xs">
+              <button
+                onClick={() => setMode('short')}
+                className={`px-3 py-1 transition-colors ${
+                  mode === 'short' ? 'bg-accent text-white' : 'text-muted hover:bg-surface'
+                }`}
+              >
+                Short
+              </button>
+              <button
+                onClick={() => setMode('long')}
+                className={`px-3 py-1 transition-colors ${
+                  mode === 'long' ? 'bg-accent text-white' : 'text-muted hover:bg-surface'
+                }`}
+              >
+                Detailed
+              </button>
+            </div>
+            <button onClick={onClose} className="p-1 rounded hover:bg-surface text-muted">
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -56,7 +82,9 @@ export function SummarizeModal({ rawText, onClose, onInsert }: Props) {
           {loading && (
             <div className="flex flex-col items-center justify-center h-32 gap-3">
               <Loader2 size={24} className="animate-spin text-accent" />
-              <span className="text-sm text-muted">Summarizing with DeepSeek…</span>
+              <span className="text-sm text-muted">
+                {mode === 'long' ? 'Generating detailed summary…' : 'Summarizing with DeepSeek…'}
+              </span>
             </div>
           )}
           {error && <p className="text-sm text-red-500">{error}</p>}
