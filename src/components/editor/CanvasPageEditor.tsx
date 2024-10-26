@@ -193,17 +193,60 @@ function CanvasCard({
 }) {
   const isDraggingRef = useRef(false);
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  // Long-press support (touch devices): hold the block for 500ms to drag.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDrag = useRef<{ cx: number; cy: number; pointerId: number; el: HTMLElement } | null>(null);
+
+  const beginDrag = (cx: number, cy: number, pointerId: number, el: HTMLElement) => {
+    try { el.setPointerCapture(pointerId); } catch {}
+    isDraggingRef.current = true;
+    onDragStart(block.id, cx, cy, block.canvasX, block.canvasY);
+  };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Don't hijack pointer events that start on the resize handle
     if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
-    // Alt+drag anywhere on the card, OR pointer on the grip handle
     const onHandle = (e.target as HTMLElement).closest('[data-drag-handle]');
-    if (!e.altKey && !onHandle) return;
-    isDraggingRef.current = true;
-    onDragStart(block.id, e.clientX, e.clientY, block.canvasX, block.canvasY);
-    e.preventDefault();
-    e.stopPropagation();
+
+    // Immediate drag: tap on a drag handle, or Alt-drag on desktop
+    if (onHandle || e.altKey) {
+      beginDrag(e.clientX, e.clientY, e.pointerId, e.currentTarget as HTMLElement);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    // Touch / pen: long-press anywhere on the block to start dragging
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      const el = e.currentTarget as HTMLElement;
+      pendingDrag.current = { cx: e.clientX, cy: e.clientY, pointerId: e.pointerId, el };
+      longPressTimer.current = setTimeout(() => {
+        if (!pendingDrag.current) return;
+        const p = pendingDrag.current;
+        beginDrag(p.cx, p.cy, p.pointerId, p.el);
+        pendingDrag.current = null;
+        longPressTimer.current = null;
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(40);
+      }, 500);
+    }
+  };
+
+  // Cancel long-press if the finger moves significantly before the timer fires
+  const handleLocalPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (longPressTimer.current && pendingDrag.current) {
+      const dx = Math.abs(e.clientX - pendingDrag.current.cx);
+      const dy = Math.abs(e.clientY - pendingDrag.current.cy);
+      if (dx > 10 || dy > 10) {
+        clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+        pendingDrag.current = null;
+      }
+    }
+  };
+
+  const handleLocalPointerUp = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+    pendingDrag.current = null;
   };
 
   // ── Resize handlers ────────────────────────────────────────────────────
@@ -237,13 +280,17 @@ function CanvasCard({
       }}
       className="group"
       onPointerDown={handlePointerDown}
+      onPointerMove={handleLocalPointerMove}
+      onPointerUp={handleLocalPointerUp}
+      onPointerCancel={handleLocalPointerUp}
       onMouseEnter={() => onHover(block.id)}
       onMouseLeave={() => onHover(null)}
     >
-      {/* Notion-style hover handle on the left — no card chrome on the block itself */}
-      <div className="absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10">
+      {/* Desktop hover handles — only on hover-capable devices */}
+      <div className="absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10 [@media(hover:none)]:!hidden">
         <button
           data-drag-handle
+          style={{ touchAction: 'none' }}
           className="p-1 rounded cursor-grab active:cursor-grabbing text-muted hover:text-text hover:bg-surface transition-colors"
           title="Drag to move (or hold Alt and drag anywhere on the block)"
         >
@@ -256,6 +303,23 @@ function CanvasCard({
           title="Delete block (Alt+Delete)"
         >
           <X size={12} />
+        </button>
+      </div>
+
+      {/* Mobile drag bar — always visible on touch devices (hover:none) */}
+      <div
+        data-drag-handle
+        style={{ touchAction: 'none' }}
+        className="hidden [@media(hover:none)]:flex absolute -top-5 left-0 right-0 h-5 items-center justify-center cursor-grab z-10"
+      >
+        <div className="w-10 h-1 bg-muted/40 rounded-full" />
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => onDelete(block.id)}
+          className="absolute right-0 top-0 p-0.5 rounded text-muted hover:text-red-500 hover:bg-surface"
+          title="Delete block"
+        >
+          <X size={14} />
         </button>
       </div>
 
