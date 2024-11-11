@@ -722,16 +722,11 @@ export function CanvasPageEditor({
     if (!res.ok) return;
     const { uploadUrl, publicUrl } = await res.json();
     await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-    const id = focusedBlockRef.current;
-    if (id && editorRefs.current[id]) {
-      editorRefs.current[id].chain().focus().setImage({ src: publicUrl }).run();
-    } else {
-      // No block focused — create a new text block with the image
-      createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
-        type: 'doc',
-        content: [{ type: 'image', attrs: { src: publicUrl } }],
-      });
-    }
+    // Each upload always creates its own new block so images never overwrite each other
+    createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
+      type: 'doc',
+      content: [{ type: 'image', attrs: { src: publicUrl, width: null } }],
+    });
   }, [createBlock, nextStackY]);
 
   // ── Handle summarize insert ────────────────────────────────────────────
