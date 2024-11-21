@@ -353,10 +353,15 @@ export function CanvasPageEditor({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  // Drag state: we store the canvas-coord offset between the finger and the
+  // block's top-left, then on each move recompute the block position from the
+  // current finger screen pos + current scroll + zoom. This naturally handles
+  // auto-scrolling — when the canvas scrolls under a stationary finger, the
+  // block's canvas position is recomputed and follows.
   const dragState = useRef<{
     blockId: string;
-    startCX: number; startCY: number;
-    origX: number; origY: number;
+    offsetX: number;
+    offsetY: number;
   } | null>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRefs = useRef<Record<string, any>>({});
@@ -445,49 +450,110 @@ export function CanvasPageEditor({
     [page.id]
   );
 
-  // ── Drag ───────────────────────────────────────────────────────────────
+  // ── Drag (document-level listeners + auto-scroll near edges) ──────────
   const startDrag = useCallback(
-    (blockId: string, cx: number, cy: number, ox: number, oy: number, pointerId: number) => {
-      dragState.current = { blockId, startCX: cx, startCY: cy, origX: ox, origY: oy };
+    (blockId: string, fingerCX: number, fingerCY: number, blockX: number, blockY: number, _pointerId: number) => {
+      const sc = scrollRef.current;
+      if (!sc) return;
+
+      const rect = sc.getBoundingClientRect();
+      const z = zoomRef.current;
+      // Canvas coord of the finger at drag start
+      const fingerCanvasX = (fingerCX - rect.left + sc.scrollLeft) / z;
+      const fingerCanvasY = (fingerCY - rect.top + sc.scrollTop) / z;
+      // Offset = where on the block the finger landed (canvas coords)
+      const offsetX = blockX - fingerCanvasX;
+      const offsetY = blockY - fingerCanvasY;
+
+      dragState.current = { blockId, offsetX, offsetY };
       setMovingBlockId(blockId);
-      // Capture on the scroll container so it receives all pointer events even
-      // when the finger moves outside the block — the block's own div won't work
-      // because the canvas onPointerMove is what actually repositions the block.
-      try { scrollRef.current?.setPointerCapture(pointerId); } catch {}
       if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
+
+      // Last known screen position — used by both pointermove and the auto-scroll RAF loop
+      let lastClientX = fingerCX;
+      let lastClientY = fingerCY;
+
+      const repositionBlock = () => {
+        if (!dragState.current) return;
+        const sc2 = scrollRef.current;
+        if (!sc2) return;
+        const r = sc2.getBoundingClientRect();
+        const zz = zoomRef.current;
+        const fcx = (lastClientX - r.left + sc2.scrollLeft) / zz;
+        const fcy = (lastClientY - r.top + sc2.scrollTop) / zz;
+        const nx = Math.max(0, fcx + dragState.current.offsetX);
+        const ny = Math.max(0, fcy + dragState.current.offsetY);
+        const id = dragState.current.blockId;
+        setBlocks((prev) =>
+          prev.map((b) => (b.id === id ? { ...b, canvasX: nx, canvasY: ny } : b))
+        );
+      };
+
+      // Auto-scroll loop: while finger is near a scroll-container edge, scroll
+      // toward it on every frame so the user can drag past the viewport.
+      const AUTOSCROLL_MARGIN = 60;
+      const AUTOSCROLL_MAX_SPEED = 14;
+      let rafId = 0;
+      const tick = () => {
+        if (!dragState.current) return;
+        const sc2 = scrollRef.current;
+        if (!sc2) return;
+        const r = sc2.getBoundingClientRect();
+        // Speed scales linearly with proximity to the edge
+        const proximity = (dist: number) =>
+          Math.min(AUTOSCROLL_MAX_SPEED, Math.max(0, AUTOSCROLL_MARGIN - dist) * (AUTOSCROLL_MAX_SPEED / AUTOSCROLL_MARGIN));
+        let dx = 0;
+        let dy = 0;
+        if (lastClientX - r.left < AUTOSCROLL_MARGIN) dx = -proximity(lastClientX - r.left);
+        else if (r.right - lastClientX < AUTOSCROLL_MARGIN) dx = proximity(r.right - lastClientX);
+        if (lastClientY - r.top < AUTOSCROLL_MARGIN) dy = -proximity(lastClientY - r.top);
+        else if (r.bottom - lastClientY < AUTOSCROLL_MARGIN) dy = proximity(r.bottom - lastClientY);
+        if (dx !== 0 || dy !== 0) {
+          sc2.scrollBy({ left: dx, top: dy });
+          repositionBlock();
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+
+      const onPointerMove = (e: PointerEvent) => {
+        lastClientX = e.clientX;
+        lastClientY = e.clientY;
+        repositionBlock();
+        // preventDefault is critical on mobile so the browser doesn't try to
+        // scroll/pan in parallel with the drag.
+        if (e.cancelable) e.preventDefault();
+      };
+
+      const onPointerEnd = () => {
+        cancelAnimationFrame(rafId);
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', onPointerEnd);
+        document.removeEventListener('pointercancel', onPointerEnd);
+        if (!dragState.current) return;
+        const id = dragState.current.blockId;
+        dragState.current = null;
+        setMovingBlockId(null);
+        setBlocks((prev) => {
+          const b = prev.find((x) => x.id === id);
+          if (b) {
+            fetch(`/api/blocks/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ canvasX: b.canvasX, canvasY: b.canvasY }),
+            }).catch(() => {});
+          }
+          return prev;
+        });
+      };
+
+      // Passive: false so preventDefault() actually works on touch
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', onPointerEnd);
+      document.addEventListener('pointercancel', onPointerEnd);
     },
     []
   );
-
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragState.current) return;
-    const { blockId, startCX, startCY, origX, origY } = dragState.current;
-    // Screen-space delta → canvas-space delta when canvas is scaled
-    const z = zoomRef.current;
-    const newX = Math.max(0, origX + (e.clientX - startCX) / z);
-    const newY = Math.max(0, origY + (e.clientY - startCY) / z);
-    setBlocks((prev) =>
-      prev.map((b) => (b.id === blockId ? { ...b, canvasX: newX, canvasY: newY } : b))
-    );
-  }, []);
-
-  const handlePointerUp = useCallback(() => {
-    if (!dragState.current) return;
-    const { blockId } = dragState.current;
-    dragState.current = null;
-    setMovingBlockId(null);
-    setBlocks((prev) => {
-      const b = prev.find((x) => x.id === blockId);
-      if (b) {
-        fetch(`/api/blocks/${blockId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ canvasX: b.canvasX, canvasY: b.canvasY }),
-        }).catch(() => {});
-      }
-      return prev;
-    });
-  }, []);
 
   // ── Click empty canvas to create block ────────────────────────────────
   const handleCanvasClick = useCallback(
@@ -869,9 +935,6 @@ export function CanvasPageEditor({
         ref={scrollRef}
         className="flex-1 overflow-auto relative"
         style={{ touchAction: movingBlockId ? 'none' : 'auto' }}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
