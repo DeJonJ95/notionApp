@@ -23,9 +23,10 @@ async function extractText(file: File): Promise<string> {
   }
   if (name.endsWith('.pdf') || file.type === 'application/pdf') {
     // pdf-parse's index.js tries to load a test PDF on import — bypass it
-    // by importing the implementation file directly.
-    const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default as
-      (b: Buffer) => Promise<{ text: string }>;
+    // by importing the implementation file directly. No types ship for the
+    // subpath, so cast through any.
+    const mod = (await import('pdf-parse/lib/pdf-parse.js' as any)) as any;
+    const pdfParse = (mod.default ?? mod) as (b: Buffer) => Promise<{ text: string }>;
     const result = await pdfParse(buf);
     return result.text;
   }
