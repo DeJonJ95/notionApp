@@ -63,7 +63,7 @@ export function BudgetDashboard() {
       {cancelTarget && (
         <CancelEmailModal
           vendor={cancelTarget.vendor}
-          monthlyAmount={cancelTarget.monthlyAmount}
+          monthlyAmount={cancelTarget.monthlyEstimate}
           lastChargeDate={cancelTarget.lastDate}
           onClose={() => setCancelTarget(null)}
         />
