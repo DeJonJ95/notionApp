@@ -1,12 +1,14 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Check, AlertCircle, ChevronRight } from 'lucide-react';
+import { X, Sparkles, Check, AlertCircle, ChevronRight, FileText, Layers, ClipboardPaste } from 'lucide-react';
 import type { ResolvedChange } from '@/app/api/extract/route';
 
 type Database = { id: string; name: string };
 type Workspace = { id: string; name: string; slug: string; icon: string | null; databases: Database[] };
+type Page = { id: string; title: string; icon: string | null; updatedAt: string; workspaceId: string };
 type ApplyResult = { ok: boolean; action: string; detail: string };
+type SourceMode = 'paste' | 'page' | 'recent';
 
 type Props = {
   onClose: () => void;
@@ -16,7 +18,12 @@ export function ExtractFromNotes({ onClose }: Props) {
   const [mounted, setMounted] = useState(false);
   const [notes, setNotes] = useState('');
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [pages, setPages] = useState<Page[]>([]);
   const [selectedDbIds, setSelectedDbIds] = useState<Set<string>>(new Set());
+  const [sourceMode, setSourceMode] = useState<SourceMode>('paste');
+  const [pickedPageId, setPickedPageId] = useState<string | null>(null);
+  const [pageSearch, setPageSearch] = useState('');
+  const [recentPageIds, setRecentPageIds] = useState<Set<string>>(new Set());
   const [step, setStep] = useState<'input' | 'preview' | 'done'>('input');
   const [changes, setChanges] = useState<ResolvedChange[]>([]);
   const [enabledIdx, setEnabledIdx] = useState<Set<number>>(new Set());
@@ -34,7 +41,25 @@ export function ExtractFromNotes({ onClose }: Props) {
         setSelectedDbIds(new Set(data.flatMap((w: Workspace) => w.databases.map((d) => d.id))));
       })
       .catch(() => {});
+    fetch('/api/pages')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((p: Page[]) => setPages(p))
+      .catch(() => {});
   }, []);
+
+  // Pages sorted by most recently updated, limited to 30 for the recent picker
+  const pagesByRecent = useMemo(() => {
+    return [...pages].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }, [pages]);
+  const top30Recent = useMemo(() => pagesByRecent.slice(0, 30), [pagesByRecent]);
+
+  const filteredPages = useMemo(() => {
+    const q = pageSearch.trim().toLowerCase();
+    if (!q) return pagesByRecent.slice(0, 12);
+    return pagesByRecent
+      .filter((p) => p.title.toLowerCase().includes(q))
+      .slice(0, 20);
+  }, [pageSearch, pagesByRecent]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -59,7 +84,19 @@ export function ExtractFromNotes({ onClose }: Props) {
   }
 
   async function handleExtract() {
-    if (!notes.trim()) { setError('Paste some meeting notes first.'); return; }
+    // Build payload from the active source mode
+    let notesPart = '';
+    let pageIdsPart: string[] = [];
+    if (sourceMode === 'paste') {
+      if (!notes.trim()) { setError('Paste some text first.'); return; }
+      notesPart = notes;
+    } else if (sourceMode === 'page') {
+      if (!pickedPageId) { setError('Pick a page to extract from.'); return; }
+      pageIdsPart = [pickedPageId];
+    } else if (sourceMode === 'recent') {
+      if (recentPageIds.size === 0) { setError('Select at least one recent page.'); return; }
+      pageIdsPart = [...recentPageIds];
+    }
     if (selectedDbIds.size === 0) { setError('Select at least one database.'); return; }
     setError('');
     setLoading(true);
@@ -67,12 +104,16 @@ export function ExtractFromNotes({ onClose }: Props) {
       const res = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes, databaseIds: [...selectedDbIds] }),
+        body: JSON.stringify({
+          notes: notesPart,
+          pageIds: pageIdsPart,
+          databaseIds: [...selectedDbIds],
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Extraction failed');
       if (data.changes.length === 0) {
-        setError('No relevant items found. Try selecting more databases or adding more context.');
+        setError('No relevant items found. Try selecting more databases or a different source.');
         setLoading(false);
         return;
       }
@@ -85,6 +126,21 @@ export function ExtractFromNotes({ onClose }: Props) {
       setLoading(false);
     }
   }
+
+  function toggleRecentPage(id: string) {
+    setRecentPageIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  // Disable the Extract button if the current source mode has no input
+  const canExtract = !loading && selectedDbIds.size > 0 && (
+    (sourceMode === 'paste' && notes.trim().length > 0) ||
+    (sourceMode === 'page' && pickedPageId !== null) ||
+    (sourceMode === 'recent' && recentPageIds.size > 0)
+  );
 
   async function handleApply() {
     const toApply = changes.filter((_, i) => enabledIdx.has(i));
@@ -142,10 +198,32 @@ export function ExtractFromNotes({ onClose }: Props) {
         {step === 'input' && (
           <div className="flex flex-col overflow-y-auto">
             <div className="p-5 space-y-4">
+              {/* Source mode tabs */}
               <div>
                 <label className="block text-xs text-muted mb-1.5 font-medium uppercase tracking-wide">
-                  Meeting notes
+                  Source
                 </label>
+                <div className="grid grid-cols-3 gap-1 bg-bg border border-border rounded-lg p-1">
+                  {[
+                    { id: 'paste' as const,  icon: ClipboardPaste, label: 'Paste text' },
+                    { id: 'page' as const,   icon: FileText,       label: 'From a page' },
+                    { id: 'recent' as const, icon: Layers,         label: 'Recent batch' },
+                  ].map(({ id, icon: Icon, label }) => (
+                    <button
+                      key={id}
+                      onClick={() => { setSourceMode(id); setError(''); }}
+                      className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium transition-colors ${
+                        sourceMode === id ? 'bg-surface text-text shadow-sm' : 'text-muted hover:text-text'
+                      }`}
+                    >
+                      <Icon size={12} /> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Paste mode */}
+              {sourceMode === 'paste' && (
                 <textarea
                   autoFocus
                   value={notes}
@@ -154,7 +232,95 @@ export function ExtractFromNotes({ onClose }: Props) {
                   rows={8}
                   className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm focus:outline-none focus:ring-2 focus:ring-accent/40 resize-none leading-relaxed"
                 />
-              </div>
+              )}
+
+              {/* From a page mode */}
+              {sourceMode === 'page' && (
+                <div className="space-y-2">
+                  <input
+                    autoFocus
+                    value={pageSearch}
+                    onChange={(e) => setPageSearch(e.target.value)}
+                    placeholder="Search pages…"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  />
+                  <div className="max-h-56 overflow-y-auto space-y-1 border border-border rounded-lg bg-bg p-1">
+                    {filteredPages.length === 0 ? (
+                      <p className="text-xs text-muted text-center py-6">No pages match.</p>
+                    ) : (
+                      filteredPages.map((p) => (
+                        <label
+                          key={p.id}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer transition-colors text-sm ${
+                            pickedPageId === p.id ? 'bg-accent/15 text-text' : 'hover:bg-surface text-text'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="picked-page"
+                            checked={pickedPageId === p.id}
+                            onChange={() => setPickedPageId(p.id)}
+                            className="accent-accent"
+                          />
+                          <span className="w-4 text-center">{p.icon ?? '📄'}</span>
+                          <span className="truncate flex-1">{p.title || 'Untitled'}</span>
+                          <span className="text-xs text-muted shrink-0">
+                            {new Date(p.updatedAt).toLocaleDateString()}
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Recent batch mode */}
+              {sourceMode === 'recent' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted">
+                    <span>Select pages to sweep through ({recentPageIds.size} selected)</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setRecentPageIds(new Set(top30Recent.slice(0, 7).map((p) => p.id)))}
+                        className="hover:text-text underline"
+                      >
+                        Last 7
+                      </button>
+                      <span>·</span>
+                      <button
+                        onClick={() => setRecentPageIds(new Set())}
+                        className="hover:text-text underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto space-y-1 border border-border rounded-lg bg-bg p-1">
+                    {top30Recent.length === 0 ? (
+                      <p className="text-xs text-muted text-center py-6">No pages yet.</p>
+                    ) : (
+                      top30Recent.map((p) => (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer hover:bg-surface text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={recentPageIds.has(p.id)}
+                            onChange={() => toggleRecentPage(p.id)}
+                            className="accent-accent"
+                          />
+                          <span className="w-4 text-center">{p.icon ?? '📄'}</span>
+                          <span className="truncate flex-1 text-text">{p.title || 'Untitled'}</span>
+                          <span className="text-xs text-muted shrink-0">
+                            {new Date(p.updatedAt).toLocaleDateString()}
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
 
               {allDatabases.length > 0 && (
                 <div>
@@ -198,7 +364,7 @@ export function ExtractFromNotes({ onClose }: Props) {
               </button>
               <button
                 onClick={handleExtract}
-                disabled={loading || !notes.trim() || selectedDbIds.size === 0}
+                disabled={!canExtract}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm bg-accent text-white hover:opacity-90 disabled:opacity-50 transition-opacity font-medium"
               >
                 <Sparkles size={13} />
@@ -285,6 +451,11 @@ export function ExtractFromNotes({ onClose }: Props) {
                             </span>
                           ))}
                       </div>
+                      {c.action === 'create' && c.body && (
+                        <p className="text-xs text-muted/90 italic mt-1.5 pl-1 border-l-2 border-accent/30 leading-relaxed">
+                          {c.body}
+                        </p>
+                      )}
                     </div>
                   </label>
                 );
