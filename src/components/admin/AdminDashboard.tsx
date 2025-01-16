@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { ExternalLink, Zap, Mail, Database, AlertCircle } from 'lucide-react';
+import { ExternalLink, Zap, Mail, Database, AlertCircle, Cloud, Server, Youtube } from 'lucide-react';
 
 type DayBucket = { day: string; inputTokens: number; outputTokens: number; costUsd: number };
 type OpBucket = { operation: string; count: number; inputTokens: number; outputTokens: number; costUsd: number };
@@ -65,9 +65,22 @@ const PERIODS: { label: string; value: Period }[] = [
 ];
 
 const EXTERNAL = [
+  { name: 'Vercel', desc: 'Compute, bandwidth, function GB-hrs', href: 'https://vercel.com/dashboard/usage', color: 'bg-zinc-500/10 border-zinc-500/20', icon: Server },
   { name: 'Neon', desc: 'Postgres compute & storage', href: 'https://console.neon.tech', color: 'bg-green-500/10 border-green-500/20', icon: Database },
-  { name: 'Groq', desc: 'LLM inference', href: 'https://console.groq.com/usage', color: 'bg-orange-500/10 border-orange-500/20', icon: Zap },
+  { name: 'Cloudflare R2', desc: 'Image / file storage (uploads bucket)', href: 'https://dash.cloudflare.com', color: 'bg-orange-600/10 border-orange-600/20', icon: Cloud },
+  { name: 'Groq', desc: 'Whisper audio transcription', href: 'https://console.groq.com/usage', color: 'bg-orange-500/10 border-orange-500/20', icon: Zap },
+  { name: 'Supadata', desc: 'YouTube transcript fallback', href: 'https://supadata.ai/dashboard', color: 'bg-red-500/10 border-red-500/20', icon: Youtube },
 ];
+
+// Friendly labels for the raw operation values logged in usageLog.
+const OPERATION_LABELS: Record<string, string> = {
+  'summarize': 'Note summarize',
+  'organize': 'Note organize',
+  'extract': 'Extract from notes',
+  'budget-import': 'Statement import',
+  'cancel-email': 'Cancel-subscription email',
+};
+const opLabel = (op: string) => OPERATION_LABELS[op] ?? op;
 
 export function AdminDashboard() {
   const [period, setPeriod] = useState<Period>('month');
@@ -127,7 +140,7 @@ export function AdminDashboard() {
               </div>
               <div>
                 <p className="font-semibold text-sm">DeepSeek</p>
-                <p className="text-xs text-muted">AI extraction & note organizing</p>
+                <p className="text-xs text-muted">Summarize, organize, extract, statement import, cancel-email</p>
               </div>
               <div className="ml-auto text-right">
                 <p className="text-xl font-bold text-accent">{fmtCost(data.deepseek.totalCostUsd)}</p>
@@ -158,7 +171,7 @@ export function AdminDashboard() {
                   <div className="space-y-1">
                     {data.deepseek.byOperation.map((op) => (
                       <div key={op.operation} className="flex items-center gap-3 text-sm">
-                        <span className="w-20 capitalize text-muted shrink-0">{op.operation}</span>
+                        <span className="w-40 text-muted shrink-0 truncate" title={op.operation}>{opLabel(op.operation)}</span>
                         <div className="flex-1 h-1.5 bg-bg rounded-full overflow-hidden">
                           <div
                             className="h-full bg-accent/60 rounded-full"
@@ -234,24 +247,29 @@ export function AdminDashboard() {
             )}
           </div>
 
-          {/* External link cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {EXTERNAL.map((svc) => (
-              <a
-                key={svc.name}
-                href={svc.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`flex items-center gap-3 rounded-xl border px-5 py-4 hover:opacity-80 transition-opacity ${svc.color}`}
-              >
-                <svc.icon size={16} className="shrink-0 text-muted" />
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm">{svc.name}</p>
-                  <p className="text-xs text-muted">{svc.desc}</p>
-                </div>
-                <ExternalLink size={13} className="ml-auto shrink-0 text-muted" />
-              </a>
-            ))}
+          {/* External link cards — no public usage API on hobby tiers, so just deep-link */}
+          <div>
+            <p className="text-xs text-muted uppercase tracking-wide font-medium mb-2">
+              Infrastructure (check dashboards)
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {EXTERNAL.map((svc) => (
+                <a
+                  key={svc.name}
+                  href={svc.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 hover:opacity-80 transition-opacity ${svc.color}`}
+                >
+                  <svc.icon size={16} className="shrink-0 text-muted" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm">{svc.name}</p>
+                    <p className="text-xs text-muted truncate">{svc.desc}</p>
+                  </div>
+                  <ExternalLink size={13} className="shrink-0 text-muted" />
+                </a>
+              ))}
+            </div>
           </div>
 
           <p className="text-xs text-muted text-center pb-4">
