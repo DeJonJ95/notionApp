@@ -7,9 +7,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const existing = await prisma.recurringRule.findFirst({
-    where: { id: params.id, userId },
-  });
+  let existing;
+  try {
+    existing = await prisma.recurringRule.findFirst({
+      where: { id: params.id, userId },
+    });
+  } catch (e: any) {
+    if (e?.message?.includes('does not exist') || e?.code === 'P2021') {
+      return NextResponse.json({ error: 'RecurringRule table missing — run the migration SQL in Neon.' }, { status: 503 });
+    }
+    return NextResponse.json({ error: e?.message ?? 'DB error' }, { status: 500 });
+  }
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
   const body = await req.json();
