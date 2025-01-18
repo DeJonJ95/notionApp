@@ -18,6 +18,25 @@ model User {
   pages      Page[]
   accounts   Account[]
   sessions   Session[]
+  recurringRules RecurringRule[]
+}
+
+model RecurringRule {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String    // 'income' | 'expense'
+  name              String    // e.g. "City of Detroit paycheck", "Rent"
+  category          String    // must match a Personal Budget Category option
+  amount            Float     // always positive — sign applied based on type
+  frequency         String    // 'weekly' | 'biweekly' | 'semimonthly' | 'monthly'
+  anchorDate        DateTime  // next-due date (advances after each generation)
+  lastGeneratedDate DateTime? // most recent occurrence we wrote a row for
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 model Workspace {

@@ -3,10 +3,11 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
-  Mail, RefreshCw, ExternalLink, Loader2,
+  Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
 } from 'lucide-react';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
+import { RecurringRulesModal } from './RecurringRulesModal';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
 
 const fmt = (n: number) =>
@@ -19,6 +20,8 @@ export function BudgetDashboard() {
   const [loading, setLoading] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
+  const [recurringOpen, setRecurringOpen] = useState(false);
+  const [recurringPrefill, setRecurringPrefill] = useState<{ name: string; amount: number; category: string } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -68,6 +71,13 @@ export function BudgetDashboard() {
           onClose={() => setCancelTarget(null)}
         />
       )}
+      {recurringOpen && (
+        <RecurringRulesModal
+          prefill={recurringPrefill ?? undefined}
+          onChanged={load}
+          onClose={() => { setRecurringOpen(false); setRecurringPrefill(null); }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
@@ -89,6 +99,13 @@ export function BudgetDashboard() {
           <RefreshCw size={14} />
         </button>
         <button
+          onClick={() => { setRecurringPrefill(null); setRecurringOpen(true); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm hover:bg-surface"
+          title="Set up recurring paychecks & bills"
+        >
+          <Repeat size={14} /> Recurring
+        </button>
+        <button
           onClick={() => setImportOpen(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/80"
         >
@@ -96,8 +113,15 @@ export function BudgetDashboard() {
         </button>
       </div>
 
+      {data.generatedThisLoad > 0 && (
+        <div className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2 text-sm flex items-center gap-2">
+          <Sparkles size={13} className="text-accent" />
+          Auto-added <strong>{data.generatedThisLoad}</strong> recurring transaction{data.generatedThisLoad !== 1 ? 's' : ''} since your last visit.
+        </div>
+      )}
+
       {/* Cashflow cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
           label="Income"
           value={fmt(data.income)}
@@ -113,12 +137,25 @@ export function BudgetDashboard() {
         />
         <div className={`rounded-xl border p-4 ${netBg}`}>
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-muted uppercase tracking-wide">Net cash flow</span>
+            <span className="text-xs text-muted uppercase tracking-wide">Net</span>
             <DollarSign size={14} className={netClr} />
           </div>
           <div className={`text-2xl font-bold ${netClr}`}>{fmt(data.net)}</div>
           <div className="text-[11px] text-muted mt-1">
             {netDelta === 0 ? 'No change' : `${netDelta >= 0 ? '+' : ''}${fmt(netDelta)} vs last month`}
+          </div>
+        </div>
+        {/* Projected month-end */}
+        <div className={`rounded-xl border p-4 ${data.projectedMonthEnd >= 0 ? 'border-blue-500/30 bg-blue-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-muted uppercase tracking-wide">Projected EoM</span>
+            <Calendar size={14} className={data.projectedMonthEnd >= 0 ? 'text-blue-500' : 'text-red-500'} />
+          </div>
+          <div className={`text-2xl font-bold ${data.projectedMonthEnd >= 0 ? 'text-blue-600' : 'text-red-500'}`}>
+            {fmt(data.projectedMonthEnd)}
+          </div>
+          <div className="text-[11px] text-muted mt-1">
+            Current + scheduled
           </div>
         </div>
       </div>
@@ -136,6 +173,26 @@ export function BudgetDashboard() {
             Import your first statement
           </button>
         </div>
+      )}
+
+      {/* Forecast — next 14 days of scheduled income/expense */}
+      {data.forecast.length > 0 && (
+        <Section title="Coming up — next 14 days" icon={<Calendar size={13} className="text-blue-500" />}>
+          <div className="space-y-1.5">
+            {data.forecast.map((f, idx) => (
+              <div key={`${f.ruleId}-${idx}`} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                <span className={`w-1 h-7 rounded-full ${f.amount >= 0 ? 'bg-green-500' : 'bg-red-500'}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{f.name}</div>
+                  <div className="text-xs text-muted">{f.date} · {f.category}</div>
+                </div>
+                <div className={`text-sm font-mono ${f.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {f.amount >= 0 ? '+' : '-'}${Math.abs(f.amount).toFixed(2)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
       )}
 
       {/* Excesses */}
@@ -193,6 +250,16 @@ export function BudgetDashboard() {
                     ~{fmt2(s.monthlyEstimate)}/mo · {s.occurrences} charges · last {s.lastDate} · {s.category}
                   </div>
                 </div>
+                <button
+                  onClick={() => {
+                    setRecurringPrefill({ name: s.vendor, amount: s.monthlyEstimate, category: s.category });
+                    setRecurringOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
+                  title="Turn this into a tracked recurring bill"
+                >
+                  <Repeat size={12} /> Track
+                </button>
                 <button
                   onClick={() => setCancelTarget(s)}
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
