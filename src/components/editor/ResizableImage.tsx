@@ -103,7 +103,11 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
       <div
         ref={containerRef}
         className="group/img relative inline-block select-none"
-        style={{ width: currentWidth ? `${currentWidth}px` : 'auto', maxWidth: 'none' }}
+        // Constrained to the parent block (max-width:100%) so the image can
+        // never overflow its block box and cover neighbouring blocks. It can
+        // still be made large — resizing it grows the block too (the
+        // onResize callback syncs canvasWidth), so block always >= image.
+        style={{ width: currentWidth ? `${currentWidth}px` : 'auto', maxWidth: '100%' }}
         contentEditable={false}
         onPointerDown={handleImagePointerDown}
       >
@@ -116,7 +120,7 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
           style={{
             outline: isSelected ? '2px solid var(--color-accent, #6366f1)' : 'none',
             outlineOffset: 2,
-            maxWidth: 'none',
+            maxWidth: '100%',
           }}
         />
 
