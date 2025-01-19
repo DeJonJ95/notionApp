@@ -26,6 +26,15 @@ export type Subscription = {
   monthlyEstimate: number;
 };
 
+export type RepeatVendor = {
+  vendor: string;
+  occurrences: number;
+  totalAmount: number;
+  averageAmount: number;
+  lastDate: string;
+  category: string;
+};
+
 export type DashboardPayload = {
   databaseId: string;
   databaseName: string;
@@ -37,6 +46,7 @@ export type DashboardPayload = {
   byCategory: { category: string; spent: number; pct: number }[];
   excesses: { category: string; spent: number; vsPrior: number; pctChange: number }[];
   subscriptions: Subscription[];
+  repeatVendors: RepeatVendor[];
   recentTransactions: Tx[];
   // Recurring + forecast additions
   forecast: ForecastItem[];      // next 14 days of scheduled income/expense
@@ -195,6 +205,31 @@ export async function GET() {
   }
   subscriptions.sort((a, b) => b.monthlyEstimate - a.monthlyEstimate);
 
+  // ── "Other repeat vendors" — broader list so the user can manually flag
+  // anything the strict subscription heuristic missed (food, transport,
+  // utilities with variable amounts, car payments, etc.). Excludes vendors
+  // already in the subscriptions list above.
+  const subVendorSet = new Set(subscriptions.map((s) => s.vendor.toLowerCase().trim()));
+  const repeatVendors: RepeatVendor[] = [];
+  for (const [vendor, txs] of byVendor.entries()) {
+    if (txs.length < 2) continue;
+    if (subVendorSet.has(vendor.toLowerCase().trim())) continue;
+    const amounts = txs.map((t) => Math.abs(t.amount));
+    const total = amounts.reduce((s, a) => s + a, 0);
+    const avg = total / amounts.length;
+    txs.sort((a, b) => a.date.localeCompare(b.date));
+    repeatVendors.push({
+      vendor,
+      occurrences: txs.length,
+      totalAmount: Math.round(total * 100) / 100,
+      averageAmount: Math.round(avg * 100) / 100,
+      lastDate: txs.at(-1)!.date,
+      category: txs[0].category,
+    });
+  }
+  // Sort by total spend descending — biggest impact first
+  repeatVendors.sort((a, b) => b.totalAmount - a.totalAmount);
+
   const recentTransactions = all.slice(0, 25);
 
   // ── Forecast: next 14 days of scheduled income/expense ──────────────────
@@ -226,6 +261,7 @@ export async function GET() {
     byCategory,
     excesses,
     subscriptions,
+    repeatVendors,
     recentTransactions,
     forecast,
     projectedMonthEnd,

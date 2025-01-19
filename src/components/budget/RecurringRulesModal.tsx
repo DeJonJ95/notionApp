@@ -30,8 +30,8 @@ export type Rule = {
 interface Props {
   onClose: () => void;
   onChanged: () => void;
-  // Optional prefill from "Make recurring" on a subscription
-  prefill?: { name: string; amount: number; category: string };
+  // Optional prefill from a "Make recurring" / "Track" button
+  prefill?: { name: string; amount: number; category: string; type?: 'income' | 'expense' };
 }
 
 const isoDate = (d: Date) =>
@@ -43,11 +43,11 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
   const [savingId, setSavingId] = useState<string | null>(null); // 'new' for add form
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<Partial<Rule> | null>(prefill ? {
-    type: 'expense',
+    type: prefill.type ?? 'expense',
     name: prefill.name,
     amount: prefill.amount,
     category: prefill.category,
-    frequency: 'monthly',
+    frequency: prefill.type === 'income' ? 'biweekly' : 'monthly',
     anchorDate: isoDate(new Date()),
     isActive: true,
   } : null);
