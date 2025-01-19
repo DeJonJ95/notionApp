@@ -11,6 +11,11 @@ const updateSchema = z.object({
   isArchived: z.boolean().optional(),
   parentId: z.string().nullable().optional(),
   position: z.number().optional(),
+  // databaseId allows attaching an existing page to a database (Link existing).
+  // Pass null to detach.
+  databaseId: z.string().nullable().optional(),
+  // workspaceId is needed when databaseId moves the page across workspaces.
+  workspaceId: z.string().optional(),
   content: z.any().optional(), // legacy: TipTap JSON document (kept for backwards compat)
 });
 

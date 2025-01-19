@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   Plus, GripHorizontal, Trash2, ChevronLeft, ChevronRight,
-  Eye, EyeOff, X, Settings, Columns, ExternalLink,
+  Eye, EyeOff, X, Settings, Columns, ExternalLink, Edit3, Link2, Search,
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 
@@ -238,6 +238,50 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     if (res.ok) { setNewPageTitle(''); onUpdate(); }
   };
 
+  // ── Link existing page → attach an existing page to this database ───────
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkSearch, setLinkSearch] = useState('');
+  const [allUserPages, setAllUserPages] = useState<Array<{
+    id: string; title: string; icon: string | null; updatedAt: string; databaseId: string | null; workspaceId: string;
+  }>>([]);
+  const [linkBusy, setLinkBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!linkOpen) return;
+    fetch('/api/pages')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((p) => setAllUserPages(p))
+      .catch(() => {});
+  }, [linkOpen]);
+
+  const linkablePages = useMemo(() => {
+    // Only show pages NOT already in this database. Sort by recency.
+    const q = linkSearch.trim().toLowerCase();
+    return allUserPages
+      .filter((p) => p.databaseId !== database.id)
+      .filter((p) => !q || p.title.toLowerCase().includes(q))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 50);
+  }, [allUserPages, database.id, linkSearch]);
+
+  const linkPageToDb = async (pageId: string) => {
+    setLinkBusy(pageId);
+    const res = await fetch(`/api/pages/${pageId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ databaseId: database.id, workspaceId: database.workspaceId }),
+    });
+    setLinkBusy(null);
+    if (res.ok) {
+      onUpdate();
+      // Remove from the local list so it doesn't show as still-linkable
+      setAllUserPages((prev) => prev.map((p) => p.id === pageId ? { ...p, databaseId: database.id } : p));
+    } else {
+      const j = await res.json().catch(() => ({}));
+      alert(j.error ?? 'Failed to link page');
+    }
+  };
+
   const handleAddProperty = async () => {
     if (!newPropName.trim()) return;
     let formula: string | undefined;
@@ -261,6 +305,68 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const deleteProperty = async (propertyId: string) => {
     if (!confirm('Delete this property and all its values?')) return;
     await fetch(`/api/databases/${database.id}/properties/${propertyId}`, { method: 'DELETE' });
+    onUpdate();
+  };
+
+  // ── Edit-property modal state ──────────────────────────────────────────
+  const [editPropId, setEditPropId] = useState<string | null>(null);
+  const [editPropName, setEditPropName] = useState('');
+  const [editPropType, setEditPropType] = useState<string>('text');
+  const [editPropOptions, setEditPropOptions] = useState('');
+  const [editPropFormula, setEditPropFormula] = useState('');
+  const [editPropOriginalType, setEditPropOriginalType] = useState<string>('');
+
+  const openEditProperty = (prop: Property) => {
+    setEditPropId(prop.id);
+    setEditPropName(prop.name);
+    setEditPropType(prop.type);
+    setEditPropOriginalType(prop.type);
+    if (prop.type === 'select') {
+      try {
+        const arr = JSON.parse(prop.formula || '[]');
+        setEditPropOptions(Array.isArray(arr) ? arr.join('\n') : '');
+      } catch { setEditPropOptions(''); }
+      setEditPropFormula('');
+    } else if (prop.type === 'formula') {
+      setEditPropFormula(prop.formula || '');
+      setEditPropOptions('');
+    } else {
+      setEditPropOptions('');
+      setEditPropFormula('');
+    }
+  };
+
+  const closeEditProperty = () => {
+    setEditPropId(null);
+    setEditPropName('');
+    setEditPropType('text');
+    setEditPropOptions('');
+    setEditPropFormula('');
+    setEditPropOriginalType('');
+  };
+
+  const saveEditProperty = async () => {
+    if (!editPropId || !editPropName.trim()) return;
+    // If type changed, warn — existing values may become invalid.
+    if (editPropType !== editPropOriginalType) {
+      if (!confirm(
+        `Change type from ${editPropOriginalType} to ${editPropType}? ` +
+        `Existing values may no longer display correctly.`
+      )) return;
+    }
+    let formula: string | null = null;
+    if (editPropType === 'select') {
+      const opts = editPropOptions.split('\n').map((s) => s.trim()).filter(Boolean);
+      formula = JSON.stringify(opts);
+    } else if (editPropType === 'formula') {
+      formula = editPropFormula.trim() || null;
+    }
+    await fetch(`/api/databases/${database.id}/properties/${editPropId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editPropName.trim(), type: editPropType, formula }),
+    });
+    closeEditProperty();
     onUpdate();
   };
 
@@ -583,8 +689,16 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                         <>
                           <span className="text-xs text-muted capitalize shrink-0">({prop!.type})</span>
                           <button
+                            onClick={() => openEditProperty(prop!)}
+                            className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-accent transition-opacity shrink-0"
+                            title="Edit property"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          <button
                             onClick={() => deleteProperty(colId)}
-                            className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 transition-opacity shrink-0"
+                            className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 transition-opacity shrink-0"
+                            title="Delete property"
                           >
                             <Trash2 size={13} />
                           </button>
@@ -1223,6 +1337,15 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
             <Plus size={16} />
           </button>
           <button
+            onClick={() => { setLinkOpen(true); setLinkSearch(''); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border transition-colors text-sm"
+            title="Attach an existing page to this database"
+          >
+            <Link2 size={13} />
+            <span className="hidden sm:inline">Link existing</span>
+            <span className="sm:hidden">Link</span>
+          </button>
+          <button
             onClick={() => setShowAddProperty(true)}
             className="px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border transition-colors text-sm"
           >
@@ -1395,6 +1518,157 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                 className="px-4 py-2 bg-surface text-text border border-border rounded text-sm hover:bg-border transition-colors"
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Property Modal */}
+      {editPropId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={closeEditProperty}>
+          <div
+            className="bg-bg border border-border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-text text-lg">Edit Property</h3>
+              <button onClick={closeEditProperty} className="text-muted hover:text-text">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Name</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={editPropName}
+                  onChange={(e) => setEditPropName(e.target.value)}
+                  className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Type</label>
+                <select
+                  value={editPropType}
+                  onChange={(e) => setEditPropType(e.target.value)}
+                  className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                >
+                  <option value="text">Text</option>
+                  <option value="number">Number</option>
+                  <option value="date">Date</option>
+                  <option value="checkbox">Checkbox</option>
+                  <option value="select">Select</option>
+                  <option value="formula">Formula</option>
+                </select>
+                {editPropType !== editPropOriginalType && (
+                  <p className="mt-1 text-[11px] text-yellow-600">
+                    Type change will be confirmed on save — existing values may not match the new type.
+                  </p>
+                )}
+              </div>
+              {editPropType === 'select' && (
+                <div>
+                  <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Options (one per line)</label>
+                  <textarea
+                    value={editPropOptions}
+                    onChange={(e) => setEditPropOptions(e.target.value)}
+                    rows={5}
+                    className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent resize-none"
+                  />
+                </div>
+              )}
+              {editPropType === 'formula' && (
+                <div>
+                  <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Formula</label>
+                  <input
+                    type="text"
+                    value={editPropFormula}
+                    onChange={(e) => setEditPropFormula(e.target.value)}
+                    placeholder="e.g. Price * Quantity"
+                    className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={saveEditProperty}
+                disabled={!editPropName.trim()}
+                className="flex-1 bg-accent text-white rounded px-4 py-2 text-sm font-medium hover:bg-accent/80 disabled:opacity-40 transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={closeEditProperty}
+                className="px-4 py-2 bg-surface text-text border border-border rounded text-sm hover:bg-border transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Link existing page modal */}
+      {linkOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setLinkOpen(false)}>
+          <div
+            className="bg-bg border border-border rounded-xl shadow-2xl p-5 w-full max-w-lg mx-4 flex flex-col max-h-[80vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-text text-lg flex items-center gap-2">
+                <Link2 size={16} className="text-accent" />
+                Link existing page
+              </h3>
+              <button onClick={() => setLinkOpen(false)} className="text-muted hover:text-text">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-xs text-muted mb-3">
+              Pick any page in your workspaces to attach it to this database. The page keeps all its
+              existing blocks; it just gains rows under this database&apos;s properties.
+            </p>
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                autoFocus
+                value={linkSearch}
+                onChange={(e) => setLinkSearch(e.target.value)}
+                placeholder="Search pages…"
+                className="w-full pl-8 pr-3 py-2 rounded-lg border border-border bg-bg text-text text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-1 border border-border rounded-lg bg-bg p-1">
+              {linkablePages.length === 0 ? (
+                <p className="text-xs text-muted text-center py-6">
+                  {linkSearch ? 'No pages match.' : 'No pages available to link.'}
+                </p>
+              ) : (
+                linkablePages.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => linkPageToDb(p.id)}
+                    disabled={linkBusy === p.id}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-surface text-text disabled:opacity-50 text-left"
+                  >
+                    <span className="w-4 text-center">{p.icon ?? '📄'}</span>
+                    <span className="truncate flex-1">{p.title || 'Untitled'}</span>
+                    <span className="text-xs text-muted shrink-0">
+                      {linkBusy === p.id ? 'Linking…' : new Date(p.updatedAt).toLocaleDateString()}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={() => setLinkOpen(false)}
+                className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-surface"
+              >
+                Done
               </button>
             </div>
           </div>
