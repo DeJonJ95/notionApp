@@ -52,6 +52,8 @@ export type DashboardPayload = {
   forecast: ForecastItem[];      // next 14 days of scheduled income/expense
   projectedMonthEnd: number;     // expected net = current + remaining scheduled this month
   generatedThisLoad: number;     // how many tx were auto-created by the engine on this request
+  // Spending trends — last 6 calendar months
+  trends: { month: string; income: number; expenses: number }[];
 };
 
 function ymd(d: Date) {
@@ -230,6 +232,26 @@ export async function GET() {
   // Sort by total spend descending — biggest impact first
   repeatVendors.sort((a, b) => b.totalAmount - a.totalAmount);
 
+  // ── Spending trends: last 6 calendar months (income vs expenses) ───────
+  const trends: { month: string; income: number; expenses: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    let inc = 0;
+    let exp = 0;
+    for (const t of all) {
+      if (!inRange(t.date, start, end)) continue;
+      if (t.amount > 0) inc += t.amount;
+      else exp += Math.abs(t.amount);
+    }
+    trends.push({
+      month: start.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+      income: Math.round(inc),
+      expenses: Math.round(exp),
+    });
+  }
+
   const recentTransactions = all.slice(0, 25);
 
   // ── Forecast: next 14 days of scheduled income/expense ──────────────────
@@ -266,6 +288,7 @@ export async function GET() {
     forecast,
     projectedMonthEnd,
     generatedThisLoad: generated,
+    trends,
   };
 
   return NextResponse.json(payload);

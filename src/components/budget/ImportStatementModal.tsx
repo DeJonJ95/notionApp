@@ -64,8 +64,22 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
     if (fileRef.current) fileRef.current.value = '';
   };
 
+  // Vendors whose category the user manually changed in the preview — these
+  // become persistent categorization rules on confirm so the correction
+  // sticks for every future import.
+  const learnedRef = useRef<Map<string, string>>(new Map());
+
   const updateTx = (i: number, patch: Partial<Tx>) => {
-    setTxs((prev) => prev.map((t, idx) => (idx === i ? { ...t, ...patch } : t)));
+    setTxs((prev) =>
+      prev.map((t, idx) => {
+        if (idx !== i) return t;
+        if (patch.category && patch.category !== t.category && t.vendor.trim()) {
+          // Remember vendor (lowercased) → chosen category
+          learnedRef.current.set(t.vendor.trim().toLowerCase(), patch.category);
+        }
+        return { ...t, ...patch };
+      })
+    );
   };
 
   const removeTx = (i: number) => {
@@ -87,6 +101,14 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
         setError(json.error ?? 'Save failed');
         setStage('preview');
         return;
+      }
+      // Persist learned categorization rules (fire-and-forget)
+      for (const [match, category] of learnedRef.current.entries()) {
+        fetch('/api/budget/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ match, category }),
+        }).catch(() => {});
       }
       setStage('done');
       setTimeout(() => {

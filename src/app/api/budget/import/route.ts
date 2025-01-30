@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { prisma } from '@/lib/prisma';
 import { logDeepSeek } from '@/lib/logUsage';
 import { findOrCreateBudgetDb } from '@/lib/budgetDb';
 
@@ -281,6 +282,23 @@ export async function POST(req: NextRequest) {
       { error: 'AI did not return any transactions. The file may not be a bank statement, or formatting may be unusual.' },
       { status: 422 }
     );
+  }
+
+  // Apply the user's saved categorization rules — these OVERRIDE DeepSeek
+  // when a rule's match string is contained in the vendor (case-insensitive).
+  // This is how corrections "stick" across imports.
+  try {
+    const rules = await prisma.categorizationRule.findMany({ where: { userId } });
+    if (rules.length > 0) {
+      for (const tx of cleaned as any[]) {
+        const v = (tx.vendor ?? '').toLowerCase();
+        const hit = rules.find((r) => v.includes(r.match));
+        if (hit) tx.category = hit.category;
+      }
+    }
+  } catch (e) {
+    // Table not migrated yet — skip rules, don't fail the import
+    console.warn('[budget-import] categorization rules skipped:', (e as Error).message);
   }
 
   // Find/create the user's budget DB so the client knows where to confirm to
