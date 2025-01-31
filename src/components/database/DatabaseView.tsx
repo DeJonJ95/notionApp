@@ -333,6 +333,19 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   }, [allUserPages, database.id, linkSearch]);
 
   const linkPageToDb = async (pageId: string) => {
+    // A page belongs to exactly one database (single FK). Moving a page that
+    // already lives in another database removes it from there — confirm so
+    // it's never a silent surprise. (For a true cross-database reference,
+    // use a Relation property instead.)
+    const p = allUserPages.find((x) => x.id === pageId);
+    if (p?.databaseId && p.databaseId !== database.id) {
+      const ok = window.confirm(
+        `"${p.title || 'Untitled'}" currently belongs to another database. ` +
+        `Moving it here removes it from that database (a page can only live in one).\n\n` +
+        `Want it in both? Cancel and use a Relation property instead.`
+      );
+      if (!ok) return;
+    }
     setLinkBusy(pageId);
     const res = await fetch(`/api/pages/${pageId}`, {
       method: 'PATCH',
@@ -346,7 +359,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       setAllUserPages((prev) => prev.map((p) => p.id === pageId ? { ...p, databaseId: database.id } : p));
     } else {
       const j = await res.json().catch(() => ({}));
-      alert(j.error ?? 'Failed to link page');
+      alert(j.error ?? 'Failed to move page');
     }
   };
 
@@ -1647,11 +1660,11 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
           <button
             onClick={() => { setLinkOpen(true); setLinkSearch(''); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border transition-colors text-sm"
-            title="Attach an existing page to this database"
+            title="Move an existing page into this database (it leaves its current one). For a cross-database reference, add a Relation property instead."
           >
             <Link2 size={13} />
-            <span className="hidden sm:inline">Link existing</span>
-            <span className="sm:hidden">Link</span>
+            <span className="hidden sm:inline">Move page in</span>
+            <span className="sm:hidden">Move in</span>
           </button>
           <button
             onClick={() => setShowAddProperty(true)}
@@ -2044,15 +2057,17 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-text text-lg flex items-center gap-2">
                 <Link2 size={16} className="text-accent" />
-                Link existing page
+                Move a page into this database
               </h3>
               <button onClick={() => setLinkOpen(false)} className="text-muted hover:text-text">
                 <X size={18} />
               </button>
             </div>
             <p className="text-xs text-muted mb-3">
-              Pick any page in your workspaces to attach it to this database. The page keeps all its
-              existing blocks; it just gains rows under this database&apos;s properties.
+              Pick any page to move it into this database — it keeps all its blocks and gains this
+              database&apos;s properties. A page lives in only one database, so if it currently belongs
+              to another, it leaves that one. Want it referenced from both without moving?
+              Add a <strong className="text-text">Relation</strong> property instead.
             </p>
             <div className="relative mb-3">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
