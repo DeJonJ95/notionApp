@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Trash2, ChevronRight, FolderOutput } from 'lucide-react';
 import { DatabaseView } from '@/components/database/DatabaseView';
+import { confirmDialog, toast } from '@/components/ui/feedback';
 
 interface Workspace {
   id: string;
@@ -97,7 +98,7 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
       fetchDatabase();
     } else {
       const j = await res.json().catch(() => ({}));
-      alert(j.error ?? 'Failed to move database');
+      toast.error(j.error ?? 'Failed to move database');
     }
   };
 
@@ -117,7 +118,11 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
 
   const deleteDatabase = async () => {
     if (!database) return;
-    if (!window.confirm(`Delete "${database.name}"? This will also delete all rows inside it and cannot be undone.`)) return;
+    if (!(await confirmDialog({
+      title: `Delete "${database.name}"?`,
+      message: 'This deletes the database and every row inside it. This cannot be undone.',
+      confirmText: 'Delete database', danger: true,
+    }))) return;
     setDeleting(true);
     const res = await fetch(`/api/databases/${database.id}`, { method: 'DELETE' });
     if (res.ok) {

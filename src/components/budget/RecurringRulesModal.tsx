@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { X, Plus, Trash2, Edit3, RefreshCw, Loader2 } from 'lucide-react';
+import { confirmDialog } from '@/components/ui/feedback';
 
 const CATEGORIES = [
   'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
@@ -111,7 +112,11 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
   };
 
   const del = async (id: string) => {
-    if (!confirm('Delete this recurring rule? Existing transactions remain.')) return;
+    if (!(await confirmDialog({
+      title: 'Delete rule?',
+      message: 'Future occurrences stop generating. Transactions already created stay.',
+      confirmText: 'Delete', danger: true,
+    }))) return;
     await fetch(`/api/budget/recurring/${id}`, { method: 'DELETE' });
     load();
     onChanged();

@@ -8,6 +8,7 @@ import { SearchModal } from '@/components/search/SearchModal';
 import { TemplateModal } from '@/components/templates/TemplateModal';
 import { ExtractFromNotes } from '@/components/extract/ExtractFromNotes';
 import { cn } from '@/lib/utils';
+import { promptDialog } from '@/components/ui/feedback';
 
 type Database = { id: string; name: string };
 type Workspace = { id: string; name: string; slug: string; icon: string | null; databases: Database[] };
@@ -268,7 +269,11 @@ export function Sidebar() {
             ))}
             <button
               onClick={async () => {
-                const name = window.prompt('Workspace name', 'New workspace');
+                const name = await promptDialog({
+                  title: 'New workspace',
+                  message: 'Name your workspace.',
+                  defaultValue: 'New workspace',
+                });
                 if (name === null) return;
                 const trimmed = name.trim() || 'New workspace';
                 await fetch('/api/workspaces', {
