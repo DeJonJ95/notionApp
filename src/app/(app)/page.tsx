@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { BudgetReminders } from '@/components/budget/BudgetReminders';
+import { WelcomeCard } from '@/components/onboarding/WelcomeCard';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -26,6 +27,9 @@ export default async function DashboardPage() {
         Hi{session?.user?.name ? `, ${session.user.name.split(' ')[0]}` : ''}
       </h1>
       <p className="text-muted mb-10">Pick up where you left off.</p>
+
+      {/* First-run onboarding — dismissible, localStorage-gated */}
+      <WelcomeCard />
 
       {/* Budget reminders — only renders if there are upcoming/overdue items */}
       <BudgetReminders />
