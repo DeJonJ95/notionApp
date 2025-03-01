@@ -28,9 +28,9 @@ function SignInForm() {
   return (
     <div className="min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold mb-2">My Workspace</h1>
+        <h1 className="text-2xl font-bold mb-2">Kove</h1>
         <p className="text-muted text-sm mb-8">
-          Your personal hub for work, side gigs, and life.
+          Your private hub for notes, databases, and budgeting.
         </p>
 
         {errorMessage && (

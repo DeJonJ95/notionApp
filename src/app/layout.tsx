@@ -3,13 +3,13 @@ import './globals.css';
 import { Providers } from './providers';
 
 export const metadata: Metadata = {
-  title: 'My Workspace',
-  description: 'Personal Notion-style workspace for work, side gigs, and life.',
+  title: 'Kove',
+  description: 'Kove — your private workspace for notes, databases, and budgeting.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'My Workspace',
+    title: 'Kove',
   },
 };
 

@@ -105,14 +105,18 @@ export function Sidebar() {
       )}
       {extractOpen && <ExtractFromNotes onClose={() => setExtractOpen(false)} />}
 
-      {/* Mobile toggle */}
-      <button
-        onClick={() => setOpen(true)}
-        className="md:hidden fixed top-3 left-3 z-30 p-2 rounded-lg bg-surface border border-border"
-        aria-label="Open menu"
-      >
-        <Menu size={18} />
-      </button>
+      {/* Mobile toggle — floating bottom-left so it never sits on top of
+          page titles / breadcrumbs (which are top-left). Hidden while the
+          drawer is open. Bottom-right is reserved for canvas zoom controls. */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          className="md:hidden fixed bottom-4 left-4 z-40 p-3 rounded-full bg-surface border border-border shadow-lg active:scale-95 transition-transform"
+          aria-label="Open menu"
+        >
+          <Menu size={18} />
+        </button>
+      )}
 
       {/* Backdrop */}
       {open && (
@@ -129,7 +133,7 @@ export function Sidebar() {
         )}
       >
         <div className="flex items-center justify-between p-3 border-b border-border">
-          <span className="font-semibold text-sm">My Workspace</span>
+          <span className="font-semibold text-sm">Kove</span>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setSearchOpen(true)}
