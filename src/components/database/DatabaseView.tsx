@@ -131,7 +131,35 @@ const VIEW_TYPE_LABELS: Record<string, string> = {
   'spending-breakdown': 'Spending',
 };
 
-export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
+export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: DatabaseViewProps) {
+  // Internal mirror of the prop. Every existing `database.*` read below keeps
+  // working unchanged, but mutations can now patch this instantly (optimistic)
+  // instead of awaiting a network round-trip + full parent refetch. `reconcile`
+  // (the old onUpdate) still runs in the background to pull server truth.
+  const [database, setDatabase] = useState(databaseProp);
+  useEffect(() => { setDatabase(databaseProp); }, [databaseProp]);
+
+  // Optimistically mutate local DB state, then sync with the server in the
+  // background. The UI updates immediately; reconcile() refreshes canonical
+  // data (real ids, formula recompute) without blocking or flashing.
+  const optimistic = (
+    patch: (d: typeof databaseProp) => typeof databaseProp,
+    request: () => Promise<Response>,
+    failMsg = 'Change failed — reverted'
+  ) => {
+    setDatabase((d) => patch(structuredClone(d)));
+    request()
+      .then((r) => {
+        if (!r.ok) { toast.error(failMsg); reconcile(); }
+        else reconcile(); // background canonical sync (not awaited)
+      })
+      .catch(() => { toast.error(failMsg); reconcile(); });
+  };
+
+  // Back-compat shim: code/paths that still call onUpdate() get a background
+  // reconcile (no longer blocks UI, since local state already changed).
+  const onUpdate = reconcile;
+
   const [newPageTitle, setNewPageTitle] = useState('');
   const [selectedViewId, setSelectedViewId] = useState(database.views?.[0]?.id ?? '');
   const [splitEnabled, setSplitEnabled] = useState(false);
@@ -298,13 +326,24 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   // --- Handlers ---
 
   const addPage = async () => {
-    if (!newPageTitle.trim()) return;
-    const res = await fetch('/api/pages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workspaceId: database.workspaceId, title: newPageTitle, databaseId: database.id }),
-    });
-    if (res.ok) { setNewPageTitle(''); onUpdate(); }
+    const title = newPageTitle.trim();
+    if (!title) return;
+    setNewPageTitle('');
+    const tempId = `temp-${Date.now()}`;
+    const lastPos = Math.max(0, ...database.pages.map((p) => p.position ?? 0));
+    optimistic(
+      (d) => ({
+        ...d,
+        pages: [...d.pages, { id: tempId, title, position: lastPos + 1024, properties: [] } as any],
+      }),
+      () =>
+        fetch('/api/pages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workspaceId: database.workspaceId, title, databaseId: database.id }),
+        }),
+      'Couldn’t add row — reverted'
+    );
   };
 
   // ── Link existing page → attach an existing page to this database ───────
@@ -404,8 +443,18 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       message: 'This removes the property and all its values from every row. This cannot be undone.',
       confirmText: 'Delete', danger: true,
     }))) return;
-    await fetch(`/api/databases/${database.id}/properties/${propertyId}`, { method: 'DELETE' });
-    onUpdate();
+    optimistic(
+      (d) => ({
+        ...d,
+        properties: d.properties.filter((p) => p.id !== propertyId),
+        pages: d.pages.map((pg) => ({
+          ...pg,
+          properties: pg.properties.filter((v) => v.property.id !== propertyId),
+        })),
+      }),
+      () => fetch(`/api/databases/${database.id}/properties/${propertyId}`, { method: 'DELETE' }),
+      'Couldn’t delete property — reverted'
+    );
   };
 
   // ── Edit-property modal state ──────────────────────────────────────────
@@ -599,21 +648,42 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
   const handlePageDrop = async (targetId: string) => {
     if (!dragPageId || dragPageId === targetId) { setDragPageId(null); return; }
-    const ordered = database.pages.filter((p) => p.id !== dragPageId);
-    const dragged = database.pages.find((p) => p.id === dragPageId);
-    if (!dragged) return;
+    const moved = dragPageId;
+    const ordered = database.pages.filter((p) => p.id !== moved);
+    const dragged = database.pages.find((p) => p.id === moved);
+    if (!dragged) { setDragPageId(null); return; }
     const index = ordered.findIndex((p) => p.id === targetId);
     ordered.splice(index, 0, dragged);
     const prev = ordered[index - 1] ?? null;
     const next = ordered[index + 1] ?? null;
     const position = getPositionBetween(prev?.position ?? null, next?.position ?? null);
-    await fetch(`/api/pages/${dragPageId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ position }),
-    });
     setDragPageId(null);
-    onUpdate();
+    // Rebuild the array in the new visual order (the table renders pages in
+    // array order) and stamp the new position so it survives reconcile.
+    const newOrderIds = [
+      ...ordered.slice(0, index).map((p) => p.id),
+      moved,
+      ...ordered.slice(index).map((p) => p.id),
+    ];
+    optimistic(
+      (d) => {
+        const byId = new Map(d.pages.map((p) => [p.id, p]));
+        const reordered = newOrderIds
+          .map((id) => byId.get(id))
+          .filter(Boolean) as typeof d.pages;
+        return {
+          ...d,
+          pages: reordered.map((p) => (p.id === moved ? { ...p, position } : p)),
+        };
+      },
+      () =>
+        fetch(`/api/pages/${moved}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ position }),
+        }),
+      'Couldn’t reorder — reverted'
+    );
   };
 
   const handlePropertyDrop = async (targetId: string) => {
@@ -1594,11 +1664,23 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     const s = (view as any).sorts as { propertyId: string; dir: string } | null;
     const g = (view as any).grouping as { propertyId: string } | null;
     const patch = (p: any) => {
-      fetch(`/api/databases/${database.id}/views/${view.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(p),
-      }).then((r) => { if (r.ok) onUpdate(); }).catch(() => {});
+      // Optimistic: the view's filter/sort/group applies instantly (the
+      // derived viewedPages recomputes from local state) — no refetch flash.
+      optimistic(
+        (d) => ({
+          ...d,
+          views: d.views.map((v) =>
+            v.id === view.id ? { ...v, ...(p as object) } : v
+          ),
+        }),
+        () =>
+          fetch(`/api/databases/${database.id}/views/${view.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p),
+          }),
+        'Couldn’t save view settings — reverted'
+      );
     };
     const props = database.properties;
     const selectProps = props.filter((p) => p.type === 'select');
