@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -60,6 +61,12 @@ export function CanvasTextBlock({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
+  // Viewport coords of the caret when the slash menu opened. The canvas
+  // applies transform:scale on an ancestor (which would break position:fixed),
+  // so the menu is portalled to <body> and placed at these coords.
+  const [slashPos, setSlashPos] = useState<{ left: number; top: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   // Mirror state in a ref so the editor's keydown closure (created once at
   // mount) can always read the latest values without going stale.
   const slashRef = useRef({ open: false, idx: 0 });
@@ -126,7 +133,15 @@ export function CanvasTextBlock({
           const before = from > 0 ? view.state.doc.textBetween(from - 1, from, '\0', '\0') : '';
           if (atBlockStart || /\s/.test(before)) {
             event.preventDefault();
+            // coordsAtPos returns real post-transform viewport coordinates,
+            // so this is correct even with canvas zoom/scroll.
+            let pos: { left: number; top: number } | null = null;
+            try {
+              const c = view.coordsAtPos(from);
+              pos = { left: c.left, top: c.bottom + 4 };
+            } catch {}
             slashRef.current = { open: true, idx: 0 };
+            setSlashPos(pos);
             setSlashOpen(true);
             setSlashIdx(0);
             return true;
@@ -223,26 +238,43 @@ export function CanvasTextBlock({
         editor={editor}
         className="prose-base focus:outline-none min-h-[32px] text-text"
       />
-      {slashOpen && (
-        <div
-          ref={menuRef}
-          className="absolute z-30 mt-1 w-64 rounded-xl border border-border bg-surface shadow-lg overflow-hidden max-h-64 overflow-y-auto"
-        >
-          {SLASH_COMMANDS.map((cmd, i) => (
-            <button
-              key={cmd.title}
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); runSlash(editor, i); }}
-              onMouseEnter={() => { slashRef.current.idx = i; setSlashIdx(i); }}
-              className={`w-full px-3 py-2 text-left hover:bg-bg transition ${
-                i === slashIdx ? 'bg-bg' : ''
-              }`}
+      {slashOpen && mounted && createPortal(
+        (() => {
+          const MENU_W = 256;
+          const MENU_H = 264;
+          const vw = typeof window !== 'undefined' ? window.innerWidth : 1024;
+          const vh = typeof window !== 'undefined' ? window.innerHeight : 768;
+          const base = slashPos ?? { left: vw / 2 - MENU_W / 2, top: vh / 2 };
+          // Clamp to viewport; flip above the caret if it would overflow.
+          const left = Math.max(8, Math.min(base.left, vw - MENU_W - 8));
+          const top =
+            base.top + MENU_H > vh - 8
+              ? Math.max(8, base.top - MENU_H - 24)
+              : base.top;
+          return (
+            <div
+              ref={menuRef}
+              style={{ position: 'fixed', left, top, width: MENU_W }}
+              className="z-[400] rounded-xl border border-border bg-surface shadow-2xl overflow-hidden max-h-64 overflow-y-auto"
             >
-              <div className="text-sm font-medium text-text">{cmd.title}</div>
-              <div className="text-xs text-muted">{cmd.description}</div>
-            </button>
-          ))}
-        </div>
+              {SLASH_COMMANDS.map((cmd, i) => (
+                <button
+                  key={cmd.title}
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); runSlash(editor, i); }}
+                  onMouseEnter={() => { slashRef.current.idx = i; setSlashIdx(i); }}
+                  className={`w-full px-3 py-2 text-left hover:bg-bg transition ${
+                    i === slashIdx ? 'bg-bg' : ''
+                  }`}
+                >
+                  <div className="text-sm font-medium text-text">{cmd.title}</div>
+                  <div className="text-xs text-muted">{cmd.description}</div>
+                </button>
+              ))}
+            </div>
+          );
+        })(),
+        document.body
       )}
     </div>
   );
