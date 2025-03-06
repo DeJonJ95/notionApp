@@ -409,6 +409,8 @@ export function CanvasPageEditor({
   // Track which block is "active" for keyboard shortcuts (Alt+Delete)
   const hoveredBlockRef = useRef<string | null>(null);
   const focusedBlockRef = useRef<string | null>(null);
+  // Editor captured when the font <select> is opened (it blurs the editor)
+  const fontTargetEditor = useRef<any>(null);
   // Track if we've already migrated this page so we don't re-migrate on re-render
   const migratedRef = useRef(false);
 
@@ -974,16 +976,23 @@ export function CanvasPageEditor({
             const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
             ed.chain().focus().extendMarkRange('link').setLink({ href }).run();
           }} />
-        {/* Font family */}
+        {/* Font family — a <select> must receive the click to open its
+            dropdown, so we can't preventDefault to keep editor focus like
+            FmtBtn does. Instead capture the focused editor on mousedown
+            (before it blurs) and apply the font on change. */}
         <select
           title="Font"
-          onMouseDown={(e) => e.preventDefault()}
+          onMouseDown={() => {
+            const id = focusedBlockRef.current;
+            fontTargetEditor.current = id ? editorRefs.current[id] ?? null : null;
+          }}
           onChange={(e) => {
             const v = e.target.value;
-            runOnFocused((ed) =>
-              v ? ed.chain().focus().setFontFamily(v).run()
-                : ed.chain().focus().unsetFontFamily().run()
-            );
+            const ed = fontTargetEditor.current;
+            if (ed) {
+              if (v) ed.chain().focus().setFontFamily(v).run();
+              else ed.chain().focus().unsetFontFamily().run();
+            }
             e.currentTarget.selectedIndex = 0;
           }}
           className="ml-1 bg-bg border border-border rounded text-xs px-1 py-1 text-muted hover:text-text focus:outline-none cursor-pointer"
