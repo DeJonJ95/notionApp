@@ -121,6 +121,21 @@ export function CanvasTextBlock({
       setTimeout(() => onFocusChange?.(null), 100);
     },
     editorProps: {
+      // Links: openOnClick is false so a plain click can place the caret for
+      // editing. Cmd/Ctrl/Alt+click (or a tap on touch, where editing-intent
+      // is rare) opens the link in a new tab.
+      handleClick: (view, _pos, event) => {
+        const el = (event.target as HTMLElement | null)?.closest?.('a');
+        const href = el?.getAttribute('href');
+        if (!href) return false;
+        const mod = event.metaKey || event.ctrlKey || event.altKey;
+        const isTouch = (event as PointerEvent).pointerType === 'touch';
+        if (mod || isTouch) {
+          window.open(href, '_blank', 'noopener,noreferrer');
+          return true;
+        }
+        return false;
+      },
       handleKeyDown: (view, event) => {
         // ── Slash menu open ────────────────────────────────────────────
         if (

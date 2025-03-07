@@ -609,8 +609,18 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
 
   // ── Touch long-press reorder (HTML5 DnD is mouse-only) ─────────────────
   const [reorderId, setReorderId] = useState<string | null>(null);
+  // Set the instant a finger lands so the row gives immediate "holding…"
+  // feedback during the wait (the old version looked unresponsive until
+  // the timer fired, and the browser would highlight text in the meantime).
+  const [pressingId, setPressingId] = useState<string | null>(null);
   const lpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lpStart = useRef<{ x: number; y: number; id: string } | null>(null);
+
+  const clearPress = () => {
+    if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; }
+    lpStart.current = null;
+    setPressingId(null);
+  };
 
   const rowPointerDown = (e: React.PointerEvent, pageId: string) => {
     if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
@@ -619,24 +629,27 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     const t = e.target as HTMLElement;
     if (t.closest('input, select, textarea, [data-resize-handle], [data-relation-cell]')) return;
     lpStart.current = { x: e.clientX, y: e.clientY, id: pageId };
+    setPressingId(pageId); // immediate visual: "holding to reorder"
     if (lpTimer.current) clearTimeout(lpTimer.current);
     lpTimer.current = setTimeout(() => {
+      // Drop any text the long-press selected, then enter reorder mode.
+      try { window.getSelection()?.removeAllRanges(); } catch {}
       setDragPageId(pageId);
       setReorderId(pageId);
-      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
-    }, 450);
+      setPressingId(null);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(35);
+    }, 380);
   };
   const rowPointerMove = (e: React.PointerEvent) => {
     if (lpTimer.current && lpStart.current) {
       if (Math.abs(e.clientX - lpStart.current.x) > 10 || Math.abs(e.clientY - lpStart.current.y) > 10) {
-        clearTimeout(lpTimer.current);
-        lpTimer.current = null;
+        clearPress();
       }
     }
     if (reorderId && e.cancelable) e.preventDefault(); // stop page scroll while dragging
   };
   const rowPointerUp = (e: React.PointerEvent) => {
-    if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; }
+    clearPress();
     if (!reorderId) return;
     const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
     const row = under?.closest('[data-page-row]') as HTMLElement | null;
@@ -990,10 +1003,23 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                   onPointerDown={(e) => rowPointerDown(e, page.id)}
                   onPointerMove={rowPointerMove}
                   onPointerUp={rowPointerUp}
-                  onPointerCancel={() => { if (lpTimer.current) clearTimeout(lpTimer.current); setReorderId(null); }}
-                  style={reorderId ? { touchAction: 'none' } : undefined}
-                  className={`hover:bg-surface transition-colors ${
-                    reorderId === page.id ? 'ring-2 ring-accent ring-inset bg-accent/5' : ''
+                  onPointerCancel={() => { clearPress(); setReorderId(null); }}
+                  style={
+                    pressingId === page.id || reorderId
+                      ? {
+                          touchAction: 'none',
+                          userSelect: 'none',
+                          WebkitUserSelect: 'none',
+                          WebkitTouchCallout: 'none',
+                        }
+                      : undefined
+                  }
+                  className={`hover:bg-surface transition-all ${
+                    reorderId === page.id
+                      ? 'ring-2 ring-accent ring-inset bg-accent/10 shadow-md'
+                      : pressingId === page.id
+                      ? 'bg-accent/5'
+                      : ''
                   }`}
                 >
                   {orderedCols.map((colId) => {
