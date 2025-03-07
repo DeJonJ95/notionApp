@@ -27,6 +27,16 @@ export function ExtractFromNotes({ onClose }: Props) {
   const [step, setStep] = useState<'input' | 'preview' | 'done'>('input');
   const [changes, setChanges] = useState<ResolvedChange[]>([]);
   const [enabledIdx, setEnabledIdx] = useState<Set<number>>(new Set());
+  // Proposed new columns the user has UN-approved. Key: `${changeIdx}:${colName}`.
+  const [rejectedCols, setRejectedCols] = useState<Set<string>>(new Set());
+  const colKey = (i: number, name: string) => `${i}:${name}`;
+  const toggleCol = (i: number, name: string) =>
+    setRejectedCols((prev) => {
+      const next = new Set(prev);
+      const k = colKey(i, name);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
   const [results, setResults] = useState<ApplyResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -143,7 +153,26 @@ export function ExtractFromNotes({ onClose }: Props) {
   );
 
   async function handleApply() {
-    const toApply = changes.filter((_, i) => enabledIdx.has(i));
+    const toApply = changes
+      .map((c, i) => ({ c, i }))
+      .filter(({ i }) => enabledIdx.has(i))
+      .map(({ c, i }) => {
+        const pc = (c as any).proposedColumns as { name: string; type: string }[] | undefined;
+        if (!pc?.length) return c;
+        const approved = pc.filter((col) => !rejectedCols.has(colKey(i, col.name)));
+        const rejectedNames = new Set(
+          pc.filter((col) => rejectedCols.has(colKey(i, col.name))).map((col) => col.name)
+        );
+        // Drop values for columns the user chose not to create.
+        const next: any = { ...c, proposedColumns: approved.length ? approved : undefined };
+        const bag = c.action === 'update' ? 'changes' : 'row';
+        if (rejectedNames.size && next[bag]) {
+          next[bag] = Object.fromEntries(
+            Object.entries(next[bag]).filter(([k]) => !rejectedNames.has(k))
+          );
+        }
+        return next;
+      });
     if (toApply.length === 0) { setError('Select at least one change to apply.'); return; }
     setLoading(true);
     setError('');
@@ -455,6 +484,34 @@ export function ExtractFromNotes({ onClose }: Props) {
                         <p className="text-xs text-muted/90 italic mt-1.5 pl-1 border-l-2 border-accent/30 leading-relaxed">
                           {c.body}
                         </p>
+                      )}
+                      {(c as any).proposedColumns?.length > 0 && (
+                        <div className="mt-2 rounded-lg border border-accent/30 bg-accent/5 p-2">
+                          <div className="text-[10px] uppercase tracking-wide text-accent font-semibold mb-1">
+                            New columns — approve to create
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {((c as any).proposedColumns as { name: string; type: string }[]).map((col) => {
+                              const rejected = rejectedCols.has(colKey(i, col.name));
+                              return (
+                                <button
+                                  key={col.name}
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); toggleCol(i, col.name); }}
+                                  className={`text-xs px-2 py-0.5 rounded border transition-colors ${
+                                    rejected
+                                      ? 'border-border/40 text-muted line-through opacity-60'
+                                      : 'border-accent/40 text-accent bg-accent/10'
+                                  }`}
+                                  title={rejected ? 'Skipped — click to create' : 'Will be created — click to skip'}
+                                >
+                                  {rejected ? '+ ' : '✓ '}{col.name}
+                                  <span className="text-muted/70 ml-1">({col.type})</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </label>

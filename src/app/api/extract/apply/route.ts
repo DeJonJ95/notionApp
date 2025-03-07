@@ -30,6 +30,37 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      // Create any user-approved new columns first, then make them
+      // available to the value-writing loops via propertyMap. Re-checks
+      // existing properties so a column proposed by several changes (or
+      // an earlier one in this run) is only created once.
+      const pc = (change as any).proposedColumns as { name: string; type: string }[] | undefined;
+      if (pc && pc.length) {
+        for (const col of pc) {
+          let prop = await prisma.property.findFirst({
+            where: { databaseId: change.databaseId, name: col.name },
+            select: { id: true, type: true },
+          });
+          if (!prop) {
+            const lastProp = await prisma.property.findFirst({
+              where: { databaseId: change.databaseId },
+              orderBy: { position: 'desc' },
+              select: { position: true },
+            });
+            prop = await prisma.property.create({
+              data: {
+                name: col.name,
+                type: col.type,
+                position: (lastProp?.position ?? 0) + 1024,
+                databaseId: change.databaseId,
+              },
+              select: { id: true, type: true },
+            });
+          }
+          change.propertyMap[col.name] = { id: prop.id, type: prop.type };
+        }
+      }
+
       if (change.action === 'update') {
         // Upsert each changed property value
         for (const [propName, rawValue] of Object.entries(change.changes)) {
