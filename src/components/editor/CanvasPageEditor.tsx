@@ -372,9 +372,14 @@ function CanvasCard({
 export function CanvasPageEditor({
   page,
   initialBlocks,
+  onDeleted,
 }: {
   page: PageData;
   initialBlocks: CanvasBlockData[];
+  // When rendered embedded (e.g. a database split-view panel) the host
+  // passes this so deleting the page closes the panel instead of
+  // navigating the whole app to home.
+  onDeleted?: () => void;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(page.title);
@@ -762,6 +767,7 @@ export function CanvasPageEditor({
       body: JSON.stringify({ isArchived: true }),
     });
     if (!res.ok) { toast.error('Failed to delete page'); return; }
+    const embedded = typeof onDeleted === 'function';
     const restore = async () => {
       await fetch(`/api/pages/${page.id}`, {
         method: 'PATCH',
@@ -769,16 +775,20 @@ export function CanvasPageEditor({
         body: JSON.stringify({ isArchived: false }),
       });
       window.dispatchEvent(new Event('kove:refresh-tree'));
-      router.push(`/page/${page.id}`);
-      router.refresh();
+      if (!embedded) { router.push(`/page/${page.id}`); router.refresh(); }
     };
     toast.undo(`Deleted "${title || 'Untitled'}"`, restore);
     // Tell the sidebar to refetch — router.refresh() alone doesn't re-run
     // the Sidebar's client-side page fetch, so the deleted page would
     // otherwise linger in the tree.
     window.dispatchEvent(new Event('kove:refresh-tree'));
-    router.push('/');
-    router.refresh();
+    if (embedded) {
+      // Embedded (e.g. database split view): close the panel, stay put.
+      onDeleted!();
+    } else {
+      router.push('/');
+      router.refresh();
+    }
   };
 
   // ── Add a database embed block (stacked below existing content) ───────

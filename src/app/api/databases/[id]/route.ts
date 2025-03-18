@@ -86,6 +86,7 @@ export async function GET(
         },
         views: true,
         pages: {
+          where: { isArchived: false },
           orderBy: { position: 'asc' },
           select: {
             id: true,
