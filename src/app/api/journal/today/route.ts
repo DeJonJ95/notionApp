@@ -72,13 +72,7 @@ function journalTemplate(carryTodos: string[]) {
       {
         type: 'heading',
         attrs: { level: 2 },
-        content: [{ type: 'text', text: '📋 Work Log' }],
-      },
-      { type: 'paragraph' },
-      {
-        type: 'heading',
-        attrs: { level: 2 },
-        content: [{ type: 'text', text: '💭 Reflections' }],
+        content: [{ type: 'text', text: '💭 Journal' }],
       },
       { type: 'paragraph' },
       {
