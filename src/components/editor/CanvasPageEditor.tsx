@@ -825,27 +825,55 @@ export function CanvasPageEditor({
   const canvasW = Math.max(contentW, viewport.w > 0 ? Math.ceil(viewport.w / z) : contentW);
   const canvasH = Math.max(contentH, viewport.h > 0 ? Math.ceil(viewport.h / z) : contentH);
 
-  // ── Pinch-zoom on touch ───────────────────────────────────────────────
+  // ── Canvas zoom: alt/ctrl/⌘ + wheel (desktop) and pinch (touch) ───────
+  // These must be NON-PASSIVE native listeners — React attaches wheel/touch
+  // passively, so e.preventDefault() there can't stop the browser's own
+  // page zoom (ctrl/⌘+wheel, trackpad pinch) or pinch-zoom. Attaching them
+  // natively lets us swallow the gesture and zoom only the note canvas.
   const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
-  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length !== 2) return;
-    const [a, b] = [e.touches[0], e.touches[1]];
-    pinchRef.current = {
-      initialDist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
-      initialZoom: zoomRef.current,
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const CLAMP = (z: number) => Math.max(0.25, Math.min(2, z));
+
+    const onWheel = (e: WheelEvent) => {
+      // Trackpad pinch arrives as ctrl+wheel; the user also asked for alt+wheel.
+      if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
+      e.preventDefault(); // stop the browser from zooming the whole page
+      const factor = e.deltaY > 0 ? 0.92 : 1.08;
+      setZoom((z) => +CLAMP(z * factor).toFixed(3));
     };
-  };
-  const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length !== 2 || !pinchRef.current) return;
-    const [a, b] = [e.touches[0], e.touches[1]];
-    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    const ratio = dist / pinchRef.current.initialDist;
-    const z = Math.max(0.25, Math.min(2, pinchRef.current.initialZoom * ratio));
-    setZoom(z);
-  };
-  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length < 2) pinchRef.current = null;
-  };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const [a, b] = [e.touches[0], e.touches[1]];
+      pinchRef.current = {
+        initialDist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        initialZoom: zoomRef.current,
+      };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !pinchRef.current) return;
+      e.preventDefault(); // stop browser pinch-zoom / page scroll
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      setZoom(CLAMP(pinchRef.current.initialZoom * (dist / pinchRef.current.initialDist)));
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinchRef.current = null;
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+    };
+  }, []);
 
   const fitToScreen = useCallback(() => {
     const el = scrollRef.current;
@@ -1145,9 +1173,6 @@ export function CanvasPageEditor({
         ref={scrollRef}
         className="flex-1 overflow-auto relative"
         style={{ touchAction: movingBlockId ? 'none' : 'auto' }}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
       >
         {/* Wrapper sized to the scaled content so scrollbars stay correct */}
         <div style={{ width: canvasW * zoom, height: canvasH * zoom }}>
