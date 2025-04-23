@@ -19,3 +19,17 @@ export async function getUploadUrl(key: string, contentType: string) {
   const url = await getSignedUrl(r2, cmd, { expiresIn: 60 * 5 });
   return { url, publicUrl: `${process.env.R2_PUBLIC_URL}/${key}` };
 }
+
+// Server-side direct upload — for cases where bytes are fetched on the server
+// (e.g. mood-board images we pull from Unsplash) and never reach the browser.
+export async function putBytes(key: string, body: Buffer | Uint8Array, contentType: string) {
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    })
+  );
+  return { publicUrl: `${process.env.R2_PUBLIC_URL}/${key}` };
+}
