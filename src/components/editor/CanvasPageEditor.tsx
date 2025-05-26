@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
@@ -383,6 +384,10 @@ export function CanvasPageEditor({
   onDeleted?: () => void;
 }) {
   const router = useRouter();
+  // Owner-only features (mood board, YouTube import) hide their buttons for
+  // non-owners. The session callback in lib/auth.ts populates `isOwner`.
+  const { data: session } = useSession();
+  const isOwner = !!(session?.user as any)?.isOwner;
   const [title, setTitle] = useState(page.title);
   const [icon, setIcon] = useState(page.icon);
   const [favorite, setFavorite] = useState(page.isFavorite);
@@ -1008,13 +1013,15 @@ export function CanvasPageEditor({
           >
             <ClipboardList size={12} /> Summarize
           </button>
-          <button
-            onClick={() => setYoutubeOpen(true)}
-            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
-            title="Import a YouTube video's transcript"
-          >
-            <Youtube size={12} className="text-red-500" /> YouTube
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => setYoutubeOpen(true)}
+              className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
+              title="Import a YouTube video's transcript"
+            >
+              <Youtube size={12} className="text-red-500" /> YouTube
+            </button>
+          )}
           <button
             onClick={() => setTiktokOpen(true)}
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
@@ -1028,13 +1035,15 @@ export function CanvasPageEditor({
           >
             <Sparkles size={12} /> Organize
           </button>
-          <button
-            onClick={() => setMoodboardOpen(true)}
-            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
-            title="Search Unsplash and drop curated images onto this canvas"
-          >
-            <Palette size={12} /> Mood board
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => setMoodboardOpen(true)}
+              className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
+              title="Search Unsplash and drop curated images onto this canvas"
+            >
+              <Palette size={12} /> Mood board
+            </button>
+          )}
           <div className="w-px bg-border self-stretch mx-0.5" />
           <button onClick={toggleFavorite} className="p-1.5 rounded hover:bg-bg" title="Favorite">
             <Star size={15} className={favorite ? 'fill-yellow-400 stroke-yellow-500' : ''} />
