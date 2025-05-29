@@ -15,6 +15,8 @@ type Status = 'idle' | 'loading' | 'error';
 function providerLabel(id: string): string {
   if (id === 'unsplash') return 'Unsplash';
   if (id === 'pexels') return 'Pexels';
+  if (id === 'openverse') return 'OpenVerse';
+  if (id === 'europeana') return 'Europeana';
   if (id === 'met') return 'The Met Museum';
   return id;
 }

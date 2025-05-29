@@ -4,7 +4,7 @@
 // rest of the app picks it up automatically via the round-robin in
 // the search route.
 
-export type ProviderId = 'unsplash' | 'pexels' | 'met';
+export type ProviderId = 'unsplash' | 'pexels' | 'openverse' | 'europeana' | 'met';
 
 export type MoodBoardPhoto = {
   id: string;
@@ -98,51 +98,83 @@ async function pexelsSearch(query: string, page: number): Promise<MoodBoardPhoto
   }));
 }
 
-// ── The Met Museum ─────────────────────────────────────────────────────────
-// Free, no key. Returns ~470k cultural objects with images — fine art,
-// design, photography, fashion, decorative arts. Aesthetic-adjacent to
-// what gets saved on Are.na. Two-step API: search returns objectIDs,
-// then we fetch the first N objects concurrently to assemble image URLs.
-async function metSearch(query: string, page: number): Promise<MoodBoardPhoto[]> {
-  const searchUrl = new URL('https://collectionapi.metmuseum.org/public/collection/v1/search');
-  searchUrl.searchParams.set('q', query);
-  searchUrl.searchParams.set('hasImages', 'true');
+// ── OpenVerse ──────────────────────────────────────────────────────────────
+// Wikimedia's CC-licensed image aggregator — pulls from Flickr Commons,
+// Wikimedia Commons, museums. ~700M images. No key required (anonymous
+// rate limit is modest but plenty for personal use). Best universal
+// fallback because it handles modern subjects (interior design, fashion,
+// product photography) that art-museum APIs can't.
+async function openverseSearch(query: string, page: number): Promise<MoodBoardPhoto[]> {
+  const url = new URL('https://api.openverse.org/v1/images/');
+  url.searchParams.set('q', query);
+  url.searchParams.set('page', String(page));
+  url.searchParams.set('page_size', '20');
+  url.searchParams.set('mature', 'false');
 
-  const searchRes = await fetch(searchUrl, { next: { revalidate: 600 } });
-  if (!searchRes.ok) throw new Error(`Met ${searchRes.status}`);
-  const searchData = await searchRes.json();
-  const allIds: number[] = searchData.objectIDs ?? [];
-  if (allIds.length === 0) return [];
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) throw new Error(`OpenVerse ${res.status}`);
+  const data = await res.json();
 
-  // Page through the ID list 20 at a time so pagination matches the other
-  // providers. The Met has no built-in pagination on search.
-  const start = (page - 1) * 20;
-  const ids = allIds.slice(start, start + 20);
-
-  const objects = await Promise.all(
-    ids.map(async (id) => {
-      const r = await fetch(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`, {
-        next: { revalidate: 86400 }, // objects are immutable; cache hard
-      });
-      if (!r.ok) return null;
-      return r.json();
-    })
-  );
-
-  return objects
-    .filter((o): o is any => !!o && !!o.primaryImageSmall)
-    .map((o): MoodBoardPhoto => ({
-      id: `met:${o.objectID}`,
-      provider: 'met',
-      width: 0, // Met doesn't return dimensions; UI uses aspect-square anyway
-      height: 0,
-      alt: o.title ?? '',
-      thumb: o.primaryImageSmall,
-      regular: o.primaryImage || o.primaryImageSmall,
-      full: o.primaryImage || o.primaryImageSmall,
+  return (data.results ?? [])
+    .filter((p: any) => p.thumbnail && p.url)
+    .map((p: any): MoodBoardPhoto => ({
+      id: `openverse:${p.id}`,
+      provider: 'openverse',
+      width: p.width || 0,
+      height: p.height || 0,
+      alt: p.title ?? '',
+      thumb: p.thumbnail,
+      regular: p.url,
+      full: p.url,
       attribution: {
-        name: o.artistDisplayName?.trim() || o.culture || 'The Met',
-        profileUrl: o.objectURL || 'https://www.metmuseum.org',
+        name: p.creator || p.source || 'Unknown',
+        // foreign_landing_url points back to the original host (Flickr,
+        // Wikimedia, museum site) which is the correct credit destination.
+        profileUrl: p.foreign_landing_url || p.creator_url || 'https://openverse.org',
+      },
+    }));
+}
+
+// ── Europeana ──────────────────────────────────────────────────────────────
+// 50M+ items from European museums, libraries, and archives. Strongest
+// on fashion history, vintage advertising, design objects, posters,
+// architectural photography — basically the curated cultural-heritage
+// material that gets pinned to Are.na boards. Free instant key.
+async function europeanaSearch(query: string, page: number): Promise<MoodBoardPhoto[]> {
+  const key = process.env.EUROPEANA_API_KEY;
+  if (!key) throw new Error('Europeana not configured');
+
+  const url = new URL('https://api.europeana.eu/record/v2/search.json');
+  url.searchParams.set('wskey', key);
+  url.searchParams.set('query', query);
+  url.searchParams.set('rows', '20');
+  url.searchParams.set('start', String((page - 1) * 20 + 1));
+  url.searchParams.set('media', 'true');
+  url.searchParams.set('qf', 'TYPE:IMAGE');
+  url.searchParams.set('reusability', 'open'); // CC0/CC-BY only — safe for embed
+
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) throw new Error(`Europeana ${res.status}`);
+  const data = await res.json();
+
+  const firstString = (v: any): string => Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '');
+
+  return (data.items ?? [])
+    .filter((it: any) => it.edmPreview?.[0])
+    .map((it: any): MoodBoardPhoto => ({
+      id: `europeana:${String(it.id).replace(/\//g, '-')}`,
+      provider: 'europeana',
+      width: 0,
+      height: 0,
+      alt: firstString(it.title),
+      thumb: it.edmPreview[0],
+      // edmIsShownBy is the direct image URL at the source institution;
+      // fall back to the preview if missing (some records only ship thumbs).
+      regular: firstString(it.edmIsShownBy) || it.edmPreview[0],
+      full: firstString(it.edmIsShownBy) || it.edmPreview[0],
+      attribution: {
+        name: firstString(it.dcCreator) || firstString(it.dataProvider) || 'Europeana',
+        profileUrl: it.guid || 'https://www.europeana.eu',
       },
     }));
 }
@@ -150,12 +182,18 @@ async function metSearch(query: string, page: number): Promise<MoodBoardPhoto[]>
 // ── Public registry ────────────────────────────────────────────────────────
 
 // Provider order is the rotation order — round-robin picks the next one
-// in this array per request. Met goes last because it's the slowest (two
-// API hops) so the fast providers serve the bulk of traffic when configured.
+// in this array per request. Unconfigured providers (no API key) drop
+// out automatically so the rotation collapses to whatever's available.
+//
+// The Met is intentionally OFF by default: its narrow fine-art vocabulary
+// returns false positives for modern queries like "interior design"
+// (it'll match "interior" in an 18th-century cabinet record). Re-add it
+// here if a future toggle lets the user opt in for fine-art queries.
 const ALL_PROVIDERS: Array<{ id: ProviderId; configured: () => boolean; fn: ProviderFn }> = [
-  { id: 'unsplash', configured: () => !!process.env.UNSPLASH_ACCESS_KEY, fn: unsplashSearch },
-  { id: 'pexels',   configured: () => !!process.env.PEXELS_API_KEY,      fn: pexelsSearch },
-  { id: 'met',      configured: () => true,                              fn: metSearch },
+  { id: 'unsplash',  configured: () => !!process.env.UNSPLASH_ACCESS_KEY, fn: unsplashSearch },
+  { id: 'pexels',    configured: () => !!process.env.PEXELS_API_KEY,      fn: pexelsSearch },
+  { id: 'openverse', configured: () => true,                              fn: openverseSearch },
+  { id: 'europeana', configured: () => !!process.env.EUROPEANA_API_KEY,   fn: europeanaSearch },
 ];
 
 export function configuredProviders() {
