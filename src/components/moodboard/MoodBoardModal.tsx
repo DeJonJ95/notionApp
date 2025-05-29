@@ -12,6 +12,13 @@ type Props = {
 
 type Status = 'idle' | 'loading' | 'error';
 
+function providerLabel(id: string): string {
+  if (id === 'unsplash') return 'Unsplash';
+  if (id === 'pexels') return 'Pexels';
+  if (id === 'met') return 'The Met Museum';
+  return id;
+}
+
 export function MoodBoardModal({ onClose, onInsert }: Props) {
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState('');
@@ -24,6 +31,8 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
   // Photos currently being saved (download to phone OR insert to note),
   // keyed by `${photoId}:${action}` so two actions on the same photo don't collide.
   const [working, setWorking] = useState<Set<string>>(new Set());
+  // Which provider answered the most recent successful query (for attribution).
+  const [lastProvider, setLastProvider] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // The "smooth transition": before the first successful search, the search
@@ -52,6 +61,7 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
       if (!res.ok) throw new Error(data.error ?? 'Search failed');
       setPhotos((prev) => (append ? [...prev, ...data.results] : data.results));
       setTotalPages(data.totalPages ?? 0);
+      if (data.provider) setLastProvider(data.provider);
       setStatus('idle');
     } catch (e: any) {
       setError(e.message);
@@ -269,7 +279,7 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                       className="text-[10px] text-white/90 hover:text-white truncate"
-                      title={`Photo by ${p.attribution.name} on Unsplash`}
+                      title={`${p.attribution.name} — ${providerLabel(p.provider)}`}
                     >
                       {p.attribution.name}
                     </a>
@@ -314,7 +324,9 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
               {selected.size > 0
                 ? `${selected.size} selected`
                 : 'Click an image to select it'}
-              <span className="ml-2 opacity-70">· Photos via Unsplash</span>
+              {lastProvider && (
+                <span className="ml-2 opacity-70">· via {providerLabel(lastProvider)}</span>
+              )}
             </p>
             <div className="flex gap-2">
               <button
