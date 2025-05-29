@@ -1,86 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { isOwner } from '@/lib/owner';
+import {
+  nextProviderChain,
+  configuredProviders,
+  type MoodBoardPhoto,
+} from '@/lib/moodboardProviders';
 
-// Trimmed shape we hand to the client — the full Unsplash payload is much larger.
-// `download_location` is the URL we must hit to satisfy Unsplash's API guidelines
-// when the user actually picks a photo to use (NOT on every search).
-export type MoodBoardPhoto = {
-  id: string;
-  width: number;
-  height: number;
-  alt: string;
-  thumb: string;       // ~200px, for the grid
-  regular: string;     // ~1080px, for previews
-  full: string;        // full-size, used when we copy bytes to R2
-  downloadEndpoint: string;
-  attribution: {
-    name: string;
-    profileUrl: string;
-  };
-};
+// Re-export so the modal's existing `import type` keeps working unchanged.
+export type { MoodBoardPhoto } from '@/lib/moodboardProviders';
 
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // Owner-only while we're on Unsplash's 50-req/hr demo tier. Once we get
-  // production approval + a per-user rate cap, this gate comes off.
   if (!isOwner(session)) {
     return NextResponse.json({ error: 'Mood board is not available on this account yet.' }, { status: 403 });
   }
 
-  const key = process.env.UNSPLASH_ACCESS_KEY;
-  if (!key) {
+  if (configuredProviders().length === 0) {
     return NextResponse.json(
-      { error: 'Mood board search is not configured — set UNSPLASH_ACCESS_KEY.' },
+      { error: 'Mood board has no providers configured — set UNSPLASH_ACCESS_KEY or PEXELS_API_KEY.' },
       { status: 503 }
     );
   }
 
   const q = req.nextUrl.searchParams.get('q')?.trim();
   const page = Math.max(1, Number(req.nextUrl.searchParams.get('page') ?? '1') || 1);
-  if (!q) return NextResponse.json({ results: [], totalPages: 0 });
+  if (!q) return NextResponse.json({ results: [], totalPages: 0, provider: null });
 
-  // 20 per page maps cleanly to a 5-column grid (4 rows per page).
-  const url = new URL('https://api.unsplash.com/search/photos');
-  url.searchParams.set('query', q);
-  url.searchParams.set('page', String(page));
-  url.searchParams.set('per_page', '20');
-  url.searchParams.set('orientation', 'squarish'); // looks nicer in a uniform grid
-  url.searchParams.set('content_filter', 'high');  // SFW-only
+  // Round-robin pick + fallback chain. If the rotated-to provider 429s or
+  // errors, try the next one. We stop on the first non-empty result so
+  // pagination stays sane within a single provider per query.
+  const chain = nextProviderChain();
+  const errors: { provider: string; message: string }[] = [];
 
-  const res = await fetch(url, {
-    headers: {
-      'Accept-Version': 'v1',
-      Authorization: `Client-ID ${key}`,
-    },
-    // Cache identical queries for a few minutes — Unsplash results are stable
-    next: { revalidate: 300 },
-  });
-
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '');
-    return NextResponse.json(
-      { error: 'Unsplash error', detail: detail.slice(0, 200) },
-      { status: res.status }
-    );
+  for (const { id, fn } of chain) {
+    try {
+      const results = await fn(q, page);
+      if (results.length > 0) {
+        return NextResponse.json({
+          results,
+          provider: id,
+          // We don't have a real total-pages count across providers, so
+          // give the UI a generous number when there were results so it
+          // shows "Load more". The next page will round-robin again.
+          totalPages: results.length === 20 ? page + 1 : page,
+        });
+      }
+      // Empty result = try next provider (e.g. Met has no images for the query)
+    } catch (e: any) {
+      errors.push({ provider: id, message: e?.message ?? String(e) });
+    }
   }
 
-  const data = await res.json();
-  const results: MoodBoardPhoto[] = (data.results ?? []).map((p: any) => ({
-    id: p.id,
-    width: p.width,
-    height: p.height,
-    alt: p.alt_description ?? p.description ?? '',
-    thumb: p.urls.thumb,
-    regular: p.urls.regular,
-    full: p.urls.full,
-    downloadEndpoint: p.links.download_location,
-    attribution: {
-      name: p.user?.name ?? 'Unknown',
-      profileUrl: p.user?.links?.html ?? 'https://unsplash.com',
-    },
-  }));
-
-  return NextResponse.json({ results, totalPages: data.total_pages ?? 0 });
+  // Nothing came back from anyone — return whatever errors we collected
+  // so the client knows it wasn't a clean "no results" miss.
+  if (errors.length === chain.length) {
+    return NextResponse.json(
+      { error: 'All providers failed', details: errors },
+      { status: 502 }
+    );
+  }
+  return NextResponse.json({ results: [] as MoodBoardPhoto[], totalPages: 0, provider: null });
 }
