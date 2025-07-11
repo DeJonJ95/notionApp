@@ -4,7 +4,7 @@
 // rest of the app picks it up automatically via the round-robin in
 // the search route.
 
-export type ProviderId = 'unsplash' | 'pexels' | 'openverse' | 'europeana' | 'met';
+export type ProviderId = 'unsplash' | 'pexels' | 'openverse' | 'europeana' | 'tumblr' | 'met';
 
 export type MoodBoardPhoto = {
   id: string;
@@ -248,6 +248,72 @@ async function europeanaSearch(query: string, page: number): Promise<MoodBoardPh
     .slice(0, 20);
 }
 
+// ── Tumblr ─────────────────────────────────────────────────────────────────
+// Tagged-post search via the public v2 API. The tagged endpoint doesn't
+// support type filtering server-side or integer pagination — it cursors
+// on a `before` timestamp and caps returns around ~20. To keep the
+// provider interface (query, page) clean we serve only page 1; pages 2+
+// return empty which triggers fallthrough in the search route.
+//
+// Aesthetic: tumblr posts are the curated weird-internet-mood-board stuff
+// (fashion, design references, vintage, art) — different vibe from stock.
+async function tumblrSearch(query: string, page: number): Promise<MoodBoardPhoto[]> {
+  const key = process.env.TUMBLR_API_KEY;
+  if (!key) throw new Error('Tumblr not configured');
+  if (page > 1) return [];
+
+  // Tumblr expects tags lowercased and space-delimited; their UI tag for
+  // "mid-century-modern" lives at both that slug and the loose form.
+  const tag = query.trim().toLowerCase();
+
+  const url = new URL('https://api.tumblr.com/v2/tagged');
+  url.searchParams.set('tag', tag);
+  url.searchParams.set('api_key', key);
+  url.searchParams.set('limit', '20');
+
+  const res = await fetch(url, { next: { revalidate: 300 } });
+  if (!res.ok) throw new Error(`Tumblr ${res.status}`);
+  const data = await res.json();
+
+  // Each photo post has a `photos[]` array — flatten so a multi-photo
+  // post contributes multiple grid cells. Tag-filtered posts are already
+  // topically relevant (the tagged endpoint matches the tag exactly), so
+  // we don't run the alt-text relevance filter on Tumblr results.
+  const photoPosts = (data.response ?? []).filter(
+    (p: any) => p.type === 'photo' && Array.isArray(p.photos) && p.photos.length > 0
+  );
+
+  const mapped: MoodBoardPhoto[] = photoPosts.flatMap((p: any) =>
+    p.photos
+      .filter((photo: any) => photo.original_size?.url)
+      .map((photo: any, idx: number): MoodBoardPhoto => {
+        // Pick a thumbnail in the 200–500px range so the grid loads fast;
+        // alt_sizes is sorted largest-first, so walk and pick.
+        const altSizes: any[] = photo.alt_sizes ?? [];
+        const thumb =
+          altSizes.find((s) => s.width >= 200 && s.width <= 500)?.url
+          ?? altSizes[altSizes.length - 1]?.url
+          ?? photo.original_size.url;
+        return {
+          id: `tumblr:${p.id}-${idx}`,
+          provider: 'tumblr',
+          width: photo.original_size.width || 0,
+          height: photo.original_size.height || 0,
+          alt: p.summary || (p.tags ?? []).join(', '),
+          thumb,
+          regular: photo.original_size.url,
+          full: photo.original_size.url,
+          attribution: {
+            name: p.blog_name || 'Tumblr',
+            profileUrl: p.post_url || `https://${p.blog_name}.tumblr.com`,
+          },
+        };
+      })
+  );
+
+  return mapped.slice(0, 20);
+}
+
 // ── Public registry ────────────────────────────────────────────────────────
 
 // Provider order is the rotation order — round-robin picks the next one
@@ -263,10 +329,16 @@ const ALL_PROVIDERS: Array<{ id: ProviderId; configured: () => boolean; fn: Prov
   { id: 'pexels',    configured: () => !!process.env.PEXELS_API_KEY,      fn: pexelsSearch },
   { id: 'openverse', configured: () => true,                              fn: openverseSearch },
   { id: 'europeana', configured: () => !!process.env.EUROPEANA_API_KEY,   fn: europeanaSearch },
+  { id: 'tumblr',    configured: () => !!process.env.TUMBLR_API_KEY,      fn: tumblrSearch },
 ];
 
 export function configuredProviders() {
   return ALL_PROVIDERS.filter((p) => p.configured());
+}
+
+export function getProviderById(id: string): { id: ProviderId; fn: ProviderFn } | null {
+  const found = configuredProviders().find((p) => p.id === id);
+  return found ? { id: found.id, fn: found.fn } : null;
 }
 
 // Round-robin state — module-level counter. Survives within a single
@@ -274,12 +346,31 @@ export function configuredProviders() {
 // the rotation is for variety, not exact fairness.
 let cursor = 0;
 
-/** Pick the next provider in rotation, plus the rest in fallback order. */
-export function nextProviderChain(): Array<{ id: ProviderId; fn: ProviderFn }> {
-  const list = configuredProviders();
-  if (list.length === 0) return [];
-  const start = cursor++ % list.length;
-  // Build a rotated copy: [start, start+1, ..., wrap around to start-1]
-  const ordered = [...list.slice(start), ...list.slice(0, start)];
+/**
+ * Build a provider chain for a request:
+ * - If `preferred` is given (Load More with sticky provider), put it first
+ *   and follow with remaining configured providers as fallback.
+ * - Otherwise (fresh search), use round-robin to pick a starting point.
+ * - In both cases, providers in `excluded` are filtered out entirely.
+ */
+export function buildProviderChain(
+  excluded: Set<string>,
+  preferred?: string
+): Array<{ id: ProviderId; fn: ProviderFn }> {
+  const remaining = configuredProviders().filter((p) => !excluded.has(p.id));
+  if (remaining.length === 0) return [];
+
+  if (preferred) {
+    const head = remaining.find((p) => p.id === preferred);
+    if (head) {
+      const tail = remaining.filter((p) => p.id !== preferred);
+      return [head, ...tail].map(({ id, fn }) => ({ id, fn }));
+    }
+    // Preferred isn't configured/available — fall through to fresh-pick logic
+  }
+
+  // Fresh round-robin pick from the remaining set
+  const start = cursor++ % remaining.length;
+  const ordered = [...remaining.slice(start), ...remaining.slice(0, start)];
   return ordered.map(({ id, fn }) => ({ id, fn }));
 }
