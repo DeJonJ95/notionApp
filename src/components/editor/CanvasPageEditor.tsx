@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -539,6 +540,9 @@ export function CanvasPageEditor({
     (blockId: string, fingerCX: number, fingerCY: number, blockX: number, blockY: number, _pointerId: number) => {
       const sc = scrollRef.current;
       if (!sc) return;
+      // If we're already in a pinch (rare — usually the second touch lands
+      // after pointerdown), don't even arm a drag.
+      if (isPinchingRef.current) return;
 
       const rect = sc.getBoundingClientRect();
       const z = zoomRef.current;
@@ -549,11 +553,14 @@ export function CanvasPageEditor({
       const offsetX = blockX - fingerCanvasX;
       const offsetY = blockY - fingerCanvasY;
 
-      dragState.current = { blockId, offsetX, offsetY };
-      setMovingBlockId(blockId);
-      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
-
-      // Last known screen position — used by both pointermove and the auto-scroll RAF loop
+      // Movement threshold (squared, in screen pixels) before we treat this
+      // as an actual drag. Until the finger moves past this, no block
+      // motion happens and a second finger (pinch) can cleanly take over.
+      // 7px is small enough not to feel laggy, big enough to absorb the
+      // ~3-5px wobble of a second finger landing during a pinch.
+      const MOVE_THRESHOLD_SQ = 7 * 7;
+      let dragActive = false;
+      // Last known screen position — used by pointermove and the auto-scroll RAF loop
       let lastClientX = fingerCX;
       let lastClientY = fingerCY;
 
@@ -583,7 +590,6 @@ export function CanvasPageEditor({
         const sc2 = scrollRef.current;
         if (!sc2) return;
         const r = sc2.getBoundingClientRect();
-        // Speed scales linearly with proximity to the edge
         const proximity = (dist: number) =>
           Math.min(AUTOSCROLL_MAX_SPEED, Math.max(0, AUTOSCROLL_MARGIN - dist) * (AUTOSCROLL_MAX_SPEED / AUTOSCROLL_MARGIN));
         let dx = 0;
@@ -598,22 +604,46 @@ export function CanvasPageEditor({
         }
         rafId = requestAnimationFrame(tick);
       };
-      rafId = requestAnimationFrame(tick);
+
+      // First real move past the threshold "commits" the drag: stores the
+      // drag state, highlights the block, vibrates, kicks off the
+      // auto-scroll RAF loop. Until this fires, a pinch can still take over.
+      const commitDrag = () => {
+        if (dragActive) return;
+        dragActive = true;
+        dragState.current = { blockId, offsetX, offsetY };
+        setMovingBlockId(blockId);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
+        rafId = requestAnimationFrame(tick);
+      };
 
       const onPointerMove = (e: PointerEvent) => {
+        // If a pinch started after we armed the drag, give up — the pinch
+        // handler has already called our cancelDragRef, so this is just a
+        // safety net for late pointermove events.
+        if (isPinchingRef.current) return;
         lastClientX = e.clientX;
         lastClientY = e.clientY;
+        if (!dragActive) {
+          const dx = e.clientX - fingerCX;
+          const dy = e.clientY - fingerCY;
+          if (dx * dx + dy * dy < MOVE_THRESHOLD_SQ) return;
+          commitDrag();
+        }
         repositionBlock();
-        // preventDefault is critical on mobile so the browser doesn't try to
-        // scroll/pan in parallel with the drag.
         if (e.cancelable) e.preventDefault();
       };
 
-      const onPointerEnd = () => {
+      const teardown = () => {
         cancelAnimationFrame(rafId);
         document.removeEventListener('pointermove', onPointerMove);
         document.removeEventListener('pointerup', onPointerEnd);
         document.removeEventListener('pointercancel', onPointerEnd);
+        cancelDragRef.current = null;
+      };
+
+      const onPointerEnd = () => {
+        teardown();
         if (!dragState.current) return;
         const id = dragState.current.blockId;
         dragState.current = null;
@@ -629,6 +659,18 @@ export function CanvasPageEditor({
           }
           return prev;
         });
+      };
+
+      // Hand the pinch handler a way to abort us cleanly. If a second
+      // finger lands before we commit (the common case), this runs and
+      // nothing has moved yet. If it lands after we commit, the block
+      // freezes wherever it currently is.
+      cancelDragRef.current = () => {
+        teardown();
+        if (dragState.current) {
+          dragState.current = null;
+          setMovingBlockId(null);
+        }
       };
 
       // Passive: false so preventDefault() actually works on touch
@@ -838,21 +880,30 @@ export function CanvasPageEditor({
   // page zoom (ctrl/⌘+wheel, trackpad pinch) or pinch-zoom. Attaching them
   // natively lets us swallow the gesture and zoom only the note canvas.
   const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
+  // Lets the drag handler bail when a pinch is active so we don't move a
+  // block while the user is just trying to zoom near it.
+  const isPinchingRef = useRef(false);
+  // The drag handler stores a cancel-fn here so the pinch handler can
+  // abort an accidentally-started drag the moment a second finger lands.
+  const cancelDragRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const CLAMP = (z: number) => Math.max(0.25, Math.min(2, z));
 
     const onWheel = (e: WheelEvent) => {
-      // Trackpad pinch arrives as ctrl+wheel; the user also asked for alt+wheel.
       if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
-      e.preventDefault(); // stop the browser from zooming the whole page
+      e.preventDefault();
       const factor = e.deltaY > 0 ? 0.92 : 1.08;
       setZoom((z) => +CLAMP(z * factor).toFixed(3));
     };
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 2) return;
+      isPinchingRef.current = true;
+      // A drag may have started on the first finger before the second
+      // arrived. Cancel it so the block doesn't lurch around mid-zoom.
+      if (cancelDragRef.current) cancelDragRef.current();
       const [a, b] = [e.touches[0], e.touches[1]];
       pinchRef.current = {
         initialDist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
@@ -861,24 +912,58 @@ export function CanvasPageEditor({
     };
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length !== 2 || !pinchRef.current) return;
-      e.preventDefault(); // stop browser pinch-zoom / page scroll
+      e.preventDefault();
+      const sc = scrollRef.current;
+      if (!sc) return;
+
       const [a, b] = [e.touches[0], e.touches[1]];
       const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      setZoom(CLAMP(pinchRef.current.initialZoom * (dist / pinchRef.current.initialDist)));
+      const newZoom = +CLAMP(
+        pinchRef.current.initialZoom * (dist / pinchRef.current.initialDist)
+      ).toFixed(3);
+
+      // Pivot the zoom around the finger midpoint so the canvas point
+      // under the user's fingers stays under their fingers (the "natural"
+      // pinch behavior people expect from maps & photo apps). Without
+      // this, `transform-origin: top-left` makes everything zoom toward
+      // the corner and the user has to scroll back to where they were.
+      const midX = (a.clientX + b.clientX) / 2;
+      const midY = (a.clientY + b.clientY) / 2;
+      const oldZoom = zoomRef.current;
+      const rect = sc.getBoundingClientRect();
+      // Canvas coords at the pinch midpoint, BEFORE the zoom change
+      const canvasMidX = (midX - rect.left + sc.scrollLeft) / oldZoom;
+      const canvasMidY = (midY - rect.top + sc.scrollTop) / oldZoom;
+
+      // flushSync forces React to commit the zoom change before we read
+      // back the new content size to set the new scroll position. Without
+      // it the DOM still has the old size and our scroll math is one
+      // frame behind, producing a visible "jitter" toward the corner.
+      flushSync(() => setZoom(newZoom));
+      sc.scrollLeft = canvasMidX * newZoom - (midX - rect.left);
+      sc.scrollTop = canvasMidY * newZoom - (midY - rect.top);
     };
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) pinchRef.current = null;
+      if (e.touches.length === 0) {
+        // Brief grace period before re-allowing drags — sometimes a
+        // pointermove arrives just after the last touchend and would
+        // otherwise jolt a block.
+        setTimeout(() => { isPinchingRef.current = false; }, 120);
+      }
     };
 
     el.addEventListener('wheel', onWheel, { passive: false });
     el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
     return () => {
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
     };
   }, []);
 
