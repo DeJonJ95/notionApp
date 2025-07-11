@@ -28,16 +28,19 @@ export async function GET(req: NextRequest) {
   const page = Math.max(1, Number(req.nextUrl.searchParams.get('page') ?? '1') || 1);
   if (!q) return NextResponse.json({ results: [], totalPages: 0, provider: null });
 
-  // Round-robin pick + fallback chain. If the rotated-to provider 429s or
-  // errors, try the next one. We stop on the first non-empty result so
-  // pagination stays sane within a single provider per query.
+  // Round-robin pick + fallback chain. If the rotated-to provider 429s,
+  // errors, or returns too few relevant results, try the next one. We keep
+  // the best partial result around in case the whole chain underperforms,
+  // so the user never gets an empty grid when there's *something* available.
   const chain = nextProviderChain();
   const errors: { provider: string; message: string }[] = [];
+  let bestPartial: { id: string; results: MoodBoardPhoto[] } | null = null;
+  const MIN_GOOD_RESULTS = 8; // anything less than this triggers fallthrough
 
   for (const { id, fn } of chain) {
     try {
       const results = await fn(q, page);
-      if (results.length > 0) {
+      if (results.length >= MIN_GOOD_RESULTS) {
         return NextResponse.json({
           results,
           provider: id,
@@ -47,14 +50,26 @@ export async function GET(req: NextRequest) {
           totalPages: results.length === 20 ? page + 1 : page,
         });
       }
-      // Empty result = try next provider (e.g. Met has no images for the query)
+      // Too few results — remember the biggest partial in case nothing
+      // better turns up, then continue the chain.
+      if (results.length > 0 && (!bestPartial || results.length > bestPartial.results.length)) {
+        bestPartial = { id, results };
+      }
     } catch (e: any) {
       errors.push({ provider: id, message: e?.message ?? String(e) });
     }
   }
 
-  // Nothing came back from anyone — return whatever errors we collected
-  // so the client knows it wasn't a clean "no results" miss.
+  // No provider hit the quality bar. If we caught a partial along the way,
+  // serve it — better than an empty grid.
+  if (bestPartial) {
+    return NextResponse.json({
+      results: bestPartial.results,
+      provider: bestPartial.id,
+      totalPages: page,
+    });
+  }
+
   if (errors.length === chain.length) {
     return NextResponse.json(
       { error: 'All providers failed', details: errors },
