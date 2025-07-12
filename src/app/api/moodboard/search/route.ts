@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const chain = buildProviderChain(excluded, preferred);
+  const chain = buildProviderChain(q, excluded, preferred);
   if (chain.length === 0) {
     // Every provider is excluded — nothing left to try
     return NextResponse.json({
