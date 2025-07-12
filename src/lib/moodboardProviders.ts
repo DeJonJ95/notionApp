@@ -262,33 +262,71 @@ async function tumblrSearch(query: string, page: number): Promise<MoodBoardPhoto
   if (!key) throw new Error('Tumblr not configured');
   if (page > 1) return [];
 
-  // Tumblr expects tags lowercased and space-delimited; their UI tag for
-  // "mid-century-modern" lives at both that slug and the loose form.
-  const tag = query.trim().toLowerCase();
+  // The /v2/tagged endpoint only matches ONE literal tag. So for a query
+  // like "mens fashion streetwear", searching that as a single tag returns
+  // almost nothing — that exact multi-word tag isn't in use. Tumblr's
+  // website search hits multiple tags + post bodies, but the API
+  // equivalent was deprecated.
+  //
+  // Workaround: split the query into significant words, fetch each as
+  // its own tag in parallel, dedupe by post ID, then score posts higher
+  // when their tag list overlaps MORE of the query's words. End result
+  // is much closer to what the user sees on tumblr.com/search/<query>.
+  const verbatim = query.trim().toLowerCase();
+  const tokens = queryTokens(verbatim); // already strips stopwords + short words
+  // Always try the verbatim query first (some multi-word tags do exist —
+  // "mid-century modern" is a real tag) then each significant token.
+  // Cap parallel API calls at 5 to keep us well under Tumblr's rate budget.
+  const tags = Array.from(new Set([verbatim, ...tokens])).slice(0, 5);
 
-  const url = new URL('https://api.tumblr.com/v2/tagged');
-  url.searchParams.set('tag', tag);
-  url.searchParams.set('api_key', key);
-  url.searchParams.set('limit', '20');
+  const fetchTag = async (tag: string): Promise<any[]> => {
+    const url = new URL('https://api.tumblr.com/v2/tagged');
+    url.searchParams.set('tag', tag);
+    url.searchParams.set('api_key', key);
+    url.searchParams.set('limit', '20');
+    try {
+      const res = await fetch(url, { next: { revalidate: 300 } });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.response) ? data.response : [];
+    } catch {
+      return [];
+    }
+  };
 
-  const res = await fetch(url, { next: { revalidate: 300 } });
-  if (!res.ok) throw new Error(`Tumblr ${res.status}`);
-  const data = await res.json();
+  const batches = await Promise.all(tags.map(fetchTag));
+  const photoPosts: any[] = [];
+  const seen = new Set<string>();
+  for (const batch of batches) {
+    for (const post of batch) {
+      if (post.type !== 'photo' || !Array.isArray(post.photos) || post.photos.length === 0) continue;
+      const postId = String(post.id);
+      if (seen.has(postId)) continue;
+      seen.add(postId);
+      photoPosts.push(post);
+    }
+  }
 
-  // Each photo post has a `photos[]` array — flatten so a multi-photo
-  // post contributes multiple grid cells. Tag-filtered posts are already
-  // topically relevant (the tagged endpoint matches the tag exactly), so
-  // we don't run the alt-text relevance filter on Tumblr results.
-  const photoPosts = (data.response ?? []).filter(
-    (p: any) => p.type === 'photo' && Array.isArray(p.photos) && p.photos.length > 0
-  );
+  // Score by tag-overlap: posts whose tags contain MORE of the query's
+  // tokens rank higher. So a post tagged ["mens fashion", "streetwear",
+  // "ootd"] scores higher than one tagged just ["fashion"] for a
+  // "mens fashion streetwear" query — that's exactly the relevance
+  // Tumblr's website search applies and we're approximating here.
+  type Scored = { post: any; score: number };
+  const scored: Scored[] = photoPosts.map((post) => {
+    const postTags: string[] = (post.tags ?? []).map((t: string) => String(t).toLowerCase());
+    let score = 0;
+    for (const token of tokens) {
+      if (postTags.some((t) => t === token || t.includes(token))) score++;
+    }
+    return { post, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
 
-  const mapped: MoodBoardPhoto[] = photoPosts.flatMap((p: any) =>
+  const mapped: MoodBoardPhoto[] = scored.flatMap(({ post: p }) =>
     p.photos
       .filter((photo: any) => photo.original_size?.url)
       .map((photo: any, idx: number): MoodBoardPhoto => {
-        // Pick a thumbnail in the 200–500px range so the grid loads fast;
-        // alt_sizes is sorted largest-first, so walk and pick.
         const altSizes: any[] = photo.alt_sizes ?? [];
         const thumb =
           altSizes.find((s) => s.width >= 200 && s.width <= 500)?.url
