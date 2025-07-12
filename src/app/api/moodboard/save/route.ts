@@ -20,6 +20,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'photoId and sourceUrl are required' }, { status: 400 });
   }
 
+  // Google CSE results come from arbitrary third-party hosts (Pinterest,
+  // fashion blogs, editorial sites). Copying those bytes into R2 would
+  // mean re-hosting copyrighted work we have no license to redistribute.
+  // We hotlink the source URL directly instead — same legal posture as
+  // any browser displaying the image. Trade-off: the note breaks if the
+  // source ever removes or moves the image.
+  if (String(photoId).startsWith('google:')) {
+    return NextResponse.json({ url: sourceUrl, alt: alt ?? '' });
+  }
+
   // Fire-and-forget Unsplash download credit. Only Unsplash photos have
   // this; Pexels recommends credit (which we show in the UI) but doesn't
   // require an API ping, and The Met has no tracking.
