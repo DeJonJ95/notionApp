@@ -369,6 +369,17 @@ async function googleSearch(query: string, page: number): Promise<MoodBoardPhoto
   const cx = process.env.GOOGLE_CSE_ENGINE_ID;
   if (!key || !cx) throw new Error('Google CSE not configured');
 
+  // For fashion queries, restrict to Pinterest. Pinterest is the only
+  // source with real depth on niche fashion subcultures (japanese baggy
+  // denim, archive Margiela, by-city street style) — without the site:
+  // filter Google's general web results dilute the aesthetic with
+  // shopping listings and stock photography. Other categories use the
+  // unrestricted CSE so we don't lose breadth on interiors/design/etc.
+  const categories = detectCategories(query);
+  const effectiveQuery = categories.has('fashion')
+    ? `${query} site:pinterest.com`
+    : query;
+
   // Google caps `num` at 10 per call. To match the other providers'
   // 20-per-page UX we'd fan out two calls, but that doubles quota use.
   // We keep it at 10 and let the sticky-provider machinery hand off to
@@ -377,7 +388,7 @@ async function googleSearch(query: string, page: number): Promise<MoodBoardPhoto
   const url = new URL('https://www.googleapis.com/customsearch/v1');
   url.searchParams.set('key', key);
   url.searchParams.set('cx', cx);
-  url.searchParams.set('q', query);
+  url.searchParams.set('q', effectiveQuery);
   url.searchParams.set('searchType', 'image');
   url.searchParams.set('num', '10');
   url.searchParams.set('safe', 'active');
@@ -532,12 +543,18 @@ function detectCategories(query: string): Set<string> {
 // enter the chain when the query matches one of their categories; the
 // rest are generalists and always available, just deprioritized when
 // other providers score higher for the current query.
+//
+// `boost` adds extra score weight for specific categories — used to
+// break ties decisively. E.g. Google has boost.fashion=2 so it
+// outranks Tumblr/Europeana on fashion queries (where it surfaces
+// Pinterest content the others can't reach).
 type ProviderConfig = {
   id: ProviderId;
   configured: () => boolean;
   fn: ProviderFn;
   categories: string[];
   specialist?: boolean;
+  boost?: Partial<Record<string, number>>;
 };
 
 const ALL_PROVIDERS: ProviderConfig[] = [
@@ -581,6 +598,11 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     // product photography). Stays a generalist — for art queries the
     // dedicated museum APIs still rank higher.
     categories: ['fashion', 'interiors', 'design', 'photography'],
+    // Fashion queries are Pinterest's competitive moat and Tumblr/
+    // Europeana can't match its niche-subculture depth. Boost large
+    // enough (+2) that Google always wins fashion ties — the user
+    // explicitly wants the Pinterest-via-Google route for fashion.
+    boost: { fashion: 2 },
   },
   {
     id: 'met',
@@ -610,6 +632,13 @@ function scoreProvider(p: ProviderConfig, categories: Set<string>): number {
   let score = 0;
   for (const cat of p.categories) {
     if (categories.has(cat)) score++;
+  }
+  // Per-category boosts let a provider claim a category decisively
+  // instead of merely tying with everyone else who also serves it.
+  if (p.boost) {
+    for (const [cat, amount] of Object.entries(p.boost)) {
+      if (categories.has(cat)) score += amount ?? 0;
+    }
   }
   return score;
 }
