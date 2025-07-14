@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
@@ -247,6 +247,14 @@ export function Sidebar() {
               <BarChart2 size={14} /> Usage
             </Link>
           )}
+
+          <Link
+            href="/clipper"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
+          >
+            <Chrome size={14} /> Browser clipper
+          </Link>
 
           {todayJournalId && (
             <Link
