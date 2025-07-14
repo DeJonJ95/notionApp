@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { isOwner } from '@/lib/owner';
+import { logCall } from '@/lib/logUsage';
 import {
   buildProviderChain,
   configuredProviders,
@@ -18,6 +19,7 @@ export async function GET(req: NextRequest) {
   if (!isOwner(session)) {
     return NextResponse.json({ error: 'Mood board is not available on this account yet.' }, { status: 403 });
   }
+  const userId = (session.user as any).id as string | undefined;
 
   const all = configuredProviders();
   if (all.length === 0) {
@@ -61,6 +63,10 @@ export async function GET(req: NextRequest) {
   for (const { id, fn } of chain) {
     try {
       const results = await fn(q, page);
+      // Log every successful provider call so the dashboard can show
+      // per-provider counts + Google CSE cost. Fire-and-forget; logging
+      // failures never block search.
+      logCall(`moodboard:${id}`, 'search', { userId });
       if (results.length >= MIN_GOOD_RESULTS) {
         return NextResponse.json({
           results,
