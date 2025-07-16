@@ -17,9 +17,15 @@
   // sites have hundreds of off-screen images.
   const hoverBtn = document.createElement('button');
   hoverBtn.className = 'nclip-save-btn';
-  hoverBtn.textContent = '+ Save to notes';
-  hoverBtn.style.position = 'fixed';
+  hoverBtn.textContent = '+';
+  hoverBtn.title = 'Save image to notes';
+  hoverBtn.setAttribute('aria-label', 'Save image to notes');
   document.documentElement.appendChild(hoverBtn);
+
+  // Button size (must match content.css). Used to position the button
+  // entirely INSIDE the hovered image instead of sticking out the side.
+  const BTN_SIZE = 28;
+  const BTN_MARGIN = 8;
 
   let hoveredImage = null;
 
@@ -34,8 +40,15 @@
       hoverBtn.classList.remove('visible');
       return;
     }
-    hoverBtn.style.top = `${Math.max(8, r.top + 6)}px`;
-    hoverBtn.style.left = `${Math.max(8, r.right - 100)}px`;
+    // Hide if the image has scrolled mostly off-screen
+    if (r.bottom < 0 || r.top > window.innerHeight) {
+      hoverBtn.classList.remove('visible');
+      return;
+    }
+    // Top-right corner, with a margin from the image edge — always sits
+    // visually inside the image bounds regardless of zoom or scale.
+    hoverBtn.style.top = `${r.top + BTN_MARGIN}px`;
+    hoverBtn.style.left = `${r.right - BTN_SIZE - BTN_MARGIN}px`;
     hoverBtn.classList.add('visible');
   }
 
