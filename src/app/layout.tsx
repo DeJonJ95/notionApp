@@ -6,6 +6,14 @@ export const metadata: Metadata = {
   title: 'Kove',
   description: 'Kove — your private workspace for notes, databases, and budgeting.',
   manifest: '/manifest.json',
+  // Tell iOS specifically to use this icon when the user picks "Add to
+  // Home Screen". Without it iOS uses a generic screenshot, which looks
+  // sloppy on the home grid. Same image is also referenced from
+  // manifest.json's icons array for Android.
+  icons: {
+    icon: '/icons/icon-192.png',
+    apple: '/apple-touch-icon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
