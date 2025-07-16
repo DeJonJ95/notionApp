@@ -1,7 +1,7 @@
 {
-  "name": "My Workspace",
-  "short_name": "Workspace",
-  "description": "Personal workspace for work, side gigs, and life.",
+  "name": "Kove",
+  "short_name": "Kove",
+  "description": "Personal workspace for notes, databases, and budgeting.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -20,5 +20,14 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/clipper/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }

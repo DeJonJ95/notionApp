@@ -193,10 +193,10 @@ export function ClipperSettings() {
         )}
       </div>
 
-      {/* Install instructions */}
+      {/* Install instructions — desktop extension */}
       <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
         <h2 className="text-sm font-semibold flex items-center gap-2">
-          <ExternalLink size={14} /> Install the extension
+          <ExternalLink size={14} /> Desktop — Chrome extension
         </h2>
         <ol className="text-sm text-muted space-y-2 list-decimal list-inside leading-relaxed">
           <li>
@@ -212,6 +212,43 @@ export function ClipperSettings() {
         </ol>
         <p className="text-xs text-muted pt-2 border-t border-border">
           Then on any page, hover any image to see a <strong className="text-text">Save to notes</strong> button — or right-click → Save to notes.
+        </p>
+      </div>
+
+      {/* Install instructions — mobile PWA */}
+      <div className="rounded-xl border border-border bg-surface p-5 space-y-3">
+        <h2 className="text-sm font-semibold flex items-center gap-2">
+          <ExternalLink size={14} /> Mobile — install Kove as an app
+        </h2>
+        <p className="text-xs text-muted">
+          Mobile browsers don&apos;t support extensions. Instead, install Kove to your
+          home screen — Kove then shows up in any app&apos;s <strong className="text-text">Share</strong>
+          sheet (Pinterest, Tumblr, Safari, Instagram, etc.). Tap Share → pick Kove → choose a note.
+          No token needed; uses your normal browser sign-in.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3 pt-1">
+          <div className="rounded-lg border border-border p-3 space-y-1.5">
+            <p className="text-xs font-semibold text-text">iPhone / iPad (Safari)</p>
+            <ol className="text-xs text-muted list-decimal list-inside leading-relaxed space-y-0.5">
+              <li>Open Kove in Safari (not Chrome on iOS — share-target needs Safari).</li>
+              <li>Tap the <strong className="text-text">Share</strong> button (square + arrow).</li>
+              <li>Pick <strong className="text-text">Add to Home Screen</strong>.</li>
+              <li>Tap <strong className="text-text">Add</strong>.</li>
+            </ol>
+          </div>
+          <div className="rounded-lg border border-border p-3 space-y-1.5">
+            <p className="text-xs font-semibold text-text">Android (Chrome)</p>
+            <ol className="text-xs text-muted list-decimal list-inside leading-relaxed space-y-0.5">
+              <li>Open Kove in Chrome.</li>
+              <li>Tap the <strong className="text-text">⋮</strong> menu (top-right).</li>
+              <li>Pick <strong className="text-text">Install app</strong> or <strong className="text-text">Add to Home screen</strong>.</li>
+              <li>Confirm <strong className="text-text">Install</strong>.</li>
+            </ol>
+          </div>
+        </div>
+        <p className="text-xs text-muted pt-2 border-t border-border">
+          Once installed, open Pinterest (or any app), tap Share on a pin, and pick <strong className="text-text">Kove</strong>
+          from the share sheet. The picker opens with the image preview and your recent notes.
         </p>
       </div>
     </div>
