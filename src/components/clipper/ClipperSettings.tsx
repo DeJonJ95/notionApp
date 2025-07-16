@@ -234,6 +234,10 @@ export function ClipperSettings() {
               <li>Tap the <strong className="text-text">Share</strong> button (square + arrow).</li>
               <li>Pick <strong className="text-text">Add to Home Screen</strong>.</li>
               <li>Tap <strong className="text-text">Add</strong>.</li>
+              <li>
+                <strong className="text-text">Open Kove from your home screen once</strong> — iOS only
+                registers the share-target after the PWA has launched in standalone mode.
+              </li>
             </ol>
           </div>
           <div className="rounded-lg border border-border p-3 space-y-1.5">
@@ -250,6 +254,27 @@ export function ClipperSettings() {
           Once installed, open Pinterest (or any app), tap Share on a pin, and pick <strong className="text-text">Kove</strong>
           from the share sheet. The picker opens with the image preview and your recent notes.
         </p>
+
+        {/* iOS share-sheet gotcha. The #1 reason "Kove doesn't appear" — */}
+        {/* iOS hides newly-installed PWAs in the share sheet's "More" list */}
+        {/* until you enable + favorite them. */}
+        <div className="mt-3 p-3 rounded-lg bg-yellow-500/5 border border-yellow-500/20">
+          <p className="text-xs font-semibold text-text mb-1">
+            iOS: Kove not showing in the share sheet?
+          </p>
+          <ol className="text-xs text-muted list-decimal list-inside leading-relaxed space-y-0.5">
+            <li>In any app, tap <strong className="text-text">Share</strong>.</li>
+            <li>Scroll the row of app icons to the right until you see <strong className="text-text">More</strong> → tap it.</li>
+            <li>Tap <strong className="text-text">Edit</strong> (top-right).</li>
+            <li>Find <strong className="text-text">Kove</strong> in the list → toggle it ON → tap the green <strong className="text-text">+</strong> next to it to favorite.</li>
+            <li>Tap <strong className="text-text">Done</strong>. Kove will now appear in the main share row.</li>
+          </ol>
+          <p className="text-[11px] text-muted mt-2">
+            Still not in the More list? Delete Kove from the home screen, force-quit Safari
+            (App Switcher → swipe up), reopen Kove, and reinstall. iOS sometimes caches an
+            older copy of the manifest.
+          </p>
+        </div>
       </div>
     </div>
   );
