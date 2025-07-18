@@ -910,7 +910,29 @@ export function CanvasPageEditor({
   // passively, so e.preventDefault() there can't stop the browser's own
   // page zoom (ctrl/⌘+wheel, trackpad pinch) or pinch-zoom. Attaching them
   // natively lets us swallow the gesture and zoom only the note canvas.
-  const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
+  // Pinch state — also stores the LOCKED focal point in canvas coords
+  // (canvasMidX/Y) and the screen-space midpoint at gesture start so the
+  // zoom can pivot around the same canvas point even if fingers wobble
+  // slightly between touchmove events. Without this lock the focal point
+  // chases the midpoint and creates a "drift" you can see while pinching.
+  const pinchRef = useRef<{
+    initialDist: number;
+    initialZoom: number;
+    canvasFocalX: number;
+    canvasFocalY: number;
+    screenFocalX: number;
+    screenFocalY: number;
+  } | null>(null);
+  // Wheel state — same idea as pinch, but bursts of wheel events don't
+  // have a natural "start"/"end" so we treat any pause of >200ms as the
+  // end of a gesture and capture a fresh focal point on the next event.
+  const wheelFocalRef = useRef<{
+    canvasX: number;
+    canvasY: number;
+    screenX: number;
+    screenY: number;
+    lastTime: number;
+  } | null>(null);
   // Lets the drag handler bail when a pinch is active so we don't move a
   // block while the user is just trying to zoom near it.
   const isPinchingRef = useRef(false);
@@ -922,6 +944,7 @@ export function CanvasPageEditor({
     if (!el) return;
     const CLAMP = (z: number) => Math.max(0.25, Math.min(2, z));
 
+    const FOCAL_RESET_MS = 200;
     const onWheel = (e: WheelEvent) => {
       if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -933,32 +956,61 @@ export function CanvasPageEditor({
       const newZoom = +CLAMP(oldZoom * factor).toFixed(3);
       if (newZoom === oldZoom) return;
 
-      // Focal-point zoom — keep the canvas point under the cursor put
-      // under the cursor after the zoom changes. Same math as the touch
-      // pinch handler below: compute the canvas point at the cursor at
-      // the OLD zoom, commit the new zoom synchronously, then set scroll
-      // so the same canvas point lands back at the cursor's screen
-      // position. Without this the content anchors at top-left because
-      // transform-origin is top-left.
+      const now = Date.now();
       const rect = sc.getBoundingClientRect();
-      const canvasX = (e.clientX - rect.left + sc.scrollLeft) / oldZoom;
-      const canvasY = (e.clientY - rect.top + sc.scrollTop) / oldZoom;
+
+      // Lock the focal point on the FIRST event of a burst (or any time
+      // there's been >200ms of idle) and reuse it for the burst. Without
+      // this, every wheel tick reads the cursor's current position — so
+      // tiny mouse drift between ticks shifts the focal point and the
+      // canvas "chases" the cursor. With locking, the user can scroll
+      // freely and the zoom anchors exactly where they aimed it.
+      const f = wheelFocalRef.current;
+      if (!f || now - f.lastTime > FOCAL_RESET_MS) {
+        wheelFocalRef.current = {
+          canvasX: (e.clientX - rect.left + sc.scrollLeft) / oldZoom,
+          canvasY: (e.clientY - rect.top + sc.scrollTop) / oldZoom,
+          screenX: e.clientX,
+          screenY: e.clientY,
+          lastTime: now,
+        };
+      } else {
+        f.lastTime = now;
+      }
+      const focal = wheelFocalRef.current!;
 
       flushSync(() => setZoom(newZoom));
-      sc.scrollLeft = canvasX * newZoom - (e.clientX - rect.left);
-      sc.scrollTop = canvasY * newZoom - (e.clientY - rect.top);
+      sc.scrollLeft = focal.canvasX * newZoom - (focal.screenX - rect.left);
+      sc.scrollTop = focal.canvasY * newZoom - (focal.screenY - rect.top);
     };
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 2) return;
+      const sc = scrollRef.current;
+      if (!sc) return;
       isPinchingRef.current = true;
-      // A drag may have started on the first finger before the second
-      // arrived. Cancel it so the block doesn't lurch around mid-zoom.
+      // Cancel any in-progress single-finger drag that started on the
+      // first finger before the second arrived.
       if (cancelDragRef.current) cancelDragRef.current();
+
       const [a, b] = [e.touches[0], e.touches[1]];
+      const initialZoom = zoomRef.current;
+      // Lock the focal point at the midpoint of the initial two-finger
+      // touchdown. The pinch will pivot around THIS canvas point for the
+      // entire gesture, even if the fingers wobble. Recomputing the
+      // midpoint on each touchmove (the previous behavior) caused tiny
+      // finger drift to shift the focal point and made the canvas jitter
+      // as the user pinched.
+      const midX = (a.clientX + b.clientX) / 2;
+      const midY = (a.clientY + b.clientY) / 2;
+      const rect = sc.getBoundingClientRect();
       pinchRef.current = {
         initialDist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
-        initialZoom: zoomRef.current,
+        initialZoom,
+        canvasFocalX: (midX - rect.left + sc.scrollLeft) / initialZoom,
+        canvasFocalY: (midY - rect.top + sc.scrollTop) / initialZoom,
+        screenFocalX: midX,
+        screenFocalY: midY,
       };
     };
     const onTouchMove = (e: TouchEvent) => {
@@ -969,30 +1021,22 @@ export function CanvasPageEditor({
 
       const [a, b] = [e.touches[0], e.touches[1]];
       const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      const newZoom = +CLAMP(
-        pinchRef.current.initialZoom * (dist / pinchRef.current.initialDist)
-      ).toFixed(3);
+      const p = pinchRef.current;
+      const newZoom = +CLAMP(p.initialZoom * (dist / p.initialDist)).toFixed(3);
+      if (newZoom === zoomRef.current) return;
 
-      // Pivot the zoom around the finger midpoint so the canvas point
-      // under the user's fingers stays under their fingers (the "natural"
-      // pinch behavior people expect from maps & photo apps). Without
-      // this, `transform-origin: top-left` makes everything zoom toward
-      // the corner and the user has to scroll back to where they were.
-      const midX = (a.clientX + b.clientX) / 2;
-      const midY = (a.clientY + b.clientY) / 2;
-      const oldZoom = zoomRef.current;
+      // Pivot around the LOCKED focal point captured at touchstart.
+      // canvasFocal{X,Y} is the canvas-space point the user originally
+      // grabbed; screenFocal{X,Y} is where it should stay on screen.
       const rect = sc.getBoundingClientRect();
-      // Canvas coords at the pinch midpoint, BEFORE the zoom change
-      const canvasMidX = (midX - rect.left + sc.scrollLeft) / oldZoom;
-      const canvasMidY = (midY - rect.top + sc.scrollTop) / oldZoom;
 
-      // flushSync forces React to commit the zoom change before we read
-      // back the new content size to set the new scroll position. Without
-      // it the DOM still has the old size and our scroll math is one
-      // frame behind, producing a visible "jitter" toward the corner.
+      // flushSync forces React to commit the zoom change so the scroll
+      // container's content size has updated before we set scrollLeft.
+      // Without it our scroll math runs against stale dimensions and the
+      // viewport jumps toward top-left for the first event of a gesture.
       flushSync(() => setZoom(newZoom));
-      sc.scrollLeft = canvasMidX * newZoom - (midX - rect.left);
-      sc.scrollTop = canvasMidY * newZoom - (midY - rect.top);
+      sc.scrollLeft = p.canvasFocalX * newZoom - (p.screenFocalX - rect.left);
+      sc.scrollTop = p.canvasFocalY * newZoom - (p.screenFocalY - rect.top);
     };
     const onTouchEnd = (e: TouchEvent) => {
       if (e.touches.length < 2) pinchRef.current = null;
