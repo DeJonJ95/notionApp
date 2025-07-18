@@ -1,10 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronRight, ChevronDown, Plus, Trash2, LayoutGrid, Edit3, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { confirmDialog, promptDialog, toast } from '@/components/ui/feedback';
+import { PagePreview } from './PagePreview';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
 type Database = { id: string; name: string };
@@ -250,6 +251,44 @@ function PageNode({
     .sort((a, b) => a.position - b.position);
   const hasChildren = children.length > 0;
 
+  // ── Hover preview ─────────────────────────────────────────────────────
+  // Show a small floating card with a content snippet after the user has
+  // hovered the row for 500ms. Cancels on mouse-leave or scroll (a
+  // scrolled-out-of-place card is jarring). Skipped on touch devices
+  // because there's no real "hover" gesture there.
+  const [previewAnchor, setPreviewAnchor] = useState<DOMRect | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rowRef = useRef<HTMLDivElement | null>(null);
+
+  const cancelHover = () => {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setPreviewAnchor(null);
+  };
+
+  const handleMouseEnter = () => {
+    // Coarse-pointer / touch devices: hover events come from emulation
+    // and feel noisy. Skip the preview entirely.
+    if (typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches) return;
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => {
+      if (rowRef.current) setPreviewAnchor(rowRef.current.getBoundingClientRect());
+    }, 500);
+  };
+
+  // Hide on scroll — otherwise the card detaches from the row visually.
+  useEffect(() => {
+    if (!previewAnchor) return;
+    const onScroll = () => cancelHover();
+    window.addEventListener('scroll', onScroll, true);
+    return () => window.removeEventListener('scroll', onScroll, true);
+  }, [previewAnchor]);
+
+  // Clean up the pending timer if the node unmounts mid-hover.
+  useEffect(() => () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); }, []);
+
   const deletePage = async () => {
     // Soft-delete (archive) so it can be undone — far better than a
     // can't-undo confirm gauntlet.
@@ -274,8 +313,11 @@ function PageNode({
   return (
     <div>
       <div
+        ref={rowRef}
         className="group flex items-center px-1 rounded hover:bg-bg"
         style={{ paddingLeft: `${level * 12 + 4}px` }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={cancelHover}
       >
         <button
           onClick={() => setExpanded(!expanded)}
@@ -286,7 +328,7 @@ function PageNode({
         </button>
         <Link
           href={`/page/${page.id}`}
-          onClick={onNavigate}
+          onClick={() => { cancelHover(); onNavigate?.(); }}
           className="flex-1 flex items-center gap-1.5 py-1 truncate text-sm"
         >
           <span>{page.icon ?? '📄'}</span>
@@ -307,6 +349,7 @@ function PageNode({
           <Trash2 size={12} />
         </button>
       </div>
+      <PagePreview pageId={previewAnchor ? page.id : null} anchor={previewAnchor} />
       {expanded && hasChildren && (
         <div>
           {children.map((c) => (
