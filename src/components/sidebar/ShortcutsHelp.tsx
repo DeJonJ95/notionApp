@@ -30,6 +30,7 @@ const GROUPS: { title: string; items: Shortcut[] }[] = [
     title: 'Global',
     items: [
       { keys: ['Mod', 'K'], label: 'Open search' },
+      { keys: ['Mod', 'P'], label: 'Quick switch (alias for search)' },
       { keys: ['Mod', '\\'], label: 'Toggle sidebar' },
       { keys: ['?'], label: 'Show this shortcuts list' },
     ],
