@@ -46,6 +46,10 @@ interface Props {
   // Called by the embedded ResizableImage when the user resizes an image
   // inside this block. Lets the parent canvas block follow the image width.
   onImageResize?: (width: number, isFinal: boolean) => void;
+  // Called when an image inside this block enters / leaves selection mode.
+  // Lets the parent canvas block treat a touch as "drag to move" without
+  // the 400ms long-press wait while an image is selected (Canva-style).
+  onImageSelectedChange?: (selected: boolean) => void;
 }
 
 export function CanvasTextBlock({
@@ -57,6 +61,7 @@ export function CanvasTextBlock({
   getEditorRef,
   onFocusChange,
   onImageResize,
+  onImageSelectedChange,
 }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [slashOpen, setSlashOpen] = useState(false);
@@ -222,11 +227,15 @@ export function CanvasTextBlock({
     if (!editor) return;
     if (editor.storage?.image) {
       editor.storage.image.onResize = onImageResize ?? null;
+      editor.storage.image.onSelectedChange = onImageSelectedChange ?? null;
     }
     return () => {
-      if (editor.storage?.image) editor.storage.image.onResize = null;
+      if (editor.storage?.image) {
+        editor.storage.image.onResize = null;
+        editor.storage.image.onSelectedChange = null;
+      }
     };
-  }, [editor, onImageResize]);
+  }, [editor, onImageResize, onImageSelectedChange]);
 
   useEffect(() => {
     if (editor && getEditorRef) getEditorRef(blockId, editor);

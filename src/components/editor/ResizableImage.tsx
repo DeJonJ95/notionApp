@@ -19,10 +19,21 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
   // Tap/click image body → enter resize mode.
   // EXCEPTION: if Alt is held (desktop) or the touch landed on the block's
   // drag handle, let the event bubble up so the canvas block can be dragged.
+  // IMPORTANT: when the image is ALREADY selected, we intentionally DON'T
+  // stop propagation. That lets the surrounding canvas block see the
+  // touch and start a "move the block" drag immediately — same as Canva's
+  // "tap to select, drag to move" pattern.
   const handleImagePointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
     if ((e.target as HTMLElement).closest('[data-drag-handle]')) return;
     if (e.altKey) return; // allow Alt+drag to move the whole block
+
+    if (isSelected) {
+      // Already selected — bubble so the block can decide to drag.
+      // Don't deselect; selection persists during/after the move.
+      return;
+    }
+
     setIsSelected(true);
     e.stopPropagation();
     // iOS Safari fires a touchstart that focuses the surrounding
@@ -35,6 +46,13 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
       document.activeElement.blur();
     }
   };
+
+  // Notify the host (canvas block) whenever selection state flips so it
+  // can switch between "long-press to move" and "drag-immediately-to-move"
+  // modes for touch input.
+  useEffect(() => {
+    editor?.storage?.image?.onSelectedChange?.(isSelected);
+  }, [isSelected, editor]);
 
   // First-load auto-size: when an image is added without an explicit width,
   // clamp its natural size to a sensible default and tell the canvas block to
@@ -334,11 +352,16 @@ export const ResizableImage = Node.create({
     } as any;
   },
 
-  // The host (CanvasTextBlock) writes a callback here so the canvas block
-  // can size to match the rendered image.
+  // The host (CanvasTextBlock) writes callbacks here so the canvas block
+  // can react to image-internal state:
+  //   - onResize: keep block width in sync with image width.
+  //   - onSelectedChange: know when an image is selected so the block
+  //     can treat a subsequent drag as "move me" without waiting for
+  //     the 400ms long-press the unselected path uses.
   addStorage() {
     return {
       onResize: null as null | ((width: number, isFinal: boolean) => void),
+      onSelectedChange: null as null | ((selected: boolean) => void),
     };
   },
 
