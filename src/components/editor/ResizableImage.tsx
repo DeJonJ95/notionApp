@@ -70,6 +70,84 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
     return () => document.removeEventListener('pointerdown', handler);
   }, [isSelected]);
 
+  // ── Two-finger pinch-to-resize on selected image ──────────────────
+  // Canva-style: once an image is selected, two fingers on the image
+  // scale it proportionally. Carefully gated so the canvas-level pinch
+  // (which zooms the whole page) still works in every other case.
+  //
+  // Disambiguation: the gesture is treated as "resize this image" only
+  // when BOTH fingers land within (or near) the image's bounding box.
+  // If either finger is outside the image, we leave the touch event
+  // alone — it bubbles to the scroll-container's pinch handler and
+  // the canvas zooms instead. The "near" margin lets users press just
+  // outside the image edge without the gesture failing.
+  useEffect(() => {
+    if (!isSelected) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    let pinchState: { initialDist: number; initialW: number } | null = null;
+
+    const within = (t: Touch, rect: DOMRect) =>
+      t.clientX >= rect.left - 20 && t.clientX <= rect.right + 20 &&
+      t.clientY >= rect.top - 20 && t.clientY <= rect.bottom + 20;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const rect = el.getBoundingClientRect();
+      if (!within(e.touches[0], rect) || !within(e.touches[1], rect)) return;
+      // Both fingers on this image — claim the gesture.
+      e.stopPropagation();
+      const [a, b] = [e.touches[0], e.touches[1]];
+      pinchState = {
+        initialDist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+        initialW: el.offsetWidth || (storedWidth ?? 400),
+      };
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pinchState || e.touches.length !== 2) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const ratio = dist / pinchState.initialDist;
+      const newW = Math.round(Math.max(80, pinchState.initialW * ratio));
+      liveWidthRef.current = newW;
+      setDisplayWidth(newW);
+      // Live-sync the canvas block width so the block follows the image
+      editor?.storage?.image?.onResize?.(newW, false);
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!pinchState) return;
+      if (e.touches.length < 2) {
+        if (liveWidthRef.current !== null) {
+          const finalW = liveWidthRef.current;
+          updateAttributes({ width: finalW });
+          editor?.storage?.image?.onResize?.(finalW, true);
+        }
+        pinchState = null;
+        liveWidthRef.current = null;
+        setDisplayWidth(null);
+      }
+    };
+
+    // Native listeners (not React props) so we can use {passive: false}
+    // and call preventDefault inside touchmove — that's what stops the
+    // browser from also trying to scroll/zoom during the gesture.
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd);
+    el.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [isSelected, storedWidth, updateAttributes, editor]);
+
   // Resize via document-level pointer events so the finger can leave the
   // image (and even leave the viewport edge) without losing the drag.
   const onResizePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -155,17 +233,35 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
           </div>
         )}
 
-        {/* Active resize handle — shown in resize mode */}
+        {/* Active resize affordances — shown in resize mode.
+            Canva-style: four corner dots make the bounding box obvious
+            ("this is selected and resizable") while keeping a single
+            grab-draggable handle at the bottom-right. On touch the dots
+            are larger (5/5) than on hover-capable devices (3/3). */}
         {isSelected && (
           <>
-            {/* Corner drag handle */}
+            {/* Top-left and top-right corner indicators (visual only) */}
+            <div
+              className="absolute -top-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow z-10 pointer-events-none
+                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
+            />
+            <div
+              className="absolute -top-1.5 -right-1.5 rounded-full bg-accent border-2 border-white shadow z-10 pointer-events-none
+                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
+            />
+            {/* Bottom-left indicator (visual only — the interactive
+                grab handle is the BR one below). */}
+            <div
+              className="absolute -bottom-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow z-10 pointer-events-none
+                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
+            />
+            {/* Bottom-right grab handle — the one users drag */}
             <div
               data-resize-handle
               onPointerDown={onResizePointerDown}
               title="Drag to resize"
-              className="absolute -bottom-1.5 -right-1.5 rounded cursor-se-resize
-                         bg-accent shadow-md z-10
-                         w-4 h-4 [@media(hover:none)]:w-6 [@media(hover:none)]:h-6"
+              className="absolute -bottom-1.5 -right-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-se-resize
+                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
               style={{ touchAction: 'none' }}
             />
             {/* Width label */}
@@ -174,9 +270,10 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
                 {currentWidth}px
               </div>
             )}
-            {/* Exit hint on mobile */}
+            {/* Mobile pinch hint — replaces the "tap outside" hint since
+                pinch is now the primary resize gesture on touch. */}
             <div className="absolute -top-6 right-0 text-[10px] text-white bg-accent/80 px-1.5 py-0.5 rounded pointer-events-none [@media(hover:any)]:hidden">
-              tap outside to exit
+              pinch or drag a corner
             </div>
           </>
         )}
