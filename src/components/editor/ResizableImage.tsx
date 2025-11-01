@@ -25,6 +25,15 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
     if (e.altKey) return; // allow Alt+drag to move the whole block
     setIsSelected(true);
     e.stopPropagation();
+    // iOS Safari fires a touchstart that focuses the surrounding
+    // contenteditable BEFORE our pointerdown stopPropagation runs,
+    // which pops the soft keyboard. Blur both the TipTap editor and
+    // whatever the browser thinks is focused right now to dismiss it.
+    // No-op on desktop where blur doesn't hide a keyboard.
+    editor?.commands?.blur?.();
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
   };
 
   // First-load auto-size: when an image is added without an explicit width,
@@ -110,6 +119,11 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
         style={{ width: currentWidth ? `${currentWidth}px` : 'auto', maxWidth: '100%' }}
         contentEditable={false}
         onPointerDown={handleImagePointerDown}
+        // Block the underlying touchstart from reaching the editor's
+        // contenteditable surface — that's what triggers the iOS soft
+        // keyboard. pointerdown above also stops propagation but iOS
+        // delivers touch events first.
+        onTouchStart={(e) => e.stopPropagation()}
       >
         {/* The image */}
         <img
