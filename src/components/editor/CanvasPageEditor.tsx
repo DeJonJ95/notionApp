@@ -197,6 +197,7 @@ function CanvasCard({
   onFocusChange: (id: string | null) => void;
   onResize: (id: string, width: number) => void;
   onResizeEnd: (id: string) => void;
+  onDoubleTap?: (block: CanvasBlockData) => void;
 }) {
   const resizeRef = useRef<{
     startX: number;
@@ -210,6 +211,7 @@ function CanvasCard({
   // the bar stays invisible until the user actually wants to move.
   const [longPressActive, setLongPressActive] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapRef = useRef(0);
   // Keep longPressActive in sync with the parent's isMoving — when the
   // drag ends (isMoving flips false) we clear our local flag too.
   useEffect(() => {
@@ -254,6 +256,23 @@ function CanvasCard({
 
     // Touch only — desktop already has the hover handle + Alt-drag.
     if (e.pointerType !== 'touch') return;
+
+    // Double-tap detection — zoom to 100% centered on this block.
+    if (onDoubleTap) {
+      const now = Date.now();
+      if (now - lastTapRef.current < 300) {
+        e.preventDefault();
+        e.stopPropagation();
+        lastTapRef.current = 0;
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+        onDoubleTap(block);
+        return;
+      }
+      lastTapRef.current = now;
+    }
 
     // CANVA-STYLE FAST PATH: an image inside this block is already selected,
     // so a single-finger drag should move the block IMMEDIATELY without
@@ -973,17 +992,50 @@ export function CanvasPageEditor({
     });
   }, []);
 
-  // ── Alt+Delete keyboard shortcut ──────────────────────────────────────
+  // ── Keyboard shortcuts ────────────────────────────────────────────────
+  // Refs to avoid re-registering the listener when canvasW/H change during animation.
+  const fitToScreenAnimatedRef = useRef<(() => void) | null>(null);
+  const animateZoomRef = useRef<((z: number, x: number, y: number, d?: number) => void) | null>(null);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!e.altKey || e.key !== 'Delete') return;
       const tag = (e.target as HTMLElement)?.tagName;
-      // Skip if focused inside a plain input or textarea (e.g. page title)
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      const target = focusedBlockRef.current || hoveredBlockRef.current;
-      if (!target) return;
-      e.preventDefault();
-      handleDeleteBlock(target);
+      const editable = (e.target as HTMLElement)?.isContentEditable;
+      // Skip if focused inside an input, textarea, or contenteditable
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || editable) return;
+      // Don't intercept when modals are likely open
+      if ((e.target as HTMLElement)?.closest?.('[role="dialog"]')) return;
+
+      // Alt+Delete — delete the focused or hovered block
+      if (e.altKey && e.key === 'Delete') {
+        const target = focusedBlockRef.current || hoveredBlockRef.current;
+        if (!target) return;
+        e.preventDefault();
+        handleDeleteBlock(target);
+        return;
+      }
+
+      // No modifier — zoom shortcuts
+      if (!e.altKey && !e.ctrlKey && !e.metaKey) {
+        if (e.key === '0') {
+          e.preventDefault();
+          fitToScreenAnimatedRef.current?.();
+          return;
+        }
+        if (e.key === '1') {
+          e.preventDefault();
+          const el = scrollRef.current;
+          if (el) {
+            const z = zoomRef.current;
+            const cx = (el.scrollLeft + el.clientWidth / 2) / z;
+            const cy = (el.scrollTop + el.clientHeight / 2) / z;
+            const tx = cx * 1 - el.clientWidth / 2;
+            const ty = cy * 1 - el.clientHeight / 2;
+            animateZoomRef.current?.(1, Math.max(0, tx), Math.max(0, ty));
+          }
+          return;
+        }
+      }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -1275,6 +1327,67 @@ export function CanvasPageEditor({
   const stepZoom = useCallback((delta: number) => {
     setZoom((z) => Math.max(0.05, Math.min(20, +(z + delta).toFixed(2))));
   }, []);
+
+  // ── Animated zoom helper — interpolates zoom + scroll together ─────────
+  // Uses rAF with ease-in-out quad easing over ~280ms so the transition
+  // feels smooth but snappy (Canva-style).
+  const animRef = useRef<number | null>(null);
+  const animateZoom = useCallback((targetZoom: number, targetScrollX: number, targetScrollY: number, duration = 280) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // Cancel any in-progress animation
+    if (animRef.current !== null) cancelAnimationFrame(animRef.current);
+
+    const startZoom = zoomRef.current;
+    const startScrollX = el.scrollLeft;
+    const startScrollY = el.scrollTop;
+    const startTime = performance.now();
+
+    const easeInOutQuad = (t: number) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+      const eased = easeInOutQuad(progress);
+
+      flushSync(() => setZoom(+((startZoom + (targetZoom - startZoom) * eased).toFixed(3))));
+      el.scrollLeft = startScrollX + (targetScrollX - startScrollX) * eased;
+      el.scrollTop = startScrollY + (targetScrollY - startScrollY) * eased;
+
+      if (progress < 1) {
+        animRef.current = requestAnimationFrame(step);
+      } else {
+        animRef.current = null;
+      }
+    };
+
+    animRef.current = requestAnimationFrame(step);
+  }, []);
+
+  // Zoom to 100% centered on a specific block — used by double-tap on touch.
+  const focusOnBlock = useCallback((block: CanvasBlockData) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const targetZoom = 1;
+    const blockCenterX = block.canvasX + block.canvasWidth / 2;
+    const blockCenterY = block.canvasY + 200; // approximate block visual center
+    const tx = blockCenterX * targetZoom - el.clientWidth / 2;
+    const ty = blockCenterY * targetZoom - el.clientHeight / 2;
+    animateZoom(targetZoom, Math.max(0, tx), Math.max(0, ty));
+  }, [animateZoom]);
+
+  // Animated fit-to-screen — same as fitToScreen but smooth.
+  const fitToScreenAnimated = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const fitX = el.clientWidth / canvasW;
+    const fitY = el.clientHeight / canvasH;
+    const targetZoom = Math.max(0.05, Math.min(1, Math.min(fitX, fitY)));
+    animateZoom(targetZoom, 0, 0);
+  }, [canvasW, canvasH, animateZoom]);
+
+  fitToScreenAnimatedRef.current = fitToScreenAnimated;
+  animateZoomRef.current = animateZoom;
 
   // ── Handle "organize" result: replace all text blocks ─────────────────
   const handleOrganize = (html: string) => {
@@ -1692,6 +1805,7 @@ export function CanvasPageEditor({
               onFocusChange={handleFocusChange}
               onResize={handleResize}
               onResizeEnd={handleResizeEnd}
+              onDoubleTap={focusOnBlock}
             />
           ))}
 
