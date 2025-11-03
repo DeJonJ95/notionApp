@@ -184,6 +184,7 @@ function CanvasCard({
   onFocusChange,
   onResize,
   onResizeEnd,
+  onDoubleTap,
 }: {
   block: CanvasBlockData;
   zoom: number;
