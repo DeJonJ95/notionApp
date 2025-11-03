@@ -1,5 +1,5 @@
 'use client';
-import { Node, mergeAttributes } from '@tiptap/core';
+import { Node as TipTapNode, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
@@ -459,7 +459,7 @@ function ImageContextMenu({
   // Dismiss on outside pointerdown or Escape.
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) onClose();
+      if (!menuRef.current?.contains(e.target as globalThis.Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -518,7 +518,7 @@ function ImageContextMenu({
 
 // ── TipTap Extension ─────────────────────────────────────────────────────────
 
-export const ResizableImage = Node.create({
+export const ResizableImage = TipTapNode.create({
   name: 'image',
   group: 'block',
   atom: true,
