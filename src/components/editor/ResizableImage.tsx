@@ -2,16 +2,22 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Trash2, Image as ImageIcon, ExternalLink } from 'lucide-react';
 
 // ── Node View ────────────────────────────────────────────────────────────────
 
-function ResizableImageView({ node, updateAttributes, editor }: any) {
+function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode }: any) {
   const [isSelected, setIsSelected] = useState(false);
   // Live width during drag — stored in ref to avoid stale closure in pointerup
   const liveWidthRef = useRef<number | null>(null);
   const [displayWidth, setDisplayWidth] = useState<number | null>(null);
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Long-press context menu position (viewport coords). null = closed.
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const menuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const storedWidth: number | null = node.attrs.width;
   const currentWidth = displayWidth ?? storedWidth;
@@ -45,11 +51,93 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
       if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
+    } else if (e.pointerType === 'touch') {
+      // Already selected + touch + hold without movement → long-press menu
+      // (Delete / Replace / Open). Cancels on movement (= drag intent),
+      // pointerup (= tap), or a second pointer (= pinch starting).
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const pointerId = e.pointerId;
+      const cleanup = () => {
+        if (menuTimerRef.current) {
+          clearTimeout(menuTimerRef.current);
+          menuTimerRef.current = null;
+        }
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onEnd);
+        document.removeEventListener('pointercancel', onEnd);
+        document.removeEventListener('pointerdown', onSecond);
+      };
+      const onMove = (ev: PointerEvent) => {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (dx * dx + dy * dy > 25) cleanup();
+      };
+      const onEnd = () => cleanup();
+      const onSecond = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) cleanup();
+      };
+      menuTimerRef.current = setTimeout(() => {
+        menuTimerRef.current = null;
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(40);
+        setMenuPos({ x: startX, y: startY });
+        cleanup();
+      }, 500);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onEnd);
+      document.addEventListener('pointercancel', onEnd);
+      document.addEventListener('pointerdown', onSecond);
     }
     // Do NOT stopPropagation in either branch — the block needs this
     // event to decide whether the user is tapping (no movement) or
     // dragging (movement).
   };
+
+  // ── Long-press menu actions ───────────────────────────────────────
+  const handleDelete = useCallback(() => {
+    setMenuPos(null);
+    // Prefer deleteNode (provided by TipTap NodeView) when available;
+    // fall back to getPos + deleteRange for older versions.
+    if (typeof deleteNode === 'function') {
+      deleteNode();
+      return;
+    }
+    if (typeof getPos === 'function' && editor) {
+      const pos = getPos();
+      editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
+    }
+  }, [deleteNode, getPos, editor, node]);
+
+  const handleReplace = useCallback(() => {
+    setMenuPos(null);
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleReplaceFile = useCallback(async (file: File) => {
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, contentType: file.type }),
+      });
+      if (!res.ok) return;
+      const { uploadUrl, publicUrl } = await res.json();
+      await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+      updateAttributes({ src: publicUrl, width: null });
+    } catch {
+      /* ignore — surface a toast if we add one later */
+    }
+  }, [updateAttributes]);
+
+  const handleOpen = useCallback(() => {
+    setMenuPos(null);
+    if (node.attrs.src) window.open(node.attrs.src, '_blank', 'noopener,noreferrer');
+  }, [node]);
+
+  // Cancel any pending menu timer on unmount.
+  useEffect(() => () => {
+    if (menuTimerRef.current) clearTimeout(menuTimerRef.current);
+  }, []);
 
   // Notify the host (canvas block) whenever selection state flips so it
   // can toggle drag-immediately-to-move mode. (handleImagePointerDown
@@ -315,12 +403,116 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
             {/* Mobile pinch hint — replaces the "tap outside" hint since
                 pinch is now the primary resize gesture on touch. */}
             <div className="absolute -top-6 right-0 text-[10px] text-white bg-accent/80 px-1.5 py-0.5 rounded pointer-events-none [@media(hover:any)]:hidden">
-              pinch or drag a corner
+              pinch · drag corner · hold for menu
             </div>
           </>
         )}
+
+        {/* Hidden file input — fires from the long-press menu's Replace */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleReplaceFile(f);
+            e.target.value = '';
+          }}
+        />
       </div>
+
+      {/* Long-press context menu — Canva-style action sheet for the
+          selected image. Portal'd to body so it isn't clipped by canvas
+          zoom / overflow. */}
+      {menuPos && typeof document !== 'undefined' && createPortal(
+        <ImageContextMenu
+          x={menuPos.x}
+          y={menuPos.y}
+          onDelete={handleDelete}
+          onReplace={handleReplace}
+          onOpen={handleOpen}
+          onClose={() => setMenuPos(null)}
+          hasUrl={!!node.attrs.src}
+        />,
+        document.body
+      )}
     </NodeViewWrapper>
+  );
+}
+
+// ── Long-press context menu ──────────────────────────────────────────────────
+
+function ImageContextMenu({
+  x, y, onDelete, onReplace, onOpen, onClose, hasUrl,
+}: {
+  x: number;
+  y: number;
+  onDelete: () => void;
+  onReplace: () => void;
+  onOpen: () => void;
+  onClose: () => void;
+  hasUrl: boolean;
+}) {
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  // Dismiss on outside pointerdown or Escape.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
+  // Position the menu near the touch point but inside viewport bounds.
+  const WIDTH = 180;
+  const HEIGHT = 132;
+  const PAD = 8;
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+  const left = Math.min(Math.max(PAD, x - WIDTH / 2), vw - WIDTH - PAD);
+  const top = Math.min(Math.max(PAD, y + 16), vh - HEIGHT - PAD);
+
+  return (
+    <div
+      ref={menuRef}
+      className="fixed z-[200] rounded-lg shadow-xl border border-border bg-surface text-text overflow-hidden"
+      style={{ left, top, width: WIDTH }}
+      role="menu"
+    >
+      <button
+        onClick={onReplace}
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-bg text-left"
+      >
+        <ImageIcon size={14} className="text-muted" />
+        Replace…
+      </button>
+      {hasUrl && (
+        <button
+          onClick={onOpen}
+          className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-bg text-left"
+        >
+          <ExternalLink size={14} className="text-muted" />
+          Open original
+        </button>
+      )}
+      <div className="h-px bg-border" />
+      <button
+        onClick={onDelete}
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-500 hover:bg-red-500/10 text-left"
+      >
+        <Trash2 size={14} />
+        Delete
+      </button>
+    </div>
   );
 }
 
