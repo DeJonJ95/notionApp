@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2 } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -1733,6 +1733,11 @@ export function CanvasPageEditor({
         >
           <ImageIcon size={14} />
         </button>
+        <div className="w-px self-stretch bg-border mx-1" />
+        <FmtBtn icon={<Undo2 size={14} />} title="Undo (Ctrl/Cmd+Z)"
+          onAct={() => runOnFocused((e) => e.chain().focus().undo().run())} />
+        <FmtBtn icon={<Redo2 size={14} />} title="Redo (Ctrl/Cmd+Shift+Z)"
+          onAct={() => runOnFocused((e) => e.chain().focus().redo().run())} />
         <span className="ml-2 text-[10px] text-muted/60 hidden sm:inline">
           Tip: press &quot;/&quot; in any block for the slash menu
         </span>
