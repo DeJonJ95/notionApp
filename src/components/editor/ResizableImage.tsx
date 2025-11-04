@@ -55,6 +55,9 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
     if (e.altKey) return; // Alt+drag is for moving the block at the block level
 
     if (!isSelected) {
+      // Prevent the browser from focusing the contenteditable editor
+      // underneath — without this iOS pops the keyboard on image tap.
+      e.preventDefault();
       setIsSelected(true);
       isSelectedRef.current = true; // synchronous — pinch listeners read this immediately
       // Sync the parent's imageSelectedRef NOW so the bubbling
