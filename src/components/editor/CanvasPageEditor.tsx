@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2 } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -1438,6 +1438,55 @@ export function CanvasPageEditor({
     return () => document.removeEventListener('paste', onPaste, true);
   }, [uploadImage]);
 
+  // ── Book Info: AI summary + PDF search link ───────────────────────────
+  const handleBookSummary = async () => {
+    const author = await promptDialog({
+      title: 'Book Info',
+      message: 'Enter the author (optional — leave blank to search by title only).',
+      placeholder: 'e.g. James Clear',
+      defaultValue: '',
+    });
+    if (author === null) return; // user cancelled
+
+    const toastId = toast.loading('Generating book summary…');
+    try {
+      const res = await fetch('/api/book-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title.trim(), author: author.trim() || undefined }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || 'Request failed');
+      }
+      const data = await res.json();
+
+      // Build content: summary + PDF link
+      const summaryHtml = data.summary || '';
+      const pdfLink = data.pdfSearchUrl || '';
+      const html = summaryHtml
+        + `<p></p>`
+        + `<p><a href="${pdfLink}" target="_blank" rel="noopener noreferrer"><strong>Search for PDF →</strong></a></p>`;
+
+      // Insert as a new text block at the top of the doc column
+      const block = await createBlock(DOC_X, 60, DOC_W_TEXT, 'text', {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: '(Loading…)' }] }],
+      });
+      setTimeout(() => {
+        const ed = editorRefs.current[block.id];
+        if (ed) {
+          ed.commands.setContent(html);
+          handleContentUpdate(block.id, ed.getJSON());
+        }
+      }, 200);
+      toast.dismiss(toastId);
+    } catch (err: any) {
+      toast.dismiss(toastId);
+      toast.error(err.message || 'Failed to generate book summary');
+    }
+  };
+
   // ── Handle summarize insert ────────────────────────────────────────────
   const handleSummarizeInsert = async (html: string) => {
     // Insert a new text block at top of the doc column
@@ -1493,6 +1542,13 @@ export function CanvasPageEditor({
             }`}
           >
             <Mic size={12} /> Record
+          </button>
+          <button
+            onClick={handleBookSummary}
+            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
+            title="Generate a summary of this book and a PDF search link"
+          >
+            <BookOpen size={12} /> Book Info
           </button>
           <button
             onClick={() => setSummarizeOpen(true)}

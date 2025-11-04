@@ -62,6 +62,8 @@ export const toast = Object.assign(
     success: (m: string) => pushToast(m, 'success'),
     error: (m: string) => pushToast(m, 'error'),
     info: (m: string) => pushToast(m, 'info'),
+    loading: (m: string) => pushToast(m, 'info', { duration: 0 }),
+    dismiss: (id: number) => dismissToast(id),
     /** Toast with an Undo action. The handler fires if the user clicks Undo. */
     undo: (message: string, onUndo: () => void) =>
       pushToast(message, 'info', { action: { label: 'Undo', onClick: onUndo }, duration: 6000 }),
