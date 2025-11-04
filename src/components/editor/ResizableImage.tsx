@@ -9,6 +9,10 @@ import { Trash2, Image as ImageIcon, ExternalLink } from 'lucide-react';
 
 function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode }: any) {
   const [isSelected, setIsSelected] = useState(false);
+  // Ref updated synchronously so the always-registered pinch listeners
+  // can gate on selection without a one-frame gap after tap-to-select.
+  const isSelectedRef = useRef(false);
+  isSelectedRef.current = isSelected;
   // Live width during drag — stored in ref to avoid stale closure in pointerup
   const liveWidthRef = useRef<number | null>(null);
   const [displayWidth, setDisplayWidth] = useState<number | null>(null);
@@ -21,6 +25,15 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
 
   const storedWidth: number | null = node.attrs.width;
   const currentWidth = displayWidth ?? storedWidth;
+
+  // Refs for values used inside the always-registered pinch listeners,
+  // so the closures never go stale.
+  const storedWidthRef = useRef(storedWidth);
+  storedWidthRef.current = storedWidth;
+  const updateAttributesRef = useRef(updateAttributes);
+  updateAttributesRef.current = updateAttributes;
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
 
   // Tap/click image body — selects + lets the parent block decide
   // whether the same gesture is a drag.
@@ -43,6 +56,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
 
     if (!isSelected) {
       setIsSelected(true);
+      isSelectedRef.current = true; // synchronous — pinch listeners read this immediately
       // Sync the parent's imageSelectedRef NOW so the bubbling
       // pointerdown sees us as "already selected" in the same tick.
       editor?.storage?.image?.onSelectedChange?.(true);
@@ -205,14 +219,10 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
   // scale it proportionally. Carefully gated so the canvas-level pinch
   // (which zooms the whole page) still works in every other case.
   //
-  // Disambiguation: the gesture is treated as "resize this image" only
-  // when BOTH fingers land within (or near) the image's bounding box.
-  // If either finger is outside the image, we leave the touch event
-  // alone — it bubbles to the scroll-container's pinch handler and
-  // the canvas zooms instead. The "near" margin lets users press just
-  // outside the image edge without the gesture failing.
+  // Listeners are ALWAYS registered — gating happens synchronously via
+  // isSelectedRef so there's no one-frame gap after tap-to-select where
+  // the canvas zoom handler could steal the gesture.
   useEffect(() => {
-    if (!isSelected) return;
     const el = containerRef.current;
     if (!el) return;
 
@@ -223,6 +233,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       t.clientY >= rect.top - 20 && t.clientY <= rect.bottom + 20;
 
     const onTouchStart = (e: TouchEvent) => {
+      if (!isSelectedRef.current) return; // not selected → let canvas zoom
       if (e.touches.length !== 2) return;
       const rect = el.getBoundingClientRect();
       if (!within(e.touches[0], rect) || !within(e.touches[1], rect)) return;
@@ -231,7 +242,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       const [a, b] = [e.touches[0], e.touches[1]];
       pinchState = {
         initialDist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
-        initialW: el.offsetWidth || (storedWidth ?? 400),
+        initialW: el.offsetWidth || (storedWidthRef.current ?? 400),
       };
     };
 
@@ -245,8 +256,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       const newW = Math.round(Math.max(80, pinchState.initialW * ratio));
       liveWidthRef.current = newW;
       setDisplayWidth(newW);
-      // Live-sync the canvas block width so the block follows the image
-      editor?.storage?.image?.onResize?.(newW, false);
+      editorRef.current?.storage?.image?.onResize?.(newW, false);
     };
 
     const onTouchEnd = (e: TouchEvent) => {
@@ -254,8 +264,8 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       if (e.touches.length < 2) {
         if (liveWidthRef.current !== null) {
           const finalW = liveWidthRef.current;
-          updateAttributes({ width: finalW });
-          editor?.storage?.image?.onResize?.(finalW, true);
+          updateAttributesRef.current({ width: finalW });
+          editorRef.current?.storage?.image?.onResize?.(finalW, true);
         }
         pinchState = null;
         liveWidthRef.current = null;
@@ -276,7 +286,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [isSelected, storedWidth, updateAttributes, editor]);
+  }, []); // always registered — all values read via refs
 
   // Resize via document-level pointer events so the finger can leave the
   // image (and even leave the viewport edge) without losing the drag.
