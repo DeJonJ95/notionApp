@@ -280,18 +280,22 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
 
   // Resize via document-level pointer events so the finger can leave the
   // image (and even leave the viewport edge) without losing the drag.
-  const onResizePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+  // `corner` determines delta direction: left corners invert so dragging
+  // outward always increases width regardless of which corner you grab.
+  const onResizePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>, corner: 'nw' | 'ne' | 'sw' | 'se') => {
     e.preventDefault();
     e.stopPropagation();
     const currentW = containerRef.current?.offsetWidth ?? (storedWidth ?? 400);
     resizeRef.current = { startX: e.clientX, startW: currentW };
+    const isLeft = corner === 'nw' || corner === 'sw';
 
     const onMove = (ev: PointerEvent) => {
       if (!resizeRef.current) return;
-      const newW = Math.round(Math.max(80, resizeRef.current.startW + (ev.clientX - resizeRef.current.startX)));
+      const rawDx = ev.clientX - resizeRef.current.startX;
+      const dx = isLeft ? -rawDx : rawDx;
+      const newW = Math.round(Math.max(80, resizeRef.current.startW + dx));
       liveWidthRef.current = newW;
       setDisplayWidth(newW);
-      // Live-sync the canvas block width too so the block follows the image
       editor?.storage?.image?.onResize?.(newW, false);
       if (ev.cancelable) ev.preventDefault();
     };
@@ -364,31 +368,42 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
         )}
 
         {/* Active resize affordances — shown in resize mode.
-            Canva-style: four corner dots make the bounding box obvious
-            ("this is selected and resizable") while keeping a single
-            grab-draggable handle at the bottom-right. On touch the dots
-            are larger (5/5) than on hover-capable devices (3/3). */}
+            All four corners are draggable; left corners invert the delta
+            so pulling outward always increases width. Touch targets are
+            larger on mobile (w-5/h-5 vs w-3/h-3). */}
         {isSelected && (
           <>
-            {/* Top-left and top-right corner indicators (visual only) */}
-            <div
-              className="absolute -top-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow z-10 pointer-events-none
-                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
-            />
-            <div
-              className="absolute -top-1.5 -right-1.5 rounded-full bg-accent border-2 border-white shadow z-10 pointer-events-none
-                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
-            />
-            {/* Bottom-left indicator (visual only — the interactive
-                grab handle is the BR one below). */}
-            <div
-              className="absolute -bottom-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow z-10 pointer-events-none
-                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
-            />
-            {/* Bottom-right grab handle — the one users drag */}
+            {/* Top-left */}
             <div
               data-resize-handle
-              onPointerDown={onResizePointerDown}
+              onPointerDown={(e) => onResizePointerDown(e, 'nw')}
+              title="Drag to resize"
+              className="absolute -top-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-nw-resize
+                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
+              style={{ touchAction: 'none' }}
+            />
+            {/* Top-right */}
+            <div
+              data-resize-handle
+              onPointerDown={(e) => onResizePointerDown(e, 'ne')}
+              title="Drag to resize"
+              className="absolute -top-1.5 -right-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-ne-resize
+                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
+              style={{ touchAction: 'none' }}
+            />
+            {/* Bottom-left */}
+            <div
+              data-resize-handle
+              onPointerDown={(e) => onResizePointerDown(e, 'sw')}
+              title="Drag to resize"
+              className="absolute -bottom-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-sw-resize
+                         w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
+              style={{ touchAction: 'none' }}
+            />
+            {/* Bottom-right */}
+            <div
+              data-resize-handle
+              onPointerDown={(e) => onResizePointerDown(e, 'se')}
               title="Drag to resize"
               className="absolute -bottom-1.5 -right-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-se-resize
                          w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
@@ -400,8 +415,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
                 {currentWidth}px
               </div>
             )}
-            {/* Mobile pinch hint — replaces the "tap outside" hint since
-                pinch is now the primary resize gesture on touch. */}
+            {/* Mobile pinch hint */}
             <div className="absolute -top-6 right-0 text-[10px] text-white bg-accent/80 px-1.5 py-0.5 rounded pointer-events-none [@media(hover:any)]:hidden">
               pinch · drag corner · hold for menu
             </div>
