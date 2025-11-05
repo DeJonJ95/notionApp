@@ -50,8 +50,11 @@ const GROUPS: { title: string; items: Shortcut[] }[] = [
     items: [
       { keys: ['Tap empty area'], label: 'Add a text block where you tap' },
       { keys: ['Mod', 'Wheel'], label: 'Zoom in/out (anchors at cursor)' },
+      { keys: ['1'], label: 'Zoom to 100% (centered on view)' },
+      { keys: ['0'], label: 'Fit canvas to screen' },
       { keys: ['Alt', 'Drag block'], label: 'Move a block from anywhere' },
       { keys: ['Pinch'], label: 'Zoom on touch (mobile)' },
+      { keys: ['Double-tap block'], label: 'Focus + zoom to that block (mobile)' },
     ],
   },
 ];
