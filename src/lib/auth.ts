@@ -84,8 +84,8 @@ export const authOptions: NextAuthOptions = {
     async createUser({ user }) {
       const defaults = [
         { name: 'Work', slug: 'work', icon: '💼', color: '#3B82F6' },
-        { name: 'Side Gig', slug: 'side-gig', icon: '🚀', color: '#F59E0B' },
-        { name: 'Personal', slug: 'personal', icon: '🏠', color: '#10B981' },
+        { name: 'Personal Projects', slug: 'personal-projects', icon: '🚀', color: '#F59E0B' },
+        { name: 'Home', slug: 'home', icon: '🏡', color: '#10B981' },
       ];
       for (const w of defaults) {
         await prisma.workspace.create({

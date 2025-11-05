@@ -22,6 +22,7 @@ model User {
   categorizationRules CategorizationRule[]
   savingsGoals SavingsGoal[]
   clipperTokens ClipperToken[]
+  importLogs    ImportLog[]
 }
 
 // Bearer tokens issued to the browser extension. Stored as a SHA-256
@@ -67,6 +68,19 @@ model SavingsGoal {
   updatedAt     DateTime  @updatedAt
 
   @@index([userId])
+}
+
+model ImportLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filename  String
+  dateFrom  DateTime
+  dateTo    DateTime
+  txCount   Int
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model RecurringRule {

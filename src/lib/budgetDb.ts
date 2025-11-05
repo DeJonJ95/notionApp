@@ -302,3 +302,301 @@ export async function writeTransactions(
   }
   return { created };
 }
+
+// ── Cross-import duplicate detection ────────────────────────────────────
+
+export type DuplicateMatch = {
+  incoming: ParsedTransaction;
+  matched: { date: string; vendor: string; amount: number };
+};
+
+/** Find incoming transactions that look like they already exist in the DB.
+ *  Match criteria: vendor (case-insensitive contains), amount (absolute value),
+ *  and date within ±3 days. */
+export function findDuplicateTransactions(
+  existing: { date: string; vendor: string; amount: number }[],
+  incoming: ParsedTransaction[],
+): DuplicateMatch[] {
+  const results: DuplicateMatch[] = [];
+  for (const tx of incoming) {
+    const absAmt = Math.abs(tx.amount);
+    const txDate = new Date(tx.date + 'T00:00:00');
+    const threeDays = 3 * 24 * 60 * 60 * 1000;
+    const vendorNorm = tx.vendor.trim().toLowerCase();
+    const match = existing.find((e) => {
+      // Vendor: case-insensitive contains
+      const eVendor = e.vendor.trim().toLowerCase();
+      const vendorMatch = eVendor.includes(vendorNorm) || vendorNorm.includes(eVendor);
+      if (!vendorMatch) return false;
+      // Amount: absolute value match
+      if (Math.abs(Math.abs(e.amount) - absAmt) > 0.01) return false;
+      // Date: within ±3 days
+      const eDate = new Date(e.date + 'T00:00:00');
+      if (Math.abs(eDate.getTime() - txDate.getTime()) > threeDays) return false;
+      return true;
+    });
+    if (match) {
+      results.push({ incoming: tx, matched: match });
+    }
+  }
+  return results;
+}
+
+// ── Reconciliation: expected vs actual ──────────────────────────────────
+
+export type ReconciliationResult = {
+  matched: { ruleName: string; type: string; dueDate: string; amount: number; matchedAmount: number }[];
+  missing: { ruleName: string; type: string; dueDate: string; expectedAmount: number }[];
+  unexpected: ParsedTransaction[];
+};
+
+/** Compare imported transactions against active recurring rules in a date range. */
+export function reconcileTransactions(
+  rules: { name: string; type: string; amount: number; category: string; anchorDate: Date; frequency: string }[],
+  importedTransactions: ParsedTransaction[],
+  dateFrom: string,
+  dateTo: string,
+): ReconciliationResult {
+  const matched: ReconciliationResult['matched'] = [];
+  const missing: ReconciliationResult['missing'] = [];
+  const unexpected: ReconciliationResult['unexpected'] = [];
+
+  const fromDate = new Date(dateFrom + 'T00:00:00');
+  const toDate = new Date(dateTo + 'T00:00:00');
+
+  // For each active rule, find expected due dates in the range
+  for (const rule of rules) {
+    const dueDates = occurrencesBetween(
+      rule.anchorDate,
+      rule.frequency as RuleFrequency,
+      fromDate,
+      toDate,
+    );
+    for (const dueDate of dueDates) {
+      const dueStr = dueDate.toISOString().slice(0, 10);
+      const expectedAbs = rule.amount;
+
+      // Look for a matching imported transaction
+      const ruleVendorNorm = rule.name.trim().toLowerCase();
+      const found = importedTransactions.find((tx) => {
+        const txVendorNorm = tx.vendor.trim().toLowerCase();
+        const vendorMatch = txVendorNorm.includes(ruleVendorNorm) || ruleVendorNorm.includes(txVendorNorm);
+        if (!vendorMatch) return false;
+        const txAbs = Math.abs(tx.amount);
+        if (Math.abs(txAbs - expectedAbs) / expectedAbs > 0.3) return false; // >30% difference
+        const txDate = new Date(tx.date + 'T00:00:00');
+        const threeDays = 3 * 24 * 60 * 60 * 1000;
+        if (Math.abs(txDate.getTime() - dueDate.getTime()) > threeDays) return false;
+        return true;
+      });
+
+      if (found) {
+        matched.push({
+          ruleName: rule.name,
+          type: rule.type,
+          dueDate: dueStr,
+          amount: rule.type === 'income' ? rule.amount : -rule.amount,
+          matchedAmount: found.amount,
+        });
+      } else {
+        missing.push({
+          ruleName: rule.name,
+          type: rule.type,
+          dueDate: dueStr,
+          expectedAmount: rule.type === 'income' ? rule.amount : -rule.amount,
+        });
+      }
+    }
+  }
+
+  // Flag imported transactions that don't match any rule as unexpected
+  const matchedVendorAmounts = new Set(
+    matched.map((m) => `${m.ruleName}|${Math.abs(m.amount)}`),
+  );
+  for (const tx of importedTransactions) {
+    const txVendorNorm = tx.vendor.trim().toLowerCase();
+    const isExpected = rules.some((r) => {
+      const rn = r.name.trim().toLowerCase();
+      const vendorMatch = txVendorNorm.includes(rn) || rn.includes(txVendorNorm);
+      const amtMatch = Math.abs(Math.abs(tx.amount) - r.amount) / r.amount <= 0.3;
+      return vendorMatch && amtMatch;
+    });
+    if (!isExpected) {
+      unexpected.push(tx);
+    }
+  }
+
+  return { matched, missing, unexpected };
+}
+
+// ── Variance tracking ───────────────────────────────────────────────────
+
+export type RuleVariance = {
+  averageAmount: number;
+  minAmount: number;
+  maxAmount: number;
+  averageVariance: number;
+  variancePercent: number;
+  suggestedAmount: number;
+  sampleCount: number;
+};
+
+/** Compare a recurring rule's expected amount against actual matched transactions. */
+export function computeRuleVariance(
+  ruleAmount: number,
+  matchedTransactions: ParsedTransaction[],
+): RuleVariance {
+  if (matchedTransactions.length === 0) {
+    return {
+      averageAmount: ruleAmount,
+      minAmount: ruleAmount,
+      maxAmount: ruleAmount,
+      averageVariance: 0,
+      variancePercent: 0,
+      suggestedAmount: ruleAmount,
+      sampleCount: 0,
+    };
+  }
+
+  const actuals = matchedTransactions.map((t) => Math.abs(t.amount));
+  const avg = actuals.reduce((s, a) => s + a, 0) / actuals.length;
+  const diff = avg - ruleAmount;
+  const pct = ruleAmount > 0 ? (diff / ruleAmount) * 100 : 0;
+
+  return {
+    averageAmount: Math.round(avg * 100) / 100,
+    minAmount: Math.round(Math.min(...actuals) * 100) / 100,
+    maxAmount: Math.round(Math.max(...actuals) * 100) / 100,
+    averageVariance: Math.round(diff * 100) / 100,
+    variancePercent: Math.round(pct * 10) / 10,
+    suggestedAmount: Math.round(avg * 100) / 100,
+    sampleCount: matchedTransactions.length,
+  };
+}
+
+// ── Pattern auto-detection ──────────────────────────────────────────────
+
+export type PatternSuggestion = {
+  vendor: string;
+  frequency: RuleFrequency;
+  confidence: number; // 0-1
+  averageAmount: number;
+  category: string;
+  occurrences: number;
+  type: 'income' | 'expense';
+};
+
+/** Analyze transaction history to detect recurring patterns. Checks for
+ *  consistent intervals matching known frequencies. */
+export function detectRecurringPatterns(
+  transactions: { vendor: string; amount: number; date: string; category: string }[],
+  existingRules: { name: string }[],
+): PatternSuggestion[] {
+  const existingNames = new Set(existingRules.map((r) => r.name.toLowerCase().trim()));
+  const suggestions: PatternSuggestion[] = [];
+
+  // Group by vendor
+  const byVendor = new Map<string, { amount: number; date: string; category: string }[]>();
+  for (const tx of transactions) {
+    const key = tx.vendor.trim().toLowerCase();
+    if (!key) continue;
+    if (!byVendor.has(key)) byVendor.set(key, []);
+    byVendor.get(key)!.push(tx);
+  }
+
+  for (const [vendor, txs] of byVendor.entries()) {
+    // Skip if already a recurring rule
+    if (existingNames.has(vendor)) continue;
+
+    // Need at least 3 occurrences for a reliable pattern
+    if (txs.length < 3) continue;
+
+    // Sort by date
+    txs.sort((a, b) => a.date.localeCompare(b.date));
+
+    // Calculate intervals between consecutive dates
+    const intervals: number[] = [];
+    for (let i = 1; i < txs.length; i++) {
+      const d1 = new Date(txs[i - 1].date + 'T00:00:00');
+      const d2 = new Date(txs[i].date + 'T00:00:00');
+      intervals.push(Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+
+    if (intervals.length < 2) continue;
+
+    const avgInterval = intervals.reduce((s, i) => s + i, 0) / intervals.length;
+
+    // Determine which frequency matches best and compute confidence
+    const frequencies: { freq: RuleFrequency; target: number; tolerance: number }[] = [
+      { freq: 'weekly', target: 7, tolerance: 2 },
+      { freq: 'biweekly', target: 14, tolerance: 3 },
+      { freq: 'semimonthly', target: 15, tolerance: 3 },
+      { freq: 'monthly', target: 30, tolerance: 4 },
+    ];
+
+    let bestFreq: RuleFrequency | null = null;
+    let bestConfidence = 0;
+
+    for (const { freq, target, tolerance } of frequencies) {
+      const withinTolerance = intervals.filter((i) => Math.abs(i - target) <= tolerance);
+      const ratio = withinTolerance.length / intervals.length;
+      // Bonus for exact matches
+      const exactBonus = withinTolerance.filter((i) => i === target).length / intervals.length * 0.2;
+      const confidence = Math.min(1, ratio + exactBonus);
+
+      if (confidence > bestConfidence && ratio >= 0.5) {
+        bestConfidence = confidence;
+        bestFreq = freq;
+      }
+    }
+
+    if (!bestFreq || bestConfidence < 0.4) continue;
+
+    const amounts = txs.map((t) => Math.abs(t.amount));
+    const avgAmount = amounts.reduce((s, a) => s + a, 0) / amounts.length;
+    const isIncome = amounts.some((a) => a > 0) && amounts.filter((a) => a > 0).length >= amounts.length * 0.5;
+
+    suggestions.push({
+      vendor: txs[0].vendor, // original casing
+      frequency: bestFreq,
+      confidence: Math.round(bestConfidence * 100) / 100,
+      averageAmount: Math.round(avgAmount * 100) / 100,
+      category: txs[0].category,
+      occurrences: txs.length,
+      type: isIncome ? 'income' : 'expense',
+    });
+  }
+
+  // Sort by confidence descending
+  suggestions.sort((a, b) => b.confidence - a.confidence);
+  return suggestions;
+}
+
+// ── Coverage gap computation ─────────────────────────────────────────────
+
+export type CoverageGap = { from: string; to: string; days: number };
+
+/** Given an array of [dateFrom, dateTo] pairs (chronologically sorted),
+ *  return gaps > minGapDays between consecutive ranges. */
+export function computeCoverageGaps(
+  ranges: { dateFrom: Date; dateTo: Date }[],
+  minGapDays: number = 3,
+): CoverageGap[] {
+  const gaps: CoverageGap[] = [];
+  if (ranges.length < 2) return gaps;
+  const sorted = [...ranges].sort((a, b) => a.dateFrom.getTime() - b.dateFrom.getTime());
+  for (let i = 1; i < sorted.length; i++) {
+    const prevEnd = sorted[i - 1].dateTo;
+    const currStart = sorted[i].dateFrom;
+    const gapMs = currStart.getTime() - prevEnd.getTime();
+    const gapDays = Math.round(gapMs / (1000 * 60 * 60 * 24)) - 1;
+    if (gapDays > minGapDays) {
+      gaps.push({
+        from: new Date(prevEnd.getTime() + 86400000).toISOString().slice(0, 10),
+        to: new Date(currStart.getTime() - 86400000).toISOString().slice(0, 10),
+        days: gapDays,
+      });
+    }
+  }
+  return gaps;
+}
