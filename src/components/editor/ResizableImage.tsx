@@ -96,10 +96,10 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       };
       menuTimerRef.current = setTimeout(() => {
         menuTimerRef.current = null;
-        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(40);
+        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([20, 50, 20]);
         setMenuPos({ x: startX, y: startY });
         cleanup();
-      }, 500);
+      }, 600);
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', onEnd);
       document.addEventListener('pointercancel', onEnd);
@@ -236,11 +236,25 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       t.clientY >= rect.top - 20 && t.clientY <= rect.bottom + 20;
 
     const onTouchStart = (e: TouchEvent) => {
-      if (!isSelectedRef.current) return; // not selected → let canvas zoom
       if (e.touches.length !== 2) return;
       const rect = el.getBoundingClientRect();
       if (!within(e.touches[0], rect) || !within(e.touches[1], rect)) return;
-      // Both fingers on this image — claim the gesture.
+
+      // Both fingers on this image — select it now (iOS fires touchstart
+      // before pointerdown, so isSelectedRef may still be false here) and
+      // claim the gesture before the canvas zoom handler can steal it.
+      if (!isSelectedRef.current) {
+        isSelectedRef.current = true;
+        setIsSelected(true);
+        editorRef.current?.storage?.image?.onSelectedChange?.(true);
+      }
+
+      // Cancel any pending long-press menu timer so it never fires mid-pinch.
+      if (menuTimerRef.current) {
+        clearTimeout(menuTimerRef.current);
+        menuTimerRef.current = null;
+      }
+
       e.stopPropagation();
       const [a, b] = [e.touches[0], e.touches[1]];
       pinchState = {
