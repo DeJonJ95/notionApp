@@ -7,6 +7,7 @@ import {
   forecastOccurrences,
   detectRecurringPatterns,
   computeRuleVariance,
+  occurrencesBetween,
   type ForecastItem,
   type PatternSuggestion,
   type RuleVariance,
