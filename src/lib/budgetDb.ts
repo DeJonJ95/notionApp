@@ -496,7 +496,7 @@ export function detectRecurringPatterns(
   const suggestions: PatternSuggestion[] = [];
 
   // Group by vendor
-  const byVendor = new Map<string, { amount: number; date: string; category: string }[]>();
+  const byVendor = new Map<string, { vendor: string; amount: number; date: string; category: string }[]>();
   for (const tx of transactions) {
     const key = tx.vendor.trim().toLowerCase();
     if (!key) continue;
