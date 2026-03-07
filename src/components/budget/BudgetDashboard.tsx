@@ -316,6 +316,125 @@ export function BudgetDashboard() {
         </div>
       </div>
 
+      {/* Expected vs Actual — income/expense from recurring rules compared to what's been imported */}
+      {data.expectedVsActual && (data.expectedVsActual.incomeExpected > 0 || data.expectedVsActual.expenseExpected > 0) && (
+        <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart3 size={13} className="text-accent" />
+            <span className="text-xs font-semibold uppercase tracking-wide">Expected vs received — {data.monthLabel}</span>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+            <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-3 py-2">
+              <div className="text-[10px] text-muted uppercase tracking-wide">Expected income</div>
+              <div className="text-lg font-bold text-green-600">{fmt(data.expectedVsActual.incomeExpected)}</div>
+            </div>
+            <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-3 py-2">
+              <div className="text-[10px] text-muted uppercase tracking-wide">Received</div>
+              <div className={`text-lg font-bold ${data.expectedVsActual.incomeActual >= data.expectedVsActual.incomeExpected ? 'text-green-600' : 'text-yellow-600'}`}>
+                {fmt(data.expectedVsActual.incomeActual)}
+              </div>
+              {data.expectedVsActual.incomeActual < data.expectedVsActual.incomeExpected && (
+                <div className="text-[10px] text-yellow-600">
+                  {fmt(data.expectedVsActual.incomeExpected - data.expectedVsActual.incomeActual)} still due
+                </div>
+              )}
+            </div>
+            <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2">
+              <div className="text-[10px] text-muted uppercase tracking-wide">Expected expenses</div>
+              <div className="text-lg font-bold text-red-500">{fmt(data.expectedVsActual.expenseExpected)}</div>
+            </div>
+            <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2">
+              <div className="text-[10px] text-muted uppercase tracking-wide">Posted</div>
+              <div className={`text-lg font-bold ${data.expectedVsActual.expenseActual <= data.expectedVsActual.expenseExpected ? 'text-red-500' : 'text-orange-500'}`}>
+                {fmt(data.expectedVsActual.expenseActual)}
+              </div>
+              {data.expectedVsActual.expenseActual < data.expectedVsActual.expenseExpected && (
+                <div className="text-[10px] text-muted">
+                  {fmt(data.expectedVsActual.expenseExpected - data.expectedVsActual.expenseActual)} still expected
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Per-rule mini breakdown */}
+          {data.expectedVsActual.rules.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {data.expectedVsActual.rules.map((r) => {
+                const pct = r.expectedCount > 0 ? Math.round((r.matchedCount / r.expectedCount) * 100) : 0;
+                const allMatched = pct >= 100;
+                return (
+                  <span
+                    key={r.ruleId}
+                    className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border ${
+                      allMatched
+                        ? 'border-green-500/30 bg-green-500/5 text-green-700'
+                        : r.matchedCount > 0
+                          ? 'border-yellow-500/30 bg-yellow-500/5 text-yellow-700'
+                          : 'border-red-500/30 bg-red-500/5 text-red-600'
+                    }`}
+                  >
+                    {allMatched ? <CheckCircle2 size={10} /> : r.matchedCount > 0 ? <Clock size={10} /> : <AlertTriangle size={10} />}
+                    {r.name} <span className="opacity-70">({r.matchedCount}/{r.expectedCount})</span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Auto-budget overview */}
+      <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <DollarSign size={14} className="text-accent" />
+          <span className="text-xs font-semibold uppercase tracking-wide text-accent">
+            {data.autoBudget.hasManualBudget ? 'Budget' : 'Auto-budget'}
+          </span>
+          {data.autoBudget.hasManualBudget ? (
+            <span className="text-[10px] bg-accent/10 text-accent px-1.5 py-0.5 rounded font-medium">Manual</span>
+          ) : (
+            <span className="text-[10px] bg-blue-500/10 text-blue-600 px-1.5 py-0.5 rounded font-medium">Auto</span>
+          )}
+          <div className="flex-1" />
+          <Link href={`/database/${data.databaseId}`} className="text-xs text-muted hover:text-accent flex items-center gap-1">
+            Budget summary <ExternalLink size={10} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div>
+            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Projected income</div>
+            <div className="text-lg font-bold text-green-600">{fmt(data.autoBudget.monthlyProjectedIncome)}</div>
+            <div className="text-[10px] text-muted">/mo from recurring rules</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Projected expenses</div>
+            <div className="text-lg font-bold text-red-500">{fmt(data.autoBudget.monthlyProjectedExpenses)}</div>
+            <div className="text-[10px] text-muted">/mo from recurring rules</div>
+          </div>
+          <div>
+            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Savings goals</div>
+            <div className="text-lg font-bold text-blue-600">{fmt(data.autoBudget.monthlySavingsTotal)}</div>
+            <div className="text-[10px] text-muted">
+              {data.autoBudget.monthlySavingsTotal > 0 ? '/mo in goals' : 'No goals set'}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Available to budget</div>
+            <div className={`text-lg font-bold ${data.autoBudget.availableToBudget > 0 ? 'text-green-600' : 'text-muted'}`}>
+              {fmt(data.autoBudget.availableToBudget)}
+            </div>
+            <div className="text-[10px] text-muted">
+              {data.autoBudget.hasManualBudget
+                ? 'Manual budgets set'
+                : data.autoBudget.monthlyProjectedIncome > 0
+                  ? 'Income − savings (auto)'
+                  : 'Set up recurring income'}
+            </div>
+          </div>
+        </div>
+      </div>
+        </div>
+      </div>
+
       {empty && (
         <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
           <p className="text-sm font-medium mb-1">No transactions yet</p>
