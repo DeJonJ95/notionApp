@@ -502,6 +502,7 @@ function CanvasCard({
           <CanvasTextBlock
             blockId={block.id}
             initialContent={block.content}
+            zoom={zoom}
             onUpdate={onContentUpdate}
             onEmpty={onBlockEmpty}
             getEditorRef={registerEditor}

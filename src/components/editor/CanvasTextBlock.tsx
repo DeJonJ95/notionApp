@@ -39,6 +39,7 @@ interface Props {
   blockId: string;
   initialContent: any;
   autoFocus?: boolean;
+  zoom?: number;
   onUpdate: (blockId: string, content: any) => void;
   onEmpty?: (blockId: string) => void;
   getEditorRef?: (blockId: string, editor: any) => void;
@@ -56,6 +57,7 @@ export function CanvasTextBlock({
   blockId,
   initialContent,
   autoFocus,
+  zoom,
   onUpdate,
   onEmpty,
   getEditorRef,
@@ -236,6 +238,13 @@ export function CanvasTextBlock({
       }
     };
   }, [editor, onImageResize, onImageSelectedChange]);
+
+  // Keep the ResizableImage NodeView informed of canvas zoom so its
+  // resize handles counter-scale to remain a usable screen-pixel size.
+  useEffect(() => {
+    if (!editor?.storage?.image) return;
+    editor.storage.image.zoom = zoom ?? 1;
+  }, [editor, zoom]);
 
   useEffect(() => {
     if (editor && getEditorRef) getEditorRef(blockId, editor);
