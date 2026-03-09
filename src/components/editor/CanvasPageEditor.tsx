@@ -1404,21 +1404,60 @@ export function CanvasPageEditor({
   // ── Image upload ───────────────────────────────────────────────────────
   // Accepts one or many files. Each image becomes its own block, stacked
   // vertically below existing content. Uploads run in PARALLEL so a batch
-  // of 10 photos doesn't take ten times as long as one — but each file's
-  // landing Y is pre-assigned by its index, so a slow upload at position 0
-  // still lands above a faster upload at position 1.
+  // of 10 photos doesn't take ten times as long as one.
+  //
+  // Stacking math: we read each file's natural dimensions client-side
+  // BEFORE uploading and use those to compute exact Y positions. A naive
+  // fixed STACK_STEP doesn't work — ResizableImage's first-load auto-size
+  // renders most photos at 400–800px tall, so any step smaller than that
+  // causes blocks to overlap. In the overlap zone the later block in the
+  // map paints on top and absorbs all pointer events, making the earlier
+  // images appear "unmovable / unresizable" because the gestures land on
+  // the wrong block. Pre-computing positions from actual heights makes
+  // every block fully interactable.
   const uploadImages = useCallback(async (files: File[] | FileList) => {
     const arr = Array.from(files);
     if (arr.length === 0) return;
 
-    // Compute the starting Y ONCE. nextStackY() reads the `blocks` state,
-    // and React batches our createBlock() calls inside this tick — so
-    // calling nextStackY() per file would return the same Y for every
-    // file and they'd all overlap. Walk Y forward manually instead.
-    // 280px ≈ a freshly-inserted image card's height + gap; canvas auto-
-    // resizes once real image dimensions settle.
+    // Decode each file locally to learn its natural width/height. This is
+    // fast (no network), runs in parallel, and lets us project the rendered
+    // height in the canvas: width clamps to 600px, height scales with the
+    // aspect ratio to match ResizableImage's first-load auto-size behavior.
+    const RENDER_W_CAP = 600;
+    const dims = await Promise.all(
+      arr.map(
+        (file) =>
+          new Promise<{ w: number; h: number }>((resolve) => {
+            const objUrl = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+              URL.revokeObjectURL(objUrl);
+              resolve({ w: img.naturalWidth, h: img.naturalHeight });
+            };
+            img.onerror = () => {
+              URL.revokeObjectURL(objUrl);
+              // Fallback if we couldn't decode (HEIC on some browsers, etc).
+              // Pick a sensible "landscape photo" default so the next block
+              // doesn't pile on top of this one.
+              resolve({ w: RENDER_W_CAP, h: 400 });
+            };
+            img.src = objUrl;
+          })
+      )
+    );
+
+    // Walk Y forward using each block's projected height. Y for block i =
+    // startY + (sum of projected heights of blocks 0..i-1) + gaps.
+    const GAP = 24;
     const startY = nextStackY();
-    const STACK_STEP = 280;
+    let cursor = startY;
+    const positions = dims.map((d) => {
+      const renderW = Math.min(d.w, RENDER_W_CAP);
+      const renderH = (d.h / d.w) * renderW;
+      const y = cursor;
+      cursor += renderH + GAP;
+      return y;
+    });
 
     await Promise.all(
       arr.map(async (file, i) => {
@@ -1431,7 +1470,7 @@ export function CanvasPageEditor({
           if (!res.ok) return;
           const { uploadUrl, publicUrl } = await res.json();
           await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-          createBlock(DOC_X, startY + i * STACK_STEP, DOC_W_TEXT, 'text', {
+          createBlock(DOC_X, positions[i], DOC_W_TEXT, 'text', {
             type: 'doc',
             content: [{ type: 'image', attrs: { src: publicUrl, width: null } }],
           });
