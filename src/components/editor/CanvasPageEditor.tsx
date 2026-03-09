@@ -411,6 +411,12 @@ function CanvasCard({
   const isText = block.type !== 'database';
   return (
     <div
+      // data-block-id lets nextStackY() find this element in the DOM so it
+      // can read the block's actual rendered height instead of guessing.
+      // Without this, batched image uploads stack on top of previously-
+      // uploaded images because the 120px text-block estimate badly
+      // underestimates a 400–800px photo block's real height.
+      data-block-id={block.id}
       style={{
         position: 'absolute',
         left: block.canvasX,
@@ -691,11 +697,42 @@ export function CanvasPageEditor({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Compute the next vertical slot below all existing blocks ──────────
+  // Where to drop the next new block — far enough below existing content
+  // that no overlap can occur. Reads each block's ACTUAL rendered height
+  // from the DOM when available (via data-block-id), falling back to a
+  // type-aware estimate for blocks that haven't laid out yet. The DOM
+  // read is what makes batched image uploads stack cleanly below previous
+  // images: a fixed 120px estimate would put a new batch on top of a
+  // previous 600px-tall photo block, and the later-mounted block paints
+  // on top of (and steals pointer events from) the older one.
   const nextStackY = useCallback(() => {
     if (blocks.length === 0) return 60;
-    return Math.max(
-      ...blocks.map((b) => b.canvasY + (b.type === 'database' ? 440 : 120))
-    ) + BLOCK_GAP;
+    let maxBottom = 0;
+    for (const b of blocks) {
+      let bottom: number;
+      const el =
+        innerRef.current?.querySelector(`[data-block-id="${b.id}"]`) as
+          | HTMLElement
+          | null;
+      if (el && el.offsetHeight > 0) {
+        // offsetHeight is the layout (pre-transform) height in canvas pixels,
+        // which is exactly what we want for canvasY math.
+        bottom = b.canvasY + el.offsetHeight;
+      } else {
+        // Block not yet in the DOM (just created and React hasn't committed).
+        // Fall back to a content-aware estimate so the spacing isn't wildly
+        // wrong on first paint.
+        const isImage =
+          b.content?.type === 'doc' &&
+          b.content?.content?.length === 1 &&
+          b.content?.content?.[0]?.type === 'image';
+        const estimate =
+          b.type === 'database' ? 440 : isImage ? 600 : 120;
+        bottom = b.canvasY + estimate;
+      }
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    return maxBottom + BLOCK_GAP;
   }, [blocks]);
 
   // ── Block creation ─────────────────────────────────────────────────────
@@ -1424,7 +1461,12 @@ export function CanvasPageEditor({
     if (arr.length === 0) return;
 
     const RENDER_W_CAP = 600;
-    const VERTICAL_PAD = 80; // prose-base adds ~32px top+bottom around images
+    // 120px gap = prose-base's ~64px of vertical margin around images plus
+    // a 56px buffer so neighbouring blocks' content wrappers don't even
+    // graze each other. Previous 80px allowance worked for landscape but
+    // failed for portrait photos where edge-of-image to edge-of-image is
+    // already tight at base spacing.
+    const VERTICAL_PAD = 120;
 
     // Phase 1: decode dims + upload bytes (parallel).
     type UploadOk = { url: string; w: number; h: number };
