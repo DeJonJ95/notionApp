@@ -24,6 +24,10 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef(editor);
   editorRef.current = editor;
+  // Timestamp of the most recent touch tap on this image. Used to detect
+  // double-tap (two finger-down events in <300ms) and skip the long-press
+  // menu timer so it doesn't fire mid-drag.
+  const lastTouchTapRef = useRef(0);
 
   // Counter-scale resize handles with canvas zoom so they stay a usable
   // screen-pixel size (same pattern as block-level handles in the parent).
@@ -72,9 +76,19 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
       }
+    lastTouchTapRef.current = Date.now();
     } else if (e.pointerType === 'touch') {
-      // Already selected + touch + hold without movement → long-press menu
-      // (Delete / Replace / Open). Cancels on movement (= drag intent),
+      // Already selected — check for double-tap to drag.
+      // The double-tap is handled by the CanvasCard; we just need to
+      // NOT start the long-press menu timer here so it doesn't pop mid-drag.
+      const now = Date.now();
+      if (now - (lastTouchTapRef.current ?? 0) < 300) {
+        lastTouchTapRef.current = 0;
+        return; // let the event bubble for the double-tap drag
+      }
+      lastTouchTapRef.current = now;
+
+      // Long-press menu (Delete / Replace / Open). Cancels on movement (= drag intent),
       // pointerup (= tap), or a second pointer (= pinch starting).
       const startX = e.clientX;
       const startY = e.clientY;
@@ -240,6 +254,12 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       t.clientY >= rect.top - 20 && t.clientY <= rect.bottom + 20;
 
     const onTouchStart = (e: TouchEvent) => {
+      // Prevent iOS from consuming the touch for contentEditable text
+      // selection / focus — without this the browser may not fire
+      // pointerdown reliably when tapping inside the editor, which
+      // breaks our tap-to-select-image flow.
+      e.preventDefault();
+
       if (e.touches.length !== 2) return;
       const rect = el.getBoundingClientRect();
       if (!within(e.touches[0], rect) || !within(e.touches[1], rect)) return;
@@ -354,14 +374,18 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
     <NodeViewWrapper>
       <div
         ref={containerRef}
-        className="group/img relative inline-block select-none"
-        // Constrained to the parent block (max-width:100%) so the image can
-        // never overflow its block box and cover neighbouring blocks. It can
-        // still be made large — resizing it grows the block too (the
-        // onResize callback syncs canvasWidth), so block always >= image.
-        style={{ width: currentWidth ? `${currentWidth}px` : 'auto', maxWidth: '100%' }}
+        // pointer-events-auto: safety override in case @tiptap/core's
+        // injected CSS sets `[data-node-view-wrapper] > * { pointer-events: none }`.
+        // touchAction / onTouchStart: on mobile iOS, tapping inside a
+        // contentEditable can suppress pointerdown because the browser
+        // handles the touch for text-selection / focus.  Grabbing touchstart
+        // and preventing default stops the browser from consuming the event
+        // before pointerdown fires (Canva-style one-tap-select for images).
+        className="group/img relative inline-block select-none pointer-events-auto"
+        style={{ width: currentWidth ? `${currentWidth}px` : 'auto', maxWidth: '100%', touchAction: 'none', WebkitTouchCallout: 'none' }}
         contentEditable={false}
         onPointerDown={handleImagePointerDown}
+        onTouchStart={(e) => e.preventDefault()}
       >
         {/* The image */}
         <img
