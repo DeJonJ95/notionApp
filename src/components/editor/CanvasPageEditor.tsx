@@ -314,15 +314,33 @@ function CanvasCard({
         }
       };
       const cleanup = () => {
-        document.removeEventListener('pointerdown', onSecondTouch);
+        // {capture: true} on remove must match the registration below.
+        document.removeEventListener('pointerdown', onSecondTouch, true);
       };
-      document.addEventListener('pointerdown', onSecondTouch);
+      // CAPTURE PHASE is critical. React's synthetic events dispatch from
+      // the root container during the BUBBLE phase; a non-capturing
+      // document listener fires after that. Without {capture: true}, when
+      // finger 2's pointerdown arrives:
+      //   1. Event bubbles to React root → handlePointerDown(finger2) runs
+      //      → checks dragBlockedRef (still false) → enters fast path,
+      //        starts its own 80ms timer.
+      //   2. Event continues to document → this listener fires →
+      //      sets dragBlockedRef = true. (Too late — finger 2 is already in.)
+      // 80ms later finger 2's timer fires, beginDrag runs with finger 2's
+      // coords, and the block teleports between fingers.
+      //
+      // With capture, document → this listener runs FIRST, sets the flag,
+      // THEN the event reaches React and handlePointerDown(finger2) sees
+      // dragBlockedRef === true and returns immediately.
+      document.addEventListener('pointerdown', onSecondTouch, true);
       setTimeout(() => {
         cleanup();
         if (!cancelled) beginDrag(startX, startY, pointerId);
       }, 80);
       return;
-    }    // SLOW PATH: long-press anywhere on the block (excluding image content;
+    }
+
+    // SLOW PATH: long-press anywhere on the block (excluding image content;
     // ResizableImage's own pointerdown stopsPropagation while not selected)
     // initiates a drag. Cancels on early movement (scroll attempt) or
     // pointerup before the 400ms timer fires.
