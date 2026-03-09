@@ -230,14 +230,20 @@ export function CanvasTextBlock({
     if (editor.storage?.image) {
       editor.storage.image.onResize = onImageResize ?? null;
       editor.storage.image.onSelectedChange = onImageSelectedChange ?? null;
+      // ResizableImage fires this after the long-press-menu Delete IF the
+      // doc is empty afterward. Route it to onEmpty (the same path that
+      // the Backspace-on-empty handler uses) so the canvas drops the
+      // whole block instead of leaving a stranded empty text block.
+      editor.storage.image.onEmpty = onEmpty ? () => onEmpty(blockId) : null;
     }
     return () => {
       if (editor.storage?.image) {
         editor.storage.image.onResize = null;
         editor.storage.image.onSelectedChange = null;
+        editor.storage.image.onEmpty = null;
       }
     };
-  }, [editor, onImageResize, onImageSelectedChange]);
+  }, [editor, onImageResize, onImageSelectedChange, onEmpty, blockId]);
 
   // Keep the ResizableImage NodeView informed of canvas zoom so its
   // resize handles counter-scale to remain a usable screen-pixel size.
