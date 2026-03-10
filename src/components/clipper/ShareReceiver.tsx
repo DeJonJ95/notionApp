@@ -14,6 +14,9 @@ type Page = {
 type Props = {
   initialUrl: string;
   initialTitle: string;
+  /** Pre-resolved image URL (set when the POST share-target already
+   *  uploaded the shared file to R2). Skips og:image resolution. */
+  initialImageUrl?: string;
 };
 
 // Mobile-first picker shown when the user shares to Kove from another
@@ -21,14 +24,16 @@ type Props = {
 // searchable note list) but built as React + Tailwind to fit the app's
 // styling, since this lives inside the notes app itself rather than
 // being injected into a third-party page.
-export function ShareReceiver({ initialUrl, initialTitle }: Props) {
+export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }: Props) {
   const router = useRouter();
 
   // ── Image-resolution state ─────────────────────────────────────
-  const [imageUrl, setImageUrl] = useState<string>('');
-  const [resolving, setResolving] = useState(true);
+  // If the share-target already uploaded the file to R2 we get a ready
+  // image URL and skip resolution entirely.
+  const [imageUrl, setImageUrl] = useState<string>(initialImageUrl);
+  const [resolving, setResolving] = useState(!initialImageUrl);
   const [resolveError, setResolveError] = useState('');
-  const [overrideUrl, setOverrideUrl] = useState(initialUrl); // editable fallback
+  const [overrideUrl, setOverrideUrl] = useState(initialImageUrl || initialUrl); // editable fallback
 
   // ── Note picker state ──────────────────────────────────────────
   const [pages, setPages] = useState<Page[]>([]);
@@ -43,9 +48,14 @@ export function ShareReceiver({ initialUrl, initialTitle }: Props) {
 
   // Resolve the shared URL into an actual image URL via the server.
   useEffect(() => {
+    // Already have a resolved image (uploaded file via POST share-target).
+    if (initialImageUrl) {
+      setResolving(false);
+      return;
+    }
     if (!initialUrl) {
       setResolving(false);
-      setResolveError('No URL was shared. Paste an image URL below or go back.');
+      setResolveError('No image or URL was shared. Paste an image URL below or go back.');
       return;
     }
     setResolving(true);
@@ -65,7 +75,7 @@ export function ShareReceiver({ initialUrl, initialTitle }: Props) {
         setResolveError(e.message);
       })
       .finally(() => setResolving(false));
-  }, [initialUrl]);
+  }, [initialUrl, initialImageUrl]);
 
   // Load the user's recent notes for the picker. Uses session auth
   // automatically since we're hitting our own origin with cookies.
