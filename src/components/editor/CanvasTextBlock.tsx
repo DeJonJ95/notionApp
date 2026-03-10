@@ -21,6 +21,9 @@ interface SlashCmd {
   title: string;
   description: string;
   run: (editor: any) => void;
+  // 'database' is not a TipTap command — it reaches up to the parent canvas
+  // to insert a separate database block alongside this text block.
+  kind?: 'text' | 'database';
 }
 
 const SLASH_COMMANDS: SlashCmd[] = [
@@ -33,6 +36,7 @@ const SLASH_COMMANDS: SlashCmd[] = [
   { title: 'To-do list',    description: '☐ checkbox item',         run: (e) => e.chain().focus().toggleTaskList().run() },
   { title: 'Quote',         description: 'Block quote',             run: (e) => e.chain().focus().toggleBlockquote().run() },
   { title: 'Code block',    description: 'Monospace code',          run: (e) => e.chain().focus().toggleCodeBlock().run() },
+  { title: 'Database',      description: 'Embed a database',         run: () => {}, kind: 'database' },
 ];
 
 interface Props {
@@ -51,6 +55,9 @@ interface Props {
   // Lets the parent canvas block treat a touch as "drag to move" without
   // the 400ms long-press wait while an image is selected (Canva-style).
   onImageSelectedChange?: (selected: boolean) => void;
+  // Called when the user picks "Database" from the slash menu.
+  // Creates a new database block on the parent canvas alongside this text block.
+  onInsertDatabase?: () => void;
 }
 
 export function CanvasTextBlock({
@@ -64,6 +71,7 @@ export function CanvasTextBlock({
   onFocusChange,
   onImageResize,
   onImageSelectedChange,
+  onInsertDatabase,
 }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [slashOpen, setSlashOpen] = useState(false);
@@ -79,6 +87,10 @@ export function CanvasTextBlock({
   const slashRef = useRef({ open: false, idx: 0 });
   const menuRef = useRef<HTMLDivElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  // Mirror in a ref so the mount-time keydown closure can always read the
+  // latest onInsertDatabase without going stale.
+  const insertDbRef = useRef(onInsertDatabase);
+  insertDbRef.current = onInsertDatabase;
 
   const scheduleSave = useCallback(
     (editor: any) => {
@@ -98,7 +110,14 @@ export function CanvasTextBlock({
 
   const runSlash = useCallback((editor: any, idx: number) => {
     const cmd = SLASH_COMMANDS[idx];
-    if (cmd && editor) cmd.run(editor);
+    if (!cmd) { closeSlash(); return; }
+    if (cmd.kind === 'database') {
+      // Database blocks are canvas-level, not TipTap nodes — tell the
+      // parent canvas to insert one alongside this text block.
+      insertDbRef.current?.();
+    } else if (editor) {
+      cmd.run(editor);
+    }
     closeSlash();
   }, [closeSlash]);
 

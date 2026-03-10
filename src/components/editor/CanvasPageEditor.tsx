@@ -21,7 +21,7 @@ const DatabaseViewDynamic = dynamic(
 );
 
 // Fetches database by ID then renders DatabaseView — mirrors DatabaseEmbedView logic
-function CanvasDatabaseBlock({ databaseId }: { databaseId: string | null }) {
+function CanvasDatabaseBlock({ databaseId, onSelect }: { databaseId: string | null; onSelect?: (databaseId: string) => void }) {
   const [data, setData] = useState<any | null>(null);
   const [workspaceDbs, setWorkspaceDbs] = useState<{ id: string; name: string }[]>([]);
 
@@ -53,7 +53,7 @@ function CanvasDatabaseBlock({ databaseId }: { databaseId: string | null }) {
           <select
             className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none"
             defaultValue=""
-            onChange={(e) => { if (e.target.value) setData(null); /* handled via databaseId prop */ }}
+            onChange={(e) => { if (e.target.value) onSelect?.(e.target.value); }}
           >
             <option value="" disabled>Choose a database…</option>
             {workspaceDbs.map((db) => <option key={db.id} value={db.id}>{db.name}</option>)}
@@ -185,6 +185,7 @@ function CanvasCard({
   onResize,
   onResizeEnd,
   onDoubleTap,
+  onInsertDatabase,
 }: {
   block: CanvasBlockData;
   zoom: number;
@@ -199,6 +200,7 @@ function CanvasCard({
   onResize: (id: string, width: number) => void;
   onResizeEnd: (id: string) => void;
   onDoubleTap?: (block: CanvasBlockData) => void;
+  onInsertDatabase?: () => void;
 }) {
   // True while the user is intentionally moving this block on touch —
   // either because the parent says so (drag committed) or because the
@@ -541,7 +543,7 @@ function CanvasCard({
         {block.type === 'database' ? (
           // Databases keep their own border since they're a structured thing
           <div className="rounded-lg border border-border bg-surface overflow-hidden">
-            <CanvasDatabaseBlock databaseId={block.content?.databaseId} />
+            <CanvasDatabaseBlock databaseId={block.content?.databaseId} onSelect={(dbId) => onContentUpdate(block.id, { ...block.content, databaseId: dbId })} />
           </div>
         ) : (
           // Text blocks render flush — no card, no border, no padding.
@@ -556,6 +558,7 @@ function CanvasCard({
             onFocusChange={onFocusChange}
             onImageResize={handleImageResize}
             onImageSelectedChange={handleImageSelectedChange}
+            onInsertDatabase={onInsertDatabase}
           />
         )}
       </div>
@@ -1993,6 +1996,7 @@ export function CanvasPageEditor({
               onResize={handleResize}
               onResizeEnd={handleResizeEnd}
               onDoubleTap={focusOnBlock}
+              onInsertDatabase={addDatabaseBlock}
             />
           ))}
 
