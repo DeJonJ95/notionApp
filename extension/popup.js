@@ -19,6 +19,7 @@ function setStatus(text, kind) {
 function showConnected(connected) {
   $('connectForm').style.display = connected ? 'none' : 'block';
   $('connected').style.display = connected ? 'block' : 'none';
+  if (connected) refreshClipToggle();
 }
 
 async function refresh() {
@@ -29,6 +30,49 @@ async function refresh() {
     showConnected(false);
   }
 }
+
+// ── Per-tab clipping toggle ─────────────────────────────────────────
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab;
+}
+
+function setClipLabel(active) {
+  const btn = $('toggleClip');
+  btn.textContent = active ? 'Clipping is on — turn off' : 'Activate clipping on this page';
+  btn.dataset.active = active ? '1' : '0';
+}
+
+async function refreshClipToggle() {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.id) return;
+    const res = await chrome.runtime.sendMessage({ type: 'getClipForTab', tabId: tab.id });
+    setClipLabel(Boolean(res?.active));
+  } catch {
+    /* leave the default label */
+  }
+}
+
+$('toggleClip').addEventListener('click', async () => {
+  const tab = await getActiveTab();
+  if (!tab?.id) {
+    setStatus('No active tab to clip.', 'err');
+    return;
+  }
+  const next = $('toggleClip').dataset.active !== '1';
+  const res = await chrome.runtime.sendMessage({
+    type: 'setClipForTab',
+    tabId: tab.id,
+    active: next,
+  });
+  if (res?.ok) {
+    setClipLabel(next);
+    setStatus('');
+  } else {
+    setStatus(res?.error || "This page doesn't allow extensions.", 'err');
+  }
+});
 
 // Early guard: the default placeholder in config.js sends requests to
 // a domain we don't own, which returns Vercel's HTML 404 page. Show a

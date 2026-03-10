@@ -5,12 +5,21 @@ into a chosen note on your notes app with one click.
 
 ## How it works
 
-- **Hover any image ≥80×80** on any webpage → a small "Save to notes" button
+Clipping is **off by default** on every page. Turn it on per tab when you
+want it:
+
+- **Activate per page** — click the toolbar icon and hit **"Activate clipping
+  on this page."** Hover buttons stay off everywhere else until you do.
+- **Hover any image ≥80×80** (once activated) → a small "Save to notes" button
   floats over the top-right of the image.
-- **Right-click any image** → "Save image to notes" in the context menu.
-- Either path opens a picker: search through your 30 most recently-updated
+- **Right-click any image** → "Save image to notes" in the context menu. This
+  works on any page **without** activating — it's already an explicit action.
+- Any path opens a picker: search through your 30 most recently-updated
   notes, click one → image lands on that note's canvas, full-res, hosted on
   your R2 bucket so it doesn't break if the source site removes it.
+
+The activation state is remembered per tab (it survives reloads within that
+tab) and clears when you close the browser.
 
 ## One-time setup (per browser)
 

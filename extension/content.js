@@ -29,8 +29,27 @@
 
   let hoveredImage = null;
 
+  // Clipping is OFF by default on every page. The user turns it on per-tab
+  // from the toolbar popup; only then do the hover buttons appear. The
+  // authoritative state lives in the background worker (keyed by tab) so it
+  // survives reloads/navigations within the same tab — we just ask for it
+  // on load. The right-click "Save image to notes" menu works regardless,
+  // since that's already an explicit, on-demand action.
+  let clipActive = false;
+  try {
+    chrome.runtime.sendMessage({ type: 'getClipActive' }, (res) => {
+      if (chrome.runtime.lastError) return; // no receiver / restricted page
+      if (res?.active) {
+        clipActive = true;
+        showToast('Clipping on for this tab');
+      }
+    });
+  } catch {
+    /* extension context unavailable on this page */
+  }
+
   function updateHoverBtnPosition() {
-    if (!hoveredImage) {
+    if (!clipActive || !hoveredImage) {
       hoverBtn.classList.remove('visible');
       return;
     }
@@ -53,6 +72,7 @@
   }
 
   document.addEventListener('mouseover', (e) => {
+    if (!clipActive) return; // dormant until the user activates this tab
     const img = e.target instanceof HTMLImageElement ? e.target : null;
     if (img && img !== hoveredImage) {
       hoveredImage = img;
@@ -307,6 +327,16 @@
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg?.type === 'openPicker' && msg.sourceUrl) {
       openPicker(msg.sourceUrl, '');
+    }
+    // Live toggle from the popup — flip hover clipping on/off for this tab
+    // without needing a page reload.
+    if (msg?.type === 'applyClipActive') {
+      clipActive = !!msg.active;
+      if (!clipActive) {
+        hoveredImage = null;
+        hoverBtn.classList.remove('visible');
+      }
+      showToast(clipActive ? 'Clipping on for this tab' : 'Clipping off');
     }
   });
 })();
