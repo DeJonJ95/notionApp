@@ -77,6 +77,7 @@ export type CanvasBlockData = {
   canvasX: number;
   canvasY: number;
   canvasWidth: number;
+  canvasHeight: number | null;
 };
 
 type PageData = {
@@ -134,6 +135,7 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
         canvasX: DOC_X,
         canvasY: y,
         canvasWidth: DOC_W_DB,
+        canvasHeight: null,
       });
       y += 420 + BLOCK_GAP;
       j++;
@@ -163,6 +165,7 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
       canvasX: DOC_X,
       canvasY: y,
       canvasWidth: DOC_W_TEXT,
+      canvasHeight: null,
     });
     y += Math.max(40, groupH) + BLOCK_GAP;
   }
@@ -184,6 +187,8 @@ function CanvasCard({
   onFocusChange,
   onResize,
   onResizeEnd,
+  onResizeHeight,
+  onResizeHeightEnd,
   onDoubleTap,
   onInsertDatabase,
 }: {
@@ -199,6 +204,8 @@ function CanvasCard({
   onFocusChange: (id: string | null) => void;
   onResize: (id: string, width: number) => void;
   onResizeEnd: (id: string) => void;
+  onResizeHeight?: (id: string, height: number) => void;
+  onResizeHeightEnd?: (id: string) => void;
   onDoubleTap?: (block: CanvasBlockData) => void;
   onInsertDatabase?: () => void;
 }) {
@@ -541,44 +548,59 @@ function CanvasCard({
         onMouseLeave={() => onHover(null)}
       >
         {block.type === 'database' ? (
-          <div className="flex">
-            {/* Databases keep their own border since they're a structured thing */}
-            <div className="rounded-lg border border-border bg-surface overflow-hidden flex-1 min-w-0">
+          <div className="relative">
+            {/* Databases keep their own border since they're a structured thing.
+                When canvasHeight is set, clamp the height and let content scroll. */}
+            <div
+              className="rounded-lg border border-border bg-surface overflow-hidden flex-1 min-w-0"
+              style={block.canvasHeight ? { maxHeight: block.canvasHeight, overflowY: 'auto' } : {}}
+            >
               <CanvasDatabaseBlock databaseId={block.content?.databaseId} onSelect={(dbId) => onContentUpdate(block.id, { ...block.content, databaseId: dbId })} />
             </div>
-            {/* Resize handle — visible on hover. Counter-scaled so it stays
-                a usable size at any zoom level. */}
+            {/* Bottom-right corner resize handle — visible on hover.
+                Counter-scaled so it stays usable at any zoom level. */}
             <div
               data-resize-handle
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const startX = e.clientX;
+                const startY = e.clientY;
                 const startW = block.canvasWidth;
+                const startH = block.canvasHeight ?? 400;
+                const MIN_DB_H = 80;
+                const MAX_DB_H = 4000;
                 const onMove = (ev: PointerEvent) => {
                   ev.preventDefault();
                   const dx = (ev.clientX - startX) / zoom;
+                  const dy = (ev.clientY - startY) / zoom;
                   onResize(block.id, Math.max(MIN_BLOCK_W, Math.min(MAX_BLOCK_W, startW + dx)));
+                  onResizeHeight?.(block.id, Math.max(MIN_DB_H, Math.min(MAX_DB_H, startH + dy)));
                 };
                 const onUp = () => {
                   document.removeEventListener('pointermove', onMove);
                   document.removeEventListener('pointerup', onUp);
                   document.removeEventListener('pointercancel', onUp);
                   onResizeEnd(block.id);
+                  onResizeHeightEnd?.(block.id);
                 };
                 document.addEventListener('pointermove', onMove);
                 document.addEventListener('pointerup', onUp);
                 document.addEventListener('pointercancel', onUp);
               }}
-              className="pointer-events-auto hidden group-hover:flex cursor-col-resize items-center justify-center [@media(hover:none)]:!hidden"
+              className="pointer-events-auto absolute bottom-0 right-0 hidden group-hover:block cursor-nwse-resize [@media(hover:none)]:!hidden"
               style={{
-                width: 14,
-                marginLeft: -1,
+                width: 20,
+                height: 20,
                 transform: `scale(${Math.min(4, Math.max(1, 1 / zoom))})`,
-                transformOrigin: 'left center',
+                transformOrigin: 'bottom right',
               }}
             >
-              <div className="w-[3px] h-8 rounded-full bg-border hover:bg-accent transition-colors" />
+              <svg width="20" height="20" viewBox="0 0 20 20" className="text-muted hover:text-accent">
+                <line x1="14" y1="20" x2="20" y2="14" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="10" y1="20" x2="20" y2="10" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="6" y1="20" x2="20" y2="6" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
             </div>
           </div>
         ) : (
@@ -776,7 +798,7 @@ export function CanvasPageEditor({
 
   // ── Block creation ─────────────────────────────────────────────────────
   const createBlock = useCallback(
-    async (x: number, y: number, width = DOC_W_TEXT, type = 'text', content?: any) => {
+    async (x: number, y: number, width = DOC_W_TEXT, type = 'text', content?: any, height?: number | null) => {
       const body = {
         pageId: page.id,
         type,
@@ -784,6 +806,7 @@ export function CanvasPageEditor({
         canvasX: x,
         canvasY: y,
         canvasWidth: width,
+        canvasHeight: height ?? null,
         position: Date.now(),
       };
       const res = await fetch('/api/blocks', {
@@ -1040,6 +1063,23 @@ export function CanvasPageEditor({
     });
   }, []);
 
+  const handleResizeHeight = useCallback((id: string, height: number) => {
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, canvasHeight: height } : b)));
+  }, []);
+  const handleResizeHeightEnd = useCallback((id: string) => {
+    setBlocks((prev) => {
+      const b = prev.find((x) => x.id === id);
+      if (b) {
+        fetch(`/api/blocks/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ canvasHeight: b.canvasHeight }),
+        }).catch(() => {});
+      }
+      return prev;
+    });
+  }, []);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────
   // Refs to avoid re-registering the listener when canvasW/H change during animation.
   const fitToScreenAnimatedRef = useRef<(() => void) | null>(null);
@@ -1187,7 +1227,7 @@ export function CanvasPageEditor({
 
   // ── Add a database embed block (stacked below existing content) ───────
   const addDatabaseBlock = () => {
-    createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null });
+    createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null }, 400);
   };
 
   // ── Canvas size — grows with content AND always fills the viewport ────
@@ -2031,6 +2071,8 @@ export function CanvasPageEditor({
               onFocusChange={handleFocusChange}
               onResize={handleResize}
               onResizeEnd={handleResizeEnd}
+              onResizeHeight={handleResizeHeight}
+              onResizeHeightEnd={handleResizeHeightEnd}
               onDoubleTap={focusOnBlock}
               onInsertDatabase={addDatabaseBlock}
             />
