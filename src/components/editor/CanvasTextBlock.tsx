@@ -301,8 +301,41 @@ export function CanvasTextBlock({
     return () => document.removeEventListener('mousedown', onDown);
   }, [slashOpen, closeSlash]);
 
+  // Open the block menu programmatically (used by the touch "+" affordance,
+  // so mobile users don't have to type "/" from the symbol keyboard).
+  const openSlashMenu = useCallback(() => {
+    if (!editor) return;
+    editor.chain().focus().run();
+    let pos: { left: number; top: number } | null = null;
+    try {
+      const { from } = editor.state.selection;
+      const c = editor.view.coordsAtPos(from);
+      pos = { left: c.left, top: c.bottom + 4 };
+    } catch { /* fall through to block-rect fallback */ }
+    if (!pos && wrapRef.current) {
+      const r = wrapRef.current.getBoundingClientRect();
+      pos = { left: r.left, top: r.bottom + 4 };
+    }
+    slashRef.current = { open: true, idx: 0 };
+    setSlashPos(pos);
+    setSlashOpen(true);
+    setSlashIdx(0);
+  }, [editor]);
+
   return (
     <div ref={wrapRef} className="relative">
+      {/* Touch-only "+" gutter button — opens the block menu by tap.
+          Hidden on hover-capable (desktop) devices, which use "/". */}
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={openSlashMenu}
+        className="hidden [@media(hover:none)]:flex absolute -left-7 top-0 h-7 w-6 items-center justify-center rounded text-lg leading-none text-muted/70 active:bg-surface"
+        aria-label="Insert block"
+        title="Insert block"
+      >
+        +
+      </button>
       <EditorContent
         editor={editor}
         className="prose-base focus:outline-none min-h-[32px] text-text"
