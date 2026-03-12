@@ -23,6 +23,109 @@ model User {
   savingsGoals SavingsGoal[]
   clipperTokens ClipperToken[]
   importLogs    ImportLog[]
+  resumes         Resume[]
+  jobListings     JobListing[]
+  jobApplications JobApplication[]
+}
+
+// ── ApplyKit: AI job-application assistant ──────────────────────────
+// A base resume the user uploads (expect ~3: e.g. "Frontend",
+// "Full-stack", "Eng Manager"). The original .docx lives in R2; we cache
+// the extracted plain text so the AI match step doesn't re-parse on every
+// analysis. Keys are prefixed with the userId so download auth is a
+// simple prefix check.
+model Resume {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String
+  r2Key        String           // original .docx object key in R2
+  parsedText   String           @db.Text
+  createdAt    DateTime         @default(now())
+  applications JobApplication[]
+
+  @@index([userId])
+}
+
+// One ingested job posting (from the hiring.cafe extension capture or a
+// manual paste). De-duped per user by source URL so re-capturing the same
+// posting updates rather than duplicates.
+model JobListing {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceUrl   String          // hiring.cafe (or other) listing URL
+  applyUrl    String?         // employer ATS apply link if known
+  company     String
+  title       String
+  location    String?
+  remote      Boolean         @default(true)
+  description String          @db.Text
+  compMin     Int?
+  compMax     Int?
+  compCurrency String?        @default("USD")
+  field       String?         // e.g. "Frontend", "Data", "Eng Manager"
+  rawJson     Json?           // whatever the capture scraped, for debugging
+  createdAt   DateTime        @default(now())
+  analysis    Analysis?
+  application JobApplication?
+
+  @@unique([userId, sourceUrl])
+  @@index([userId])
+}
+
+// DeepSeek's structured read of a listing against the user's resumes.
+// 1:1 with a listing and fully regenerable (re-running replaces it).
+model Analysis {
+  id                  String     @id @default(cuid())
+  listingId           String     @unique
+  listing             JobListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  keywords            Json       // string[] of ATS keywords from the JD
+  requirements        Json       // string[] of hard requirements
+  recommendedResumeId String?
+  scores              Json       // [{ resumeId, label, score, rationale }]
+  suggestedTweaks     Json       // [{ original, rewrite, reason, resumeId }]
+  gaps                Json?      // string[] requirements no resume covers
+  atsNotes            String?    @db.Text
+  createdAt           DateTime   @default(now())
+}
+
+// Created when the user commits to applying. Holds the tailored .docx key
+// and drives the tracker. Status is a string validated by a zod enum in
+// src/lib/jobs/status.ts.
+model JobApplication {
+  id            String             @id @default(cuid())
+  userId        String
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId     String             @unique
+  listing       JobListing         @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  resumeId      String?
+  resume        Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  tailoredR2Key String?
+  status        String             @default("SAVED")
+  field         String?
+  compOfferMin  Int?
+  compOfferMax  Int?
+  notes         String?            @db.Text
+  appliedAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  events        ApplicationEvent[]
+
+  @@index([userId, status])
+}
+
+// Append-only status-change log so the tracker can show a timeline.
+model ApplicationEvent {
+  id            String         @id @default(cuid())
+  applicationId String
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    String?
+  toStatus      String
+  note          String?
+  createdAt     DateTime       @default(now())
+
+  @@index([applicationId])
 }
 
 // Bearer tokens issued to the browser extension. Stored as a SHA-256
