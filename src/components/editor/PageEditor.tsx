@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -6,7 +6,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Star } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -16,6 +16,12 @@ type PageData = {
   icon: string | null;
   cover: string | null;
   isFavorite: boolean;
+};
+
+type CommandItem = {
+  title: string;
+  description: string;
+  action: (editor: any) => void;
 };
 
 export function PageEditor({
@@ -30,15 +36,77 @@ export function PageEditor({
   const [icon, setIcon] = useState(page.icon);
   const [favorite, setFavorite] = useState(page.isFavorite);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved'>('saved');
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState(0);
+  const [slashRange, setSlashRange] = useState<{ from: number; to: number } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const lastSavedRef = useRef<{ title: string; content: any }>({
     title: page.title,
     content: initialContent,
   });
 
+  const commandItems: CommandItem[] = useMemo(
+    () => [
+      {
+        title: 'Text',
+        description: 'Continue writing with normal text.',
+        action: (editor) => editor.chain().focus().setParagraph().run(),
+      },
+      {
+        title: 'Heading 1',
+        description: 'Large section title.',
+        action: (editor) => editor.chain().focus().toggleHeading({ level: 1 }).run(),
+      },
+      {
+        title: 'Heading 2',
+        description: 'Smaller section title.',
+        action: (editor) => editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      },
+      {
+        title: 'Heading 3',
+        description: 'Subsection heading.',
+        action: (editor) => editor.chain().focus().toggleHeading({ level: 3 }).run(),
+      },
+      {
+        title: 'To-do list',
+        description: 'Add a checklist item.',
+        action: (editor) => editor.chain().focus().toggleTaskList().run(),
+      },
+      {
+        title: 'Bulleted list',
+        description: 'Start a bulleted list.',
+        action: (editor) => editor.chain().focus().toggleBulletList().run(),
+      },
+      {
+        title: 'Numbered list',
+        description: 'Start a numbered list.',
+        action: (editor) => editor.chain().focus().toggleOrderedList().run(),
+      },
+      {
+        title: 'Quote',
+        description: 'Add a quote block.',
+        action: (editor) => editor.chain().focus().toggleBlockquote().run(),
+      },
+      {
+        title: 'Code block',
+        description: 'Insert a code block.',
+        action: (editor) => editor.chain().focus().toggleCodeBlock().run(),
+      },
+      {
+        title: 'Divider',
+        description: 'Insert a horizontal divider.',
+        action: (editor) => editor.chain().focus().setHorizontalRule().run(),
+      },
+    ],
+    []
+  );
+
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+      }),
       Placeholder.configure({ placeholder: "Press '/' for commands, or just start writing…" }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -48,12 +116,65 @@ export function PageEditor({
     content: initialContent ?? '',
     editorProps: {
       attributes: {
-        class: 'prose-base focus:outline-none',
+        class: 'prose-base focus:outline-none min-h-[320px] pb-10',
+      },
+      handleDOMEvents: {
+        keydown: (view, event) => {
+          if (event.key === '/' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+            const { from } = view.state.selection;
+            const before = from > 0 ? view.state.doc.textBetween(from - 1, from, '\0', '\0') : '';
+            if (from === 0 || /\s/.test(before)) {
+              event.preventDefault();
+              setSlashOpen(true);
+              setSlashRange({ from, to: from });
+              setSelectedCommand(0);
+              return true;
+            }
+          }
+
+          if (slashOpen) {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setSelectedCommand((current) => (current + 1) % commandItems.length);
+              return true;
+            }
+            if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setSelectedCommand((current) =>
+                current === 0 ? commandItems.length - 1 : current - 1
+              );
+              return true;
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              const command = commandItems[selectedCommand];
+              if (command) executeSlashCommand(command.action);
+              return true;
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setSlashOpen(false);
+              return true;
+            }
+          }
+
+          return false;
+        },
       },
     },
     onUpdate: () => scheduleSave(),
     immediatelyRender: false,
   });
+
+  const executeSlashCommand = (action: (editor: any) => void) => {
+    if (!editor) return;
+    if (slashRange) {
+      editor.commands.deleteRange(slashRange);
+    }
+    action(editor);
+    setSlashOpen(false);
+    setSelectedCommand(0);
+  };
 
   const save = useCallback(
     async (data: { title?: string; icon?: string | null; isFavorite?: boolean; content?: any }) => {
@@ -101,6 +222,19 @@ export function PageEditor({
     };
   }, []);
 
+  useEffect(() => {
+    if (!slashOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setSlashOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [slashOpen]);
+
   const toggleFavorite = async () => {
     const next = !favorite;
     setFavorite(next);
@@ -117,7 +251,6 @@ export function PageEditor({
 
   return (
     <div className="max-w-3xl mx-auto px-6 md:px-12 py-10">
-      {/* Toolbar */}
       <div className="flex items-center justify-between mb-4 text-xs text-muted">
         <span>
           {savingState === 'saving' && 'Saving…'}
@@ -135,7 +268,6 @@ export function PageEditor({
         </button>
       </div>
 
-      {/* Icon */}
       <button
         onClick={changeIcon}
         className="text-5xl mb-3 hover:bg-surface rounded p-2 -ml-2 transition"
@@ -143,7 +275,6 @@ export function PageEditor({
         {icon ?? '📄'}
       </button>
 
-      {/* Title */}
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
@@ -151,8 +282,43 @@ export function PageEditor({
         className="w-full text-4xl font-bold bg-transparent outline-none placeholder:text-muted/40 mb-6"
       />
 
-      {/* Editor */}
-      <EditorContent editor={editor} />
+      <div className="mb-4 flex flex-wrap gap-2 text-sm">
+        {commandItems.slice(1, 6).map((item) => (
+          <button
+            key={item.title}
+            type="button"
+            onClick={() => executeSlashCommand(item.action)}
+            className="rounded-lg border border-border px-3 py-1 hover:bg-surface"
+          >
+            {item.title}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative">
+        {slashOpen && (
+          <div
+            ref={menuRef}
+            className="absolute z-20 mt-2 w-full rounded-xl border border-border bg-surface shadow-lg overflow-hidden"
+          >
+            {commandItems.map((item, index) => (
+              <button
+                key={item.title}
+                type="button"
+                onClick={() => executeSlashCommand(item.action)}
+                className={`w-full px-4 py-3 text-left hover:bg-bg transition ${
+                  selectedCommand === index ? 'bg-bg' : ''
+                }`}
+              >
+                <div className="font-medium">{item.title}</div>
+                <div className="text-xs text-muted">{item.description}</div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }
