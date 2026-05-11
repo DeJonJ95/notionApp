@@ -27,6 +27,12 @@ if (process.env.NODE_ENV === 'production') {
   if (Number.isNaN(emailServerPort)) {
     throw new Error('EMAIL_SERVER_PORT must be set to a valid port number');
   }
+
+  // Additional validation for email domain
+  const emailFrom = process.env.EMAIL_FROM;
+  if (emailFrom && !emailFrom.includes('@')) {
+    throw new Error('EMAIL_FROM must be a valid email address');
+  }
 }
 
 export const authOptions: NextAuthOptions = {
