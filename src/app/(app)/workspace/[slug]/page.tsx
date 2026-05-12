@@ -77,7 +77,6 @@ export default async function WorkspacePage({
           ))}
         </ul>
       </div>
-      </ul>
     </div>
   );
 }

@@ -18,6 +18,7 @@ interface Property {
   name: string;
   type: string;
   formula?: string;
+  position: number;
 }
 
 interface View {

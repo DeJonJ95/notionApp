@@ -6,6 +6,10 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Star } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -112,6 +116,10 @@ export function PageEditor({
       TaskItem.configure({ nested: true }),
       Link.configure({ openOnClick: false, autolink: true }),
       Image,
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableHeader,
+      TableCell,
     ],
     content: initialContent ?? '',
     editorProps: {

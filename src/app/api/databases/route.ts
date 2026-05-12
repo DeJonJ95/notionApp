@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma';
 
 export async function GET(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  if (!(session?.user as any)?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -20,15 +20,19 @@ export async function GET(request: NextRequest) {
     const databases = await prisma.database.findMany({
       where: { workspaceId },
       include: {
-        properties: true,
+        properties: {
+          orderBy: { position: 'asc' },
+        },
         views: true,
         pages: {
+          orderBy: { position: 'asc' },
           select: {
             id: true,
             title: true,
             icon: true,
+            position: true,
             properties: {
-              include: {
+              select: {
                 property: true,
                 value: true,
               },
@@ -47,7 +51,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  if (!(session?.user as any)?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
