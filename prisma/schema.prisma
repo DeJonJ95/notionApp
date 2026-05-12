@@ -29,10 +29,62 @@ model Workspace {
   ownerId   String
   owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   pages     Page[]
+  databases Database[]
   createdAt DateTime @default(now())
 
   @@unique([ownerId, slug])
   @@index([ownerId])
+}
+
+model Database {
+  id          String     @id @default(cuid())
+  name        String
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pages       Page[]
+  properties  Property[]
+  views       View[]
+  createdAt   DateTime   @default(now())
+
+  @@index([workspaceId])
+}
+
+model Property {
+  id         String   @id @default(cuid())
+  name       String
+  type       String   // text, number, date, select, etc.
+  formula    String?  // formula expression
+  databaseId String
+  database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  values     PropertyValue[]
+  createdAt  DateTime @default(now())
+
+  @@index([databaseId])
+}
+
+model PropertyValue {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  pageId     String
+  page       Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  value      Json     // the value, could be string, number, etc.
+
+  @@unique([propertyId, pageId])
+  @@index([pageId])
+}
+
+model View {
+  id         String   @id @default(cuid())
+  name       String
+  type       String   // table, gallery, list, etc.
+  databaseId String
+  database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  filters    Json?    // filter conditions
+  sorts      Json?    // sort conditions
+  createdAt  DateTime @default(now())
+
+  @@index([databaseId])
 }
 
 model Page {
@@ -42,12 +94,15 @@ model Page {
   cover       String?
   workspaceId String
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  databaseId  String?
+  database    Database? @relation(fields: [databaseId], references: [id], onDelete: SetNull)
   parentId    String?
   parent      Page?     @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children    Page[]    @relation("PageHierarchy")
   authorId    String
   author      User      @relation(fields: [authorId], references: [id])
   blocks      Block[]
+  properties  PropertyValue[]
   position    Float     @default(0)
   isFavorite  Boolean   @default(false)
   isArchived  Boolean   @default(false)
@@ -55,6 +110,7 @@ model Page {
   updatedAt   DateTime  @updatedAt
 
   @@index([workspaceId, parentId])
+  @@index([databaseId])
   @@index([authorId])
 }
 

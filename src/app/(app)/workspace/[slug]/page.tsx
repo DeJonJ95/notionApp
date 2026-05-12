@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NewPageButton } from '@/components/sidebar/NewPageButton';
+import { NewDatabaseButton } from '@/components/database/NewDatabaseButton';
 
 export default async function WorkspacePage({
   params,
@@ -19,6 +20,7 @@ export default async function WorkspacePage({
         where: { parentId: null, isArchived: false },
         orderBy: { position: 'asc' },
       },
+      databases: true,
     },
   });
 
@@ -32,22 +34,49 @@ export default async function WorkspacePage({
       </div>
       <p className="text-muted mb-8 text-sm">
         {workspace.pages.length} top-level page{workspace.pages.length === 1 ? '' : 's'}
+        {workspace.databases.length > 0 && ` • ${workspace.databases.length} database${workspace.databases.length === 1 ? '' : 's'}`}
       </p>
 
-      <NewPageButton workspaceId={workspace.id} />
+      <div className="flex gap-4">
+        <NewPageButton workspaceId={workspace.id} />
+        <NewDatabaseButton workspaceId={workspace.id} />
+      </div>
 
-      <ul className="mt-6 space-y-1">
-        {workspace.pages.map((p) => (
-          <li key={p.id}>
-            <Link
-              href={`/page/${p.id}`}
-              className="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-surface"
-            >
-              <span>{p.icon ?? '📄'}</span>
-              <span className="truncate">{p.title}</span>
-            </Link>
-          </li>
-        ))}
+      {workspace.databases.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Databases</h2>
+          <ul className="space-y-1">
+            {workspace.databases.map((db) => (
+              <li key={db.id}>
+                <Link
+                  href={`/database/${db.id}`}
+                  className="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-surface"
+                >
+                  <span>🗂️</span>
+                  <span className="truncate">{db.name}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-8">
+        <h2 className="text-xl font-semibold mb-4">Pages</h2>
+        <ul className="space-y-1">
+          {workspace.pages.map((p) => (
+            <li key={p.id}>
+              <Link
+                href={`/page/${p.id}`}
+                className="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-surface"
+              >
+                <span>{p.icon ?? '📄'}</span>
+                <span className="truncate">{p.title}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
       </ul>
     </div>
   );

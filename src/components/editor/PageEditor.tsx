@@ -94,9 +94,9 @@ export function PageEditor({
         action: (editor) => editor.chain().focus().toggleCodeBlock().run(),
       },
       {
-        title: 'Divider',
-        description: 'Insert a horizontal divider.',
-        action: (editor) => editor.chain().focus().setHorizontalRule().run(),
+        title: 'Table',
+        description: 'Insert a table.',
+        action: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
       },
     ],
     []

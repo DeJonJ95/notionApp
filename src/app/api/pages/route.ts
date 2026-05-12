@@ -8,6 +8,7 @@ const createSchema = z.object({
   parentId: z.string().nullable().optional(),
   title: z.string().optional(),
   icon: z.string().optional(),
+  databaseId: z.string().nullable().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -68,6 +69,7 @@ export async function POST(req: NextRequest) {
       parentId: parsed.data.parentId ?? null,
       title: parsed.data.title ?? 'Untitled',
       icon: parsed.data.icon,
+      databaseId: parsed.data.databaseId ?? null,
       authorId: userId,
       position: (last?.position ?? 0) + 1024,
     },
