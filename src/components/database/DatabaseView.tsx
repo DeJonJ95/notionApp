@@ -54,8 +54,14 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const [dragPropertyId, setDragPropertyId] = useState<string | null>(null);
 
   useEffect(() => {
-    setSelectedViewId(database.views?.[0]?.id ?? '');
-  }, [database.views]);
+    // Only reset to the first view if the currently selected view no longer exists
+    // (e.g. it was deleted). Avoid resetting on every data refresh, which would
+    // kick the user back to the first tab whenever any property or page changes.
+    const stillExists = database.views.some((v) => v.id === selectedViewId);
+    if (!stillExists) {
+      setSelectedViewId(database.views?.[0]?.id ?? '');
+    }
+  }, [database.views, selectedViewId]);
 
   const selectedView = useMemo(() => {
     const view = database.views.find((view) => view.id === selectedViewId);

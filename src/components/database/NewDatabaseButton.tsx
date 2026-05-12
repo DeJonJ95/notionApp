@@ -13,10 +13,13 @@ export function NewDatabaseButton({ workspaceId }: NewDatabaseButtonProps) {
   const router = useRouter();
 
   const createDatabase = async () => {
+    // Prompt before setting isCreating so the button isn't disabled
+    // while the native dialog is open (which blocks the JS thread anyway).
+    const name = prompt('Enter database name:');
+    if (!name) return;
+
     setIsCreating(true);
     try {
-      const name = prompt('Enter database name:');
-      if (!name) return;
 
       const res = await fetch('/api/databases', {
         method: 'POST',
