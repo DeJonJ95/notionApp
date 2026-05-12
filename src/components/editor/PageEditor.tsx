@@ -6,17 +6,12 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
-<<<<<<< HEAD
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Star } from 'lucide-react';
-=======
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { Star, Trash2 } from 'lucide-react';
->>>>>>> 6ae4e74 (new features)
 import { useRouter } from 'next/navigation';
 
 type PageData = {

@@ -21,8 +21,7 @@
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     },
-    "setupFilesAfterFramework": ["@testing-library/jest-dom"],
-    "testPathPattern": "src/__tests__/.*\\.test\\.(ts|tsx)$"
+    "setupFilesAfterEnv": ["@testing-library/jest-dom"]
   },
   "dependencies": {
     "@auth/prisma-adapter": "^1.4.0",
