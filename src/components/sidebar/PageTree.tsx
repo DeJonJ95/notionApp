@@ -1,7 +1,8 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight, ChevronDown, Plus } from 'lucide-react';
+import { useRouter, usePathname } from 'next/navigation';
+import { ChevronRight, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
@@ -81,6 +82,7 @@ export function PageTree({
                 level={0}
                 onCreateChild={createPage}
                 onNavigate={onNavigate}
+                onChange={onChange}
               />
             ))
           )}
@@ -96,18 +98,34 @@ function PageNode({
   level,
   onCreateChild,
   onNavigate,
+  onChange,
 }: {
   page: Page;
   allPages: Page[];
   level: number;
   onCreateChild: (parentId: string) => void;
   onNavigate?: () => void;
+  onChange: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
   const children = allPages
     .filter((p) => p.parentId === page.id)
     .sort((a, b) => a.position - b.position);
   const hasChildren = children.length > 0;
+
+  const deletePage = async () => {
+    if (!window.confirm(`Delete "${page.title || 'Untitled'}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/pages/${page.id}`, { method: 'DELETE' });
+    if (res.ok) {
+      onChange();
+      // Navigate away if the deleted page is currently open
+      if (pathname === `/page/${page.id}`) {
+        router.push('/');
+      }
+    }
+  };
 
   return (
     <div>
@@ -133,9 +151,16 @@ function PageNode({
         <button
           onClick={() => onCreateChild(page.id)}
           className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface"
-          aria-label="Add child"
+          aria-label="Add child page"
         >
           <Plus size={12} />
+        </button>
+        <button
+          onClick={deletePage}
+          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-surface text-muted hover:text-red-500"
+          aria-label="Delete page"
+        >
+          <Trash2 size={12} />
         </button>
       </div>
       {expanded && hasChildren && (
@@ -148,6 +173,7 @@ function PageNode({
               level={level + 1}
               onCreateChild={onCreateChild}
               onNavigate={onNavigate}
+              onChange={onChange}
             />
           ))}
         </div>

@@ -6,12 +6,17 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
+<<<<<<< HEAD
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Star } from 'lucide-react';
+=======
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Star, Trash2 } from 'lucide-react';
+>>>>>>> 6ae4e74 (new features)
 import { useRouter } from 'next/navigation';
 
 type PageData = {
@@ -257,6 +262,13 @@ export function PageEditor({
     }
   };
 
+  const deletePage = async () => {
+    if (!window.confirm(`Delete "${title || 'Untitled'}"? This cannot be undone.`)) return;
+    await fetch(`/api/pages/${page.id}`, { method: 'DELETE' });
+    router.push('/');
+    router.refresh();
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-6 md:px-12 py-10">
       <div className="flex items-center justify-between mb-4 text-xs text-muted">
@@ -264,16 +276,25 @@ export function PageEditor({
           {savingState === 'saving' && 'Saving…'}
           {savingState === 'saved' && 'Saved'}
         </span>
-        <button
-          onClick={toggleFavorite}
-          className="p-1.5 rounded hover:bg-surface"
-          aria-label="Favorite"
-        >
-          <Star
-            size={16}
-            className={favorite ? 'fill-yellow-400 stroke-yellow-500' : ''}
-          />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleFavorite}
+            className="p-1.5 rounded hover:bg-surface"
+            aria-label="Favorite"
+          >
+            <Star
+              size={16}
+              className={favorite ? 'fill-yellow-400 stroke-yellow-500' : ''}
+            />
+          </button>
+          <button
+            onClick={deletePage}
+            className="p-1.5 rounded hover:bg-surface text-muted hover:text-red-500"
+            aria-label="Delete page"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
       <button
