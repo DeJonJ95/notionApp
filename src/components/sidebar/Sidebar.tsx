@@ -23,6 +23,7 @@ export function Sidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
+  const [todayJournalId, setTodayJournalId] = useState<string | null>(null);
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -45,6 +46,25 @@ export function Sidebar() {
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(setPages)
       .catch((err) => console.error('Failed to load pages:', err));
+
+    // Auto-create today's journal page (idempotent — safe to call every mount).
+    // Pass the client's local date so the title matches the user's timezone.
+    const d = new Date();
+    const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    fetch(`/api/journal/today?date=${localDate}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.pageId) return;
+        setTodayJournalId(data.pageId);
+        if (data.created) {
+          // Refresh page tree so the new journal page appears in the sidebar.
+          fetch('/api/pages')
+            .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+            .then(setPages)
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const refresh = () => {
@@ -122,6 +142,16 @@ export function Sidebar() {
           >
             <Home size={14} /> Home
           </Link>
+
+          {todayJournalId && (
+            <Link
+              href={`/page/${todayJournalId}`}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg font-medium text-accent"
+            >
+              <span>📔</span> Today&apos;s Journal
+            </Link>
+          )}
 
           {favorites.length > 0 && (
             <div className="mt-4">
