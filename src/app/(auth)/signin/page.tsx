@@ -1,8 +1,21 @@
 'use client';
 import { signIn } from 'next-auth/react';
 import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
+
+const ERROR_MESSAGES: Record<string, string> = {
+  OAuthAccountNotLinked: 'This email is already registered with a different sign-in method. Try magic link instead.',
+  OAuthCallback: 'Google sign-in failed. Check that your OAuth redirect URI is configured correctly in Google Cloud Console.',
+  OAuthCreateAccount: 'Could not create account. Please try again.',
+  Callback: 'Authentication callback error. Please try again.',
+  Default: 'Something went wrong. Please try again.',
+};
 
 function SignInForm() {
+  const params = useSearchParams();
+  const errorCode = params.get('error');
+  const errorMessage = errorCode ? (ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.Default) : null;
+
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
 
@@ -19,6 +32,12 @@ function SignInForm() {
         <p className="text-muted text-sm mb-8">
           Your personal hub for work, side gigs, and life.
         </p>
+
+        {errorMessage && (
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+            {errorMessage}
+          </div>
+        )}
 
         {sent ? (
           <div className="rounded-lg border border-border p-4 text-sm">
