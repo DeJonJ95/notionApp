@@ -39,7 +39,9 @@ export async function POST(req: NextRequest) {
         data: {
           name: prop.name,
           type: prop.type,
-          formula: prop.options ? JSON.stringify(prop.options) : null,
+          formula: prop.type === 'formula'
+            ? (prop.formula ?? null)
+            : (prop.options ? JSON.stringify(prop.options) : null),
           position: (i + 1) * 1024,
           databaseId: db.id,
         },

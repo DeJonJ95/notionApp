@@ -1,12 +1,13 @@
 export type DbPropertyDef = {
   name: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'checkbox';
+  type: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'formula';
   options?: string[]; // select options — stored as JSON in property.formula
+  formula?: string;  // formula expression for formula type
 };
 
 export type DbViewDef = {
   name: string;
-  type: 'table' | 'board' | 'calendar' | 'gallery' | 'list';
+  type: 'table' | 'board' | 'calendar' | 'gallery' | 'list' | 'budget-summary' | 'spending-breakdown';
 };
 
 export type DbTemplate = {
@@ -47,7 +48,7 @@ export const DB_TEMPLATES: DbTemplate[] = [
       {
         name: 'Type',
         type: 'select',
-        options: ['Income', 'Fixed Expense', 'Variable Expense', 'Savings', 'Debt Payment', 'Transfer'],
+        options: ['Budget', 'Income', 'Fixed Expense', 'Variable Expense', 'Savings', 'Debt Payment', 'Transfer'],
       },
       {
         name: 'Category',
@@ -97,16 +98,14 @@ export const DB_TEMPLATES: DbTemplate[] = [
       { name: 'Tax Deductible', type: 'checkbox' },
       { name: 'Vendor', type: 'text' },
       { name: 'Notes', type: 'text' },
+      { name: 'Remaining', type: 'formula', formula: 'Budgeted Amount - Amount' },
     ],
     views: [
       { name: 'All Transactions', type: 'table' },
-      { name: 'By Category', type: 'board' },
-      { name: 'By Month', type: 'board' },
-      { name: 'By Type', type: 'board' },
-      { name: 'By Priority', type: 'board' },
-      { name: 'By Alert', type: 'board' },
-      { name: 'By Status', type: 'board' },
+      { name: 'Budget Summary', type: 'budget-summary' },
+      { name: 'Spending Breakdown', type: 'spending-breakdown' },
       { name: 'Calendar', type: 'calendar' },
+      { name: 'By Status', type: 'board' },
     ],
   },
 

@@ -66,6 +66,8 @@ const VIEW_TYPE_LABELS: Record<string, string> = {
   list: 'List',
   board: 'Board',
   calendar: 'Calendar',
+  'budget-summary': 'Budget',
+  'spending-breakdown': 'Spending',
 };
 
 export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
@@ -633,12 +635,209 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     );
   };
 
+  const renderBudgetSummaryView = () => {
+    const amountProp = database.properties.find((p) => p.name === 'Amount');
+    const budgetedProp = database.properties.find((p) => p.name === 'Budgeted Amount');
+    const categoryProp = database.properties.find((p) => p.type === 'select' && p.name === 'Category');
+    const typeProp = database.properties.find((p) => p.name === 'Type');
+
+    if (!amountProp || !categoryProp) {
+      return (
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted">
+          Budget Summary requires <strong className="text-text">Category</strong> and <strong className="text-text">Amount</strong> properties.
+        </div>
+      );
+    }
+
+    const fmtCurrency = (n: number) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+
+    const getVal = (page: (typeof renderedPages)[0], propId: string) =>
+      page.properties.find((v) => v.property.id === propId)?.value ?? null;
+
+    interface CatData { budgeted: number; spent: number }
+    const map = new Map<string, CatData>();
+
+    for (const page of renderedPages) {
+      const cat = String(getVal(page, categoryProp.id) ?? '');
+      if (!cat) continue;
+      const type = typeProp ? String(getVal(page, typeProp.id) ?? '') : '';
+      const amount = Math.abs(Number(getVal(page, amountProp.id) ?? 0));
+      const budgeted = budgetedProp ? Math.abs(Number(getVal(page, budgetedProp.id) ?? 0)) : 0;
+      if (!map.has(cat)) map.set(cat, { budgeted: 0, spent: 0 });
+      const entry = map.get(cat)!;
+      if (type === 'Budget') {
+        entry.budgeted += budgeted || amount;
+      } else if (type !== 'Income') {
+        entry.spent += amount;
+      }
+    }
+
+    const categories = Array.from(map.entries())
+      .map(([category, d]) => ({ category, ...d }))
+      .filter((c) => c.budgeted > 0 || c.spent > 0)
+      .sort((a, b) => {
+        const ra = a.budgeted > 0 ? a.spent / a.budgeted : (a.spent > 0 ? 2 : 0);
+        const rb = b.budgeted > 0 ? b.spent / b.budgeted : (b.spent > 0 ? 2 : 0);
+        return rb - ra;
+      });
+
+    const totalBudgeted = categories.reduce((s, c) => s + c.budgeted, 0);
+    const totalSpent = categories.reduce((s, c) => s + c.spent, 0);
+    const totalRemaining = totalBudgeted - totalSpent;
+
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border border-border bg-surface p-4 text-center">
+            <div className="text-xs text-muted uppercase tracking-wide mb-1">Budgeted</div>
+            <div className="text-xl font-bold text-text">{fmtCurrency(totalBudgeted)}</div>
+          </div>
+          <div className="rounded-lg border border-border bg-surface p-4 text-center">
+            <div className="text-xs text-muted uppercase tracking-wide mb-1">Spent</div>
+            <div className="text-xl font-bold text-text">{fmtCurrency(totalSpent)}</div>
+          </div>
+          <div className={`rounded-lg border p-4 text-center ${totalRemaining >= 0 ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+            <div className="text-xs text-muted uppercase tracking-wide mb-1">Remaining</div>
+            <div className={`text-xl font-bold ${totalRemaining >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtCurrency(totalRemaining)}</div>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {categories.length === 0 ? (
+            <div className="text-sm text-muted text-center py-8">
+              Add a row with Type = "Budget" to set envelope amounts, then add expense transactions to track spending.
+            </div>
+          ) : (
+            categories.map((c) => {
+              const pct = c.budgeted > 0 ? Math.min((c.spent / c.budgeted) * 100, 100) : 100;
+              const over = c.spent > c.budgeted && c.budgeted > 0;
+              const warn = !over && pct >= 80;
+              const barColor = over ? 'bg-red-500' : warn ? 'bg-yellow-500' : 'bg-green-500';
+              const remaining = c.budgeted - c.spent;
+              return (
+                <div key={c.category} className="rounded-lg border border-border bg-surface p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium text-text">{c.category}</span>
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-muted">{fmtCurrency(c.spent)} / {fmtCurrency(c.budgeted)}</span>
+                      <span className={over ? 'text-red-500 font-semibold' : remaining >= 0 ? 'text-green-600' : 'text-red-500'}>
+                        {over ? `${fmtCurrency(Math.abs(remaining))} over` : `${fmtCurrency(remaining)} left`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-bg rounded-full overflow-hidden border border-border/50">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  {c.budgeted === 0 && c.spent > 0 && (
+                    <div className="text-xs text-yellow-600 mt-1">No budget set — {fmtCurrency(c.spent)} unbudgeted</div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSpendingBreakdownView = () => {
+    const amountProp = database.properties.find((p) => p.name === 'Amount');
+    const categoryProp = database.properties.find((p) => p.type === 'select' && p.name === 'Category');
+    const typeProp = database.properties.find((p) => p.name === 'Type');
+
+    if (!amountProp) {
+      return (
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted">
+          Spending Breakdown requires an <strong className="text-text">Amount</strong> property.
+        </div>
+      );
+    }
+
+    const fmtCurrency = (n: number) =>
+      new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+
+    const getVal = (page: (typeof renderedPages)[0], propId: string) =>
+      page.properties.find((v) => v.property.id === propId)?.value ?? null;
+
+    let totalIncome = 0;
+    let totalExpenses = 0;
+    const catSpend = new Map<string, number>();
+
+    for (const page of renderedPages) {
+      const type = typeProp ? String(getVal(page, typeProp.id) ?? '') : '';
+      const amount = Math.abs(Number(getVal(page, amountProp.id) ?? 0));
+      if (!amount) continue;
+      if (type === 'Income') {
+        totalIncome += amount;
+      } else if (type !== 'Budget') {
+        totalExpenses += amount;
+        if (categoryProp) {
+          const cat = String(getVal(page, categoryProp.id) ?? 'Uncategorized') || 'Uncategorized';
+          catSpend.set(cat, (catSpend.get(cat) ?? 0) + amount);
+        }
+      }
+    }
+
+    const net = totalIncome - totalExpenses;
+    const entries = Array.from(catSpend.entries()).sort((a, b) => b[1] - a[1]);
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 text-center">
+            <div className="text-xs text-muted uppercase tracking-wide mb-1">Income</div>
+            <div className="text-xl font-bold text-green-600">{fmtCurrency(totalIncome)}</div>
+          </div>
+          <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 text-center">
+            <div className="text-xs text-muted uppercase tracking-wide mb-1">Expenses</div>
+            <div className="text-xl font-bold text-red-500">{fmtCurrency(totalExpenses)}</div>
+          </div>
+          <div className={`rounded-lg border p-4 text-center ${net >= 0 ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+            <div className="text-xs text-muted uppercase tracking-wide mb-1">Net</div>
+            <div className={`text-xl font-bold ${net >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtCurrency(net)}</div>
+          </div>
+        </div>
+        {categoryProp && entries.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Spending by Category</div>
+            <div className="space-y-3">
+              {entries.map(([cat, amount]) => {
+                const pct = totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0;
+                return (
+                  <div key={cat}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-text">{cat}</span>
+                      <div className="flex items-center gap-3 text-xs text-muted">
+                        <span>{fmtCurrency(amount)}</span>
+                        <span className="w-10 text-right">{pct.toFixed(1)}%</span>
+                      </div>
+                    </div>
+                    <div className="h-2.5 bg-bg rounded-full overflow-hidden border border-border/50">
+                      <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {entries.length === 0 && (
+          <div className="text-sm text-muted text-center py-8">
+            No expense transactions yet. Add rows with Amount and Category to see spending breakdown.
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderViewContent = (view: View) => {
     switch (view.type) {
       case 'gallery': return renderGalleryView();
       case 'list': return renderListView();
       case 'board': return renderBoardView();
       case 'calendar': return renderCalendarView();
+      case 'budget-summary': return renderBudgetSummaryView();
+      case 'spending-breakdown': return renderSpendingBreakdownView();
       default: return renderTableView();
     }
   };
@@ -892,7 +1091,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
               <div>
                 <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Type</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['table', 'gallery', 'list', 'board', 'calendar'] as const).map((t) => (
+                  {(['table', 'board', 'calendar', 'gallery', 'list', 'budget-summary', 'spending-breakdown'] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => setNewViewType(t)}
