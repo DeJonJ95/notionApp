@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { BudgetReminders } from '@/components/budget/BudgetReminders';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -25,6 +26,9 @@ export default async function DashboardPage() {
         Hi{session?.user?.name ? `, ${session.user.name.split(' ')[0]}` : ''}
       </h1>
       <p className="text-muted mb-10">Pick up where you left off.</p>
+
+      {/* Budget reminders — only renders if there are upcoming/overdue items */}
+      <BudgetReminders />
 
       <section className="mb-12">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3">

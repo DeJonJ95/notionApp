@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2 } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
@@ -30,6 +30,7 @@ export function Sidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [extractOpen, setExtractOpen] = useState(false);
+  const [reminderCount, setReminderCount] = useState(0);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [todayJournalId, setTodayJournalId] = useState<string | null>(null);
@@ -55,6 +56,10 @@ export function Sidebar() {
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(setPages)
       .catch((err) => console.error('Failed to load pages:', err));
+    fetch('/api/budget/reminders')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setReminderCount(d.overdue + d.dueSoon ? d.overdue.length + d.dueSoon.length : 0); })
+      .catch(() => {});
 
     // Auto-create today's journal page (idempotent — safe to call every mount).
     // Pass the client's local date so the title matches the user's timezone.
@@ -184,6 +189,20 @@ export function Sidebar() {
           >
             <Sparkles size={14} /> Extract from notes
           </button>
+
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
+          >
+            <Bell size={14} />
+            <span className="flex-1">Reminders</span>
+            {reminderCount > 0 && (
+              <span className="text-[10px] bg-red-500 text-white rounded-full px-1.5 py-px font-semibold leading-none">
+                {reminderCount}
+              </span>
+            )}
+          </Link>
 
           {isAdmin && (
             <Link

@@ -37,22 +37,113 @@ export const DB_TEMPLATES: DbTemplate[] = [
     ],
   },
 
+  // ── Advanced Personal Budget (transactions ledger) ──────────────────────────
   {
     id: 'personal-budget',
     name: 'Personal Budget',
-    description: 'Log income and expenses by category to stay on top of your finances.',
+    description: 'YNAB-inspired transaction ledger with due-date reminders, category envelopes, budget period targets, and overspending alerts.',
     icon: '💰',
     properties: [
-      { name: 'Type', type: 'select', options: ['Income', 'Expense'] },
-      { name: 'Category', type: 'select', options: ['Housing', 'Food', 'Transport', 'Utilities', 'Health', 'Entertainment', 'Savings', 'Other'] },
+      {
+        name: 'Type',
+        type: 'select',
+        options: ['Income', 'Fixed Expense', 'Variable Expense', 'Savings', 'Debt Payment', 'Transfer'],
+      },
+      {
+        name: 'Category',
+        type: 'select',
+        options: [
+          'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
+          'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
+          'Subscriptions', 'Investments', 'Debt', 'Business', 'Gifts & Donations',
+          'Emergency Fund', 'Other',
+        ],
+      },
       { name: 'Amount', type: 'number' },
+      { name: 'Budgeted Amount', type: 'number' },
       { name: 'Date', type: 'date' },
+      { name: 'Due Date', type: 'date' },
+      {
+        name: 'Month',
+        type: 'select',
+        options: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+      },
+      {
+        name: 'Budget Period',
+        type: 'select',
+        options: ['Weekly', 'Bi-Weekly', 'Monthly', 'Quarterly', 'Annual', 'One-Time'],
+      },
+      {
+        name: 'Priority',
+        type: 'select',
+        options: ['Must Pay', 'Need', 'Want', 'Saving Goal'],
+      },
+      {
+        name: 'Alert',
+        type: 'select',
+        options: ['On Track', 'Due Soon', 'Overdue', 'Over Budget', 'Needs Attention'],
+      },
+      {
+        name: 'Payment Method',
+        type: 'select',
+        options: ['Checking', 'Savings', 'Credit Card', 'Debit Card', 'Cash', 'Venmo / Zelle', 'Other'],
+      },
+      {
+        name: 'Status',
+        type: 'select',
+        options: ['Planned', 'Pending', 'Cleared'],
+      },
+      { name: 'Recurring', type: 'checkbox' },
+      { name: 'Tax Deductible', type: 'checkbox' },
+      { name: 'Vendor', type: 'text' },
       { name: 'Notes', type: 'text' },
     ],
     views: [
       { name: 'All Transactions', type: 'table' },
-      { name: 'Calendar', type: 'calendar' },
+      { name: 'By Category', type: 'board' },
+      { name: 'By Month', type: 'board' },
       { name: 'By Type', type: 'board' },
+      { name: 'By Priority', type: 'board' },
+      { name: 'By Alert', type: 'board' },
+      { name: 'By Status', type: 'board' },
+      { name: 'Calendar', type: 'calendar' },
+    ],
+  },
+
+  // ── Budget Planner (YNAB-style envelope budgeting) ───────────────────────────
+  {
+    id: 'budget-planner',
+    name: 'Budget Planner',
+    description: 'YNAB-style envelope budgeting. Set weekly, bi-weekly, and monthly targets per category. Track spent vs budgeted to see what\'s available.',
+    icon: '📊',
+    properties: [
+      {
+        name: 'Category',
+        type: 'select',
+        options: [
+          'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
+          'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
+          'Subscriptions', 'Investments', 'Debt', 'Business', 'Gifts & Donations',
+          'Emergency Fund', 'Other',
+        ],
+      },
+      { name: 'Weekly Budget', type: 'number' },
+      { name: 'Bi-Weekly Budget', type: 'number' },
+      { name: 'Monthly Budget', type: 'number' },
+      { name: 'Spent', type: 'number' },
+      { name: 'Remaining', type: 'number' },
+      {
+        name: 'Status',
+        type: 'select',
+        options: ['On Track', 'Warning', 'Over Budget', 'Funded', 'Underfunded'],
+      },
+      { name: 'Goal', type: 'number' },
+      { name: 'Notes', type: 'text' },
+    ],
+    views: [
+      { name: 'All Envelopes', type: 'table' },
+      { name: 'By Status', type: 'board' },
+      { name: 'Gallery', type: 'gallery' },
     ],
   },
 
