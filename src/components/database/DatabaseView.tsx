@@ -60,6 +60,48 @@ function getSelectOptions(property: Property): string[] {
   }
 }
 
+type BudgetPeriod = 'Weekly' | 'Bi-Weekly' | 'Monthly';
+
+function getBudgetWindow(period: BudgetPeriod, anchor: Date): { start: Date; end: Date; label: string } {
+  const d = new Date(anchor);
+  if (period === 'Monthly') {
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return { start, end, label: start.toLocaleString('default', { month: 'long', year: 'numeric' }) };
+  }
+  const day = d.getDay();
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  monday.setHours(0, 0, 0, 0);
+  if (period === 'Weekly') {
+    const end = new Date(monday);
+    end.setDate(monday.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    const fmt = (dt: Date) => dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return { start: monday, end, label: `${fmt(monday)} – ${fmt(end)}` };
+  }
+  // Bi-Weekly: snap to a 2-week cycle anchored on Mon Jan 6, 2025
+  const epoch = new Date(2025, 0, 6);
+  const weekOffset = Math.floor((monday.getTime() - epoch.getTime()) / (7 * 24 * 60 * 60 * 1000));
+  const start = new Date(monday);
+  if (weekOffset % 2 !== 0) start.setDate(monday.getDate() - 7);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 13);
+  end.setHours(23, 59, 59, 999);
+  const fmt = (dt: Date) => dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return { start, end, label: `${fmt(start)} – ${fmt(end)}` };
+}
+
+function normalizeBudgetAmount(amount: number, fromPeriod: string, toPeriod: BudgetPeriod): number {
+  const annualFactor: Record<string, number> = {
+    'Weekly': 52, 'Bi-Weekly': 26, 'Monthly': 12, 'Quarterly': 4, 'Annual': 1,
+  };
+  const targetFactor: Record<BudgetPeriod, number> = { 'Weekly': 52, 'Bi-Weekly': 26, 'Monthly': 12 };
+  const from = annualFactor[fromPeriod];
+  if (!from) return amount; // One-Time or unknown — use as-is
+  return (amount * from) / targetFactor[toPeriod];
+}
+
 const VIEW_TYPE_LABELS: Record<string, string> = {
   table: 'Table',
   gallery: 'Gallery',
@@ -90,6 +132,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [groupByPropertyId, setGroupByPropertyId] = useState<string | null>(null);
   const [calendarDatePropertyId, setCalendarDatePropertyId] = useState<string | null>(null);
+  const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>('Monthly');
+  const [budgetWindowDate, setBudgetWindowDate] = useState(() => new Date());
 
   useEffect(() => {
     const stillExists = database.views.some((v) => v.id === selectedViewId);
@@ -247,6 +291,16 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     if (!dragPageId) return;
     await updatePropertyValue(dragPageId, groupPropId, columnValue || null, 'select');
     setDragPageId(null);
+  };
+
+  const advanceBudgetWindow = (dir: 1 | -1) => {
+    setBudgetWindowDate((prev) => {
+      const d = new Date(prev);
+      if (budgetPeriod === 'Monthly') d.setMonth(d.getMonth() + dir);
+      else if (budgetPeriod === 'Weekly') d.setDate(d.getDate() + dir * 7);
+      else d.setDate(d.getDate() + dir * 14);
+      return d;
+    });
   };
 
   const togglePropertyVisibility = (id: string) => {
@@ -635,11 +689,53 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     );
   };
 
+  const renderBudgetPeriodToolbar = () => {
+    const win = getBudgetWindow(budgetPeriod, budgetWindowDate);
+    return (
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="flex rounded-lg border border-border overflow-hidden text-xs font-medium">
+          {(['Weekly', 'Bi-Weekly', 'Monthly'] as BudgetPeriod[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => setBudgetPeriod(p)}
+              className={`px-3 py-1.5 transition-colors ${budgetPeriod === p ? 'bg-accent text-white' : 'bg-bg text-muted hover:bg-surface'}`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => advanceBudgetWindow(-1)}
+            className="p-1.5 rounded hover:bg-surface border border-border text-text"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <span className="text-sm font-medium text-text min-w-36 text-center">{win.label}</span>
+          <button
+            onClick={() => advanceBudgetWindow(1)}
+            className="p-1.5 rounded hover:bg-surface border border-border text-text"
+          >
+            <ChevronRight size={14} />
+          </button>
+          <button
+            onClick={() => setBudgetWindowDate(new Date())}
+            className="text-xs text-accent hover:underline ml-1"
+          >
+            Today
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const renderBudgetSummaryView = () => {
     const amountProp = database.properties.find((p) => p.name === 'Amount');
     const budgetedProp = database.properties.find((p) => p.name === 'Budgeted Amount');
     const categoryProp = database.properties.find((p) => p.type === 'select' && p.name === 'Category');
     const typeProp = database.properties.find((p) => p.name === 'Type');
+    const dateProp = database.properties.find((p) => p.name === 'Date' && p.type === 'date');
+    const budgetPeriodProp = database.properties.find((p) => p.name === 'Budget Period');
 
     if (!amountProp || !categoryProp) {
       return (
@@ -648,6 +744,16 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
         </div>
       );
     }
+
+    const win = getBudgetWindow(budgetPeriod, budgetWindowDate);
+    const winStartStr = `${win.start.getFullYear()}-${String(win.start.getMonth() + 1).padStart(2, '0')}-${String(win.start.getDate()).padStart(2, '0')}`;
+    const winEndStr = `${win.end.getFullYear()}-${String(win.end.getMonth() + 1).padStart(2, '0')}-${String(win.end.getDate()).padStart(2, '0')}`;
+    const inWindow = (dateVal: unknown) => {
+      if (!dateProp) return true; // no Date property — show all
+      if (!dateVal) return false;
+      const s = String(dateVal).slice(0, 10);
+      return s >= winStartStr && s <= winEndStr;
+    };
 
     const fmtCurrency = (n: number) =>
       new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
@@ -663,13 +769,17 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       if (!cat) continue;
       const type = typeProp ? String(getVal(page, typeProp.id) ?? '') : '';
       const amount = Math.abs(Number(getVal(page, amountProp.id) ?? 0));
-      const budgeted = budgetedProp ? Math.abs(Number(getVal(page, budgetedProp.id) ?? 0)) : 0;
+      const budgetedRaw = budgetedProp ? Math.abs(Number(getVal(page, budgetedProp.id) ?? 0)) : 0;
       if (!map.has(cat)) map.set(cat, { budgeted: 0, spent: 0 });
       const entry = map.get(cat)!;
       if (type === 'Budget') {
-        entry.budgeted += budgeted || amount;
+        const rawBudget = budgetedRaw || amount;
+        const fromPeriod = budgetPeriodProp ? String(getVal(page, budgetPeriodProp.id) ?? '') : '';
+        entry.budgeted += fromPeriod ? normalizeBudgetAmount(rawBudget, fromPeriod, budgetPeriod) : rawBudget;
       } else if (type !== 'Income') {
-        entry.spent += amount;
+        if (inWindow(dateProp ? getVal(page, dateProp.id) : null)) {
+          entry.spent += amount;
+        }
       }
     }
 
@@ -688,6 +798,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
     return (
       <div className="space-y-4">
+        {renderBudgetPeriodToolbar()}
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-surface p-4 text-center">
             <div className="text-xs text-muted uppercase tracking-wide mb-1">Budgeted</div>
@@ -744,6 +855,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     const amountProp = database.properties.find((p) => p.name === 'Amount');
     const categoryProp = database.properties.find((p) => p.type === 'select' && p.name === 'Category');
     const typeProp = database.properties.find((p) => p.name === 'Type');
+    const dateProp = database.properties.find((p) => p.name === 'Date' && p.type === 'date');
 
     if (!amountProp) {
       return (
@@ -752,6 +864,16 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
         </div>
       );
     }
+
+    const win = getBudgetWindow(budgetPeriod, budgetWindowDate);
+    const winStartStr = `${win.start.getFullYear()}-${String(win.start.getMonth() + 1).padStart(2, '0')}-${String(win.start.getDate()).padStart(2, '0')}`;
+    const winEndStr = `${win.end.getFullYear()}-${String(win.end.getMonth() + 1).padStart(2, '0')}-${String(win.end.getDate()).padStart(2, '0')}`;
+    const inWindow = (dateVal: unknown) => {
+      if (!dateProp) return true;
+      if (!dateVal) return false;
+      const s = String(dateVal).slice(0, 10);
+      return s >= winStartStr && s <= winEndStr;
+    };
 
     const fmtCurrency = (n: number) =>
       new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
@@ -765,11 +887,14 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
     for (const page of renderedPages) {
       const type = typeProp ? String(getVal(page, typeProp.id) ?? '') : '';
+      if (type === 'Budget') continue;
+      const dateVal = dateProp ? getVal(page, dateProp.id) : null;
+      if (!inWindow(dateVal)) continue;
       const amount = Math.abs(Number(getVal(page, amountProp.id) ?? 0));
       if (!amount) continue;
       if (type === 'Income') {
         totalIncome += amount;
-      } else if (type !== 'Budget') {
+      } else {
         totalExpenses += amount;
         if (categoryProp) {
           const cat = String(getVal(page, categoryProp.id) ?? 'Uncategorized') || 'Uncategorized';
@@ -783,6 +908,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
     return (
       <div className="space-y-6">
+        {renderBudgetPeriodToolbar()}
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-lg border border-green-500/30 bg-green-500/5 p-4 text-center">
             <div className="text-xs text-muted uppercase tracking-wide mb-1">Income</div>
