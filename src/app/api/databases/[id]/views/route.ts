@@ -18,7 +18,7 @@ export async function POST(
     return NextResponse.json({ error: 'Name and type required' }, { status: 400 });
   }
 
-  if (!['table', 'gallery', 'list'].includes(type)) {
+  if (!['table', 'gallery', 'list', 'board', 'calendar'].includes(type)) {
     return NextResponse.json({ error: 'Unsupported view type' }, { status: 400 });
   }
 

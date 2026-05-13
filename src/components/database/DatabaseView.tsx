@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, Settings, GripHorizontal } from 'lucide-react';
+import {
+  Plus, GripHorizontal, Trash2, ChevronLeft, ChevronRight,
+  Eye, EyeOff, X, Settings, Columns,
+} from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 
 interface Database {
@@ -47,364 +50,877 @@ interface DatabaseViewProps {
   onUpdate: () => void;
 }
 
+function getSelectOptions(property: Property): string[] {
+  if (property.type !== 'select') return [];
+  try {
+    const parsed = JSON.parse(property.formula || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+const VIEW_TYPE_LABELS: Record<string, string> = {
+  table: 'Table',
+  gallery: 'Gallery',
+  list: 'List',
+  board: 'Board',
+  calendar: 'Calendar',
+};
+
 export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const [newPageTitle, setNewPageTitle] = useState('');
   const [selectedViewId, setSelectedViewId] = useState(database.views?.[0]?.id ?? '');
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitViewId, setSplitViewId] = useState<string>(database.views?.[1]?.id ?? '');
   const [dragPageId, setDragPageId] = useState<string | null>(null);
   const [dragPropertyId, setDragPropertyId] = useState<string | null>(null);
+  const [hiddenPropertyIds, setHiddenPropertyIds] = useState<Set<string>>(new Set());
+  const [showPropertyPanel, setShowPropertyPanel] = useState(false);
+  const [showAddProperty, setShowAddProperty] = useState(false);
+  const [showAddView, setShowAddView] = useState(false);
+  const [newPropName, setNewPropName] = useState('');
+  const [newPropType, setNewPropType] = useState('text');
+  const [newPropOptions, setNewPropOptions] = useState('');
+  const [newPropFormula, setNewPropFormula] = useState('');
+  const [newViewName, setNewViewName] = useState('New View');
+  const [newViewType, setNewViewType] = useState('table');
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [groupByPropertyId, setGroupByPropertyId] = useState<string | null>(null);
+  const [calendarDatePropertyId, setCalendarDatePropertyId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Only reset to the first view if the currently selected view no longer exists
-    // (e.g. it was deleted). Avoid resetting on every data refresh, which would
-    // kick the user back to the first tab whenever any property or page changes.
     const stillExists = database.views.some((v) => v.id === selectedViewId);
-    if (!stillExists) {
-      setSelectedViewId(database.views?.[0]?.id ?? '');
-    }
+    if (!stillExists) setSelectedViewId(database.views?.[0]?.id ?? '');
   }, [database.views, selectedViewId]);
 
   const selectedView = useMemo(() => {
-    const view = database.views.find((view) => view.id === selectedViewId);
-    return view ?? database.views[0] ?? { id: 'default', name: 'Table', type: 'table' };
+    return (
+      database.views.find((v) => v.id === selectedViewId) ??
+      database.views[0] ??
+      { id: 'default', name: 'Table', type: 'table' }
+    );
   }, [database.views, selectedViewId]);
+
+  const splitView = useMemo(() => {
+    return database.views.find((v) => v.id === splitViewId) ?? database.views[1] ?? null;
+  }, [database.views, splitViewId]);
 
   const renderedPages = useMemo(() => {
     return database.pages.map((page) => {
       const rawValues: Record<string, any> = {};
-      page.properties.forEach((pv) => {
-        rawValues[pv.property.name] = pv.value;
-      });
-
+      page.properties.forEach((pv) => { rawValues[pv.property.name] = pv.value; });
       const formulaValues = computeFormulaValues(database.properties, rawValues);
-
       const properties = database.properties.map((prop) => {
         const existing = page.properties.find((pv) => pv.property.id === prop.id);
-        return {
-          property: prop,
-          value: prop.formula ? formulaValues[prop.id] : existing?.value ?? '',
-        };
+        return { property: prop, value: prop.formula && prop.type === 'formula' ? formulaValues[prop.id] : existing?.value ?? '' };
       });
-
       return { ...page, properties };
     });
   }, [database.pages, database.properties]);
 
+  const visibleProperties = useMemo(
+    () => database.properties.filter((p) => !hiddenPropertyIds.has(p.id)),
+    [database.properties, hiddenPropertyIds]
+  );
+
+  const selectProperties = useMemo(() => database.properties.filter((p) => p.type === 'select'), [database.properties]);
+  const dateProperties = useMemo(() => database.properties.filter((p) => p.type === 'date'), [database.properties]);
+
+  const boardGroupProperty = useMemo(
+    () => database.properties.find((p) => p.id === groupByPropertyId) ?? selectProperties[0] ?? null,
+    [database.properties, groupByPropertyId, selectProperties]
+  );
+
+  const calendarDateProperty = useMemo(
+    () => database.properties.find((p) => p.id === calendarDatePropertyId) ?? dateProperties[0] ?? null,
+    [database.properties, calendarDatePropertyId, dateProperties]
+  );
+
+  // --- Handlers ---
+
   const addPage = async () => {
     if (!newPageTitle.trim()) return;
-
-    try {
-      const res = await fetch('/api/pages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspaceId: database.workspaceId, // Assuming we have it
-          title: newPageTitle,
-          databaseId: database.id,
-        }),
-      });
-
-      if (res.ok) {
-        setNewPageTitle('');
-        onUpdate();
-      }
-    } catch (error) {
-      console.error('Error adding page:', error);
-    }
+    const res = await fetch('/api/pages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workspaceId: database.workspaceId, title: newPageTitle, databaseId: database.id }),
+    });
+    if (res.ok) { setNewPageTitle(''); onUpdate(); }
   };
 
-  const addProperty = async () => {
-    const name = prompt('Property name:');
-    const type = prompt('Property type (text, number, date, select, formula):') || 'text';
-    if (!name) return;
-
+  const handleAddProperty = async () => {
+    if (!newPropName.trim()) return;
     let formula: string | undefined;
-    if (type === 'formula') {
-      formula = prompt('Formula expression (use property names):')?.trim() || undefined;
-      if (!formula) return;
+    if (newPropType === 'formula') {
+      if (!newPropFormula.trim()) return;
+      formula = newPropFormula.trim();
+    } else if (newPropType === 'select') {
+      const opts = newPropOptions.split('\n').map((s) => s.trim()).filter(Boolean);
+      formula = JSON.stringify(opts);
     }
+    await fetch(`/api/databases/${database.id}/properties`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newPropName, type: newPropType, databaseId: database.id, formula }),
+    });
+    setShowAddProperty(false);
+    setNewPropName(''); setNewPropType('text'); setNewPropOptions(''); setNewPropFormula('');
+    onUpdate();
+  };
 
-    try {
-      await fetch(`/api/databases/${database.id}/properties`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type, databaseId: database.id, formula }),
-      });
+  const deleteProperty = async (propertyId: string) => {
+    if (!confirm('Delete this property and all its values?')) return;
+    await fetch(`/api/databases/${database.id}/properties/${propertyId}`, { method: 'DELETE' });
+    onUpdate();
+  };
+
+  const handleAddView = async () => {
+    if (!newViewName.trim()) return;
+    const res = await fetch(`/api/databases/${database.id}/views`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newViewName, type: newViewType, databaseId: database.id }),
+    });
+    if (res.ok) {
+      setShowAddView(false);
+      setNewViewName('New View'); setNewViewType('table');
       onUpdate();
-    } catch (error) {
-      console.error('Error adding property:', error);
     }
   };
 
-  const addView = async () => {
-    const name = prompt('View name:', 'New view');
-    const type = prompt('View type (table, gallery, list):', 'table');
-    if (!name || !type) return;
-
-    try {
-      const res = await fetch(`/api/databases/${database.id}/views`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, type, databaseId: database.id }),
-      });
-      if (res.ok) {
-        onUpdate();
-      }
-    } catch (error) {
-      console.error('Error adding view:', error);
-    }
-  };
-
-  const updatePropertyValue = async (
-    pageId: string,
-    propertyId: string,
-    value: any,
-    propertyType: string
-  ) => {
+  const updatePropertyValue = async (pageId: string, propertyId: string, value: any, propertyType: string) => {
     if (propertyType === 'formula') return;
-
-    const payload = {
-      pageId,
-      propertyId,
-      value: propertyType === 'number' ? (value === '' ? null : Number(value)) : value,
-    };
-
-    try {
-      await fetch('/api/property-values', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      onUpdate();
-    } catch (error) {
-      console.error('Error updating property value:', error);
-    }
+    const coerced =
+      propertyType === 'number' ? (value === '' ? null : Number(value)) :
+      propertyType === 'checkbox' ? Boolean(value) :
+      (value === '' ? null : value);
+    await fetch('/api/property-values', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pageId, propertyId, value: coerced }),
+    });
+    onUpdate();
   };
 
   const handlePageDrop = async (targetId: string) => {
-    if (!dragPageId || dragPageId === targetId) {
-      setDragPageId(null);
-      return;
-    }
-
-    const ordered = database.pages.filter((page) => page.id !== dragPageId);
-    const dragged = database.pages.find((page) => page.id === dragPageId);
+    if (!dragPageId || dragPageId === targetId) { setDragPageId(null); return; }
+    const ordered = database.pages.filter((p) => p.id !== dragPageId);
+    const dragged = database.pages.find((p) => p.id === dragPageId);
     if (!dragged) return;
-
-    const index = ordered.findIndex((page) => page.id === targetId);
+    const index = ordered.findIndex((p) => p.id === targetId);
     ordered.splice(index, 0, dragged);
-
     const prev = ordered[index - 1] ?? null;
     const next = ordered[index + 1] ?? null;
     const position = getPositionBetween(prev?.position ?? null, next?.position ?? null);
-
-    try {
-      await fetch(`/api/pages/${dragPageId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ position }),
-      });
-      onUpdate();
-    } catch (error) {
-      console.error('Error reordering pages:', error);
-    } finally {
-      setDragPageId(null);
-    }
+    await fetch(`/api/pages/${dragPageId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position }),
+    });
+    setDragPageId(null);
+    onUpdate();
   };
 
   const handlePropertyDrop = async (targetId: string) => {
-    if (!dragPropertyId || dragPropertyId === targetId) {
-      setDragPropertyId(null);
-      return;
-    }
-
-    const ordered = database.properties.filter((prop) => prop.id !== dragPropertyId);
-    const dragged = database.properties.find((prop) => prop.id === dragPropertyId);
+    if (!dragPropertyId || dragPropertyId === targetId) { setDragPropertyId(null); return; }
+    const ordered = database.properties.filter((p) => p.id !== dragPropertyId);
+    const dragged = database.properties.find((p) => p.id === dragPropertyId);
     if (!dragged) return;
-
-    const index = ordered.findIndex((prop) => prop.id === targetId);
+    const index = ordered.findIndex((p) => p.id === targetId);
     ordered.splice(index, 0, dragged);
-
     const prev = ordered[index - 1] ?? null;
     const next = ordered[index + 1] ?? null;
     const position = getPositionBetween(prev?.position ?? null, next?.position ?? null);
+    await fetch(`/api/databases/${database.id}/properties`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderedIds: ordered.map((p) => p.id), movedId: dragPropertyId, position }),
+    });
+    setDragPropertyId(null);
+    onUpdate();
+  };
 
-    try {
-      await fetch(`/api/databases/${database.id}/properties`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderedIds: ordered.map((prop) => prop.id), movedId: dragPropertyId, position }),
-      });
-      onUpdate();
-    } catch (error) {
-      console.error('Error reordering properties:', error);
-    } finally {
-      setDragPropertyId(null);
+  const handleBoardDrop = async (columnValue: string, groupPropId: string) => {
+    if (!dragPageId) return;
+    await updatePropertyValue(dragPageId, groupPropId, columnValue || null, 'select');
+    setDragPageId(null);
+  };
+
+  const togglePropertyVisibility = (id: string) => {
+    setHiddenPropertyIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  // --- Shared property input renderer ---
+
+  const renderPropertyInput = (page: Page, pv: PropertyValue) => {
+    if (pv.property.type === 'formula') {
+      return <span className="text-sm text-muted">{String(pv.value ?? '')}</span>;
+    }
+    const base = 'bg-bg text-text border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent w-full';
+    switch (pv.property.type) {
+      case 'checkbox':
+        return (
+          <input
+            type="checkbox"
+            checked={!!pv.value}
+            onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.checked, 'checkbox')}
+            className="w-4 h-4 cursor-pointer accent-accent"
+          />
+        );
+      case 'date':
+        return (
+          <input
+            type="date"
+            value={pv.value ? String(pv.value) : ''}
+            onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value || null, 'date')}
+            className={base}
+          />
+        );
+      case 'select': {
+        const options = getSelectOptions(pv.property);
+        return (
+          <select
+            value={String(pv.value ?? '')}
+            onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value || null, 'select')}
+            className={base}
+          >
+            <option value="">— none —</option>
+            {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+        );
+      }
+      case 'number':
+        return (
+          <input
+            type="number"
+            value={pv.value !== null && pv.value !== undefined ? String(pv.value) : ''}
+            onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value, 'number')}
+            className={base}
+            placeholder="0"
+          />
+        );
+      default:
+        return (
+          <input
+            type="text"
+            value={String(pv.value ?? '')}
+            onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value, 'text')}
+            className={base}
+            placeholder={`${pv.property.name}…`}
+          />
+        );
     }
   };
 
+  // --- View renderers ---
+
+  const renderTableView = () => (
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-collapse border border-border text-text">
+        <thead>
+          <tr className="bg-surface">
+            <th className="border border-border px-4 py-2 text-left text-sm font-semibold text-text">Name</th>
+            {visibleProperties.map((prop) => (
+              <th
+                key={prop.id}
+                draggable
+                onDragStart={() => setDragPropertyId(prop.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handlePropertyDrop(prop.id)}
+                className="border border-border px-4 py-2 text-left text-sm font-semibold text-text group"
+              >
+                <div className="flex items-center gap-1 min-w-0">
+                  <GripHorizontal size={14} className="text-muted shrink-0 cursor-grab" />
+                  <span className="truncate">{prop.name}</span>
+                  <span className="text-xs text-muted capitalize shrink-0">({prop.type})</span>
+                  <button
+                    onClick={() => deleteProperty(prop.id)}
+                    className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 transition-opacity shrink-0"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {renderedPages.map((page) => (
+            <tr
+              key={page.id}
+              draggable
+              onDragStart={() => setDragPageId(page.id)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handlePageDrop(page.id)}
+              className="hover:bg-surface transition-colors"
+            >
+              <td className="border border-border px-4 py-2">
+                <div className="flex items-center gap-2 text-text font-medium">
+                  <span>{page.icon ?? '📄'}</span>
+                  <span>{page.title}</span>
+                </div>
+              </td>
+              {visibleProperties.map((prop) => {
+                const pv = page.properties.find((v) => v.property.id === prop.id) ?? { property: prop, value: '' };
+                return (
+                  <td key={prop.id} className="border border-border px-4 py-2">
+                    {renderPropertyInput(page, pv)}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const renderGalleryView = () => (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {renderedPages.map((page) => (
+        <div
+          key={page.id}
+          draggable
+          onDragStart={() => setDragPageId(page.id)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => handlePageDrop(page.id)}
+          className="border border-border rounded-lg p-4 bg-surface hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xl">{page.icon ?? '📄'}</span>
+            <span className="font-semibold text-text truncate">{page.title}</span>
+          </div>
+          <div className="space-y-2">
+            {visibleProperties.map((prop) => {
+              const pv = page.properties.find((v) => v.property.id === prop.id) ?? { property: prop, value: '' };
+              return (
+                <div key={prop.id} className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-muted uppercase tracking-wide">{prop.name}</span>
+                  {renderPropertyInput(page, pv)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderListView = () => (
+    <div className="space-y-2">
+      {renderedPages.map((page) => (
+        <div
+          key={page.id}
+          draggable
+          onDragStart={() => setDragPageId(page.id)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => handlePageDrop(page.id)}
+          className="flex items-start gap-4 border border-border rounded-lg p-3 bg-surface hover:shadow-sm transition-shadow"
+        >
+          <GripHorizontal size={18} className="text-muted mt-0.5 shrink-0 cursor-grab" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <span>{page.icon ?? '📄'}</span>
+              <span className="font-semibold text-text">{page.title}</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {visibleProperties.map((prop) => {
+                const pv = page.properties.find((v) => v.property.id === prop.id) ?? { property: prop, value: '' };
+                return (
+                  <div key={prop.id} className="flex items-center gap-1 text-sm">
+                    <span className="text-muted">{prop.name}:</span>
+                    <div className="max-w-40">{renderPropertyInput(page, pv)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderBoardView = () => {
+    if (!boardGroupProperty) {
+      return (
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted">
+          Board view requires a <strong className="text-text">select</strong> property to group by.
+          Add a select property first using "Add Property".
+        </div>
+      );
+    }
+
+    const options = getSelectOptions(boardGroupProperty);
+    const columns = [
+      { id: '', label: 'No Status' },
+      ...options.map((o) => ({ id: o, label: o })),
+    ];
+
+    const getColPages = (colId: string) =>
+      renderedPages.filter((p) => {
+        const pv = p.properties.find((v) => v.property.id === boardGroupProperty.id);
+        return (String(pv?.value ?? '')) === colId;
+      });
+
+    return (
+      <div>
+        <div className="flex items-center gap-3 mb-4 text-sm text-muted">
+          <span>Group by:</span>
+          <select
+            value={boardGroupProperty.id}
+            onChange={(e) => setGroupByPropertyId(e.target.value)}
+            className="bg-bg text-text border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            {selectProperties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {columns.map((col) => {
+            const colPages = getColPages(col.id);
+            return (
+              <div
+                key={col.id}
+                className="flex-shrink-0 w-64"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleBoardDrop(col.id, boardGroupProperty.id)}
+              >
+                <div className="bg-surface border border-border rounded-t-lg px-3 py-2 flex items-center justify-between">
+                  <span className="font-semibold text-sm text-text">{col.label}</span>
+                  <span className="text-xs bg-border text-muted rounded-full px-2 py-0.5">{colPages.length}</span>
+                </div>
+                <div className="border border-t-0 border-border rounded-b-lg min-h-32 p-2 space-y-2 bg-bg">
+                  {colPages.map((page) => (
+                    <div
+                      key={page.id}
+                      draggable
+                      onDragStart={() => setDragPageId(page.id)}
+                      className="bg-surface border border-border rounded-lg p-3 cursor-grab hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span>{page.icon ?? '📄'}</span>
+                        <span className="font-medium text-sm text-text truncate">{page.title}</span>
+                      </div>
+                      {visibleProperties
+                        .filter((p) => p.id !== boardGroupProperty.id)
+                        .slice(0, 3)
+                        .map((prop) => {
+                          const pv = page.properties.find((v) => v.property.id === prop.id);
+                          const val = pv?.value;
+                          if (!val && val !== 0 && val !== false) return null;
+                          return (
+                            <div key={prop.id} className="text-xs text-muted">
+                              {prop.name}: {prop.type === 'checkbox' ? (val ? '✓' : '✗') : String(val)}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  ))}
+                  {colPages.length === 0 && (
+                    <div className="text-xs text-muted text-center py-4">Drop here</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderCalendarView = () => {
+    if (!calendarDateProperty) {
+      return (
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted">
+          Calendar view requires a <strong className="text-text">date</strong> property.
+          Add a date property first using "Add Property".
+        </div>
+      );
+    }
+
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+    const monthLabel = calendarDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const cells: (null | { day: number; dateStr: string; pages: typeof renderedPages })[] = [];
+    for (let i = 0; i < firstWeekday; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const pages = renderedPages.filter((p) => {
+        const pv = p.properties.find((v) => v.property.id === calendarDateProperty.id);
+        return pv?.value === dateStr;
+      });
+      cells.push({ day: d, dateStr, pages });
+    }
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    return (
+      <div>
+        <div className="flex items-center gap-4 mb-4">
+          {dateProperties.length > 1 && (
+            <select
+              value={calendarDateProperty.id}
+              onChange={(e) => setCalendarDatePropertyId(e.target.value)}
+              className="bg-bg text-text border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              {dateProperties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
+          <button
+            onClick={() => setCalendarDate(new Date(year, month - 1))}
+            className="p-1.5 rounded hover:bg-surface border border-border text-text"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="font-semibold text-text min-w-36 text-center">{monthLabel}</span>
+          <button
+            onClick={() => setCalendarDate(new Date(year, month + 1))}
+            className="p-1.5 rounded hover:bg-surface border border-border text-text"
+          >
+            <ChevronRight size={16} />
+          </button>
+          <button
+            onClick={() => setCalendarDate(new Date())}
+            className="text-xs text-accent hover:underline"
+          >
+            Today
+          </button>
+        </div>
+        <div className="border border-border rounded-lg overflow-hidden">
+          <div className="grid grid-cols-7">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+              <div key={d} className="bg-surface px-2 py-2 text-xs font-semibold text-muted text-center border-b border-border">
+                {d}
+              </div>
+            ))}
+            {cells.map((cell, i) => (
+              <div
+                key={i}
+                className={`min-h-24 p-1.5 border-b border-r border-border last:border-r-0 bg-bg ${!cell ? 'bg-surface/40' : ''}`}
+              >
+                {cell && (
+                  <>
+                    <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${cell.dateStr === todayStr ? 'bg-accent text-white' : 'text-muted'}`}>
+                      {cell.day}
+                    </div>
+                    <div className="space-y-0.5">
+                      {cell.pages.map((page) => (
+                        <div
+                          key={page.id}
+                          className="text-xs bg-accent/15 text-accent rounded px-1.5 py-0.5 truncate font-medium"
+                          title={page.title}
+                        >
+                          {page.icon} {page.title}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderViewContent = (view: View) => {
+    switch (view.type) {
+      case 'gallery': return renderGalleryView();
+      case 'list': return renderListView();
+      case 'board': return renderBoardView();
+      case 'calendar': return renderCalendarView();
+      default: return renderTableView();
+    }
+  };
+
+  const renderViewPane = (view: View, onViewChange: (id: string) => void) => (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
+        {database.views.map((v) => (
+          <button
+            key={v.id}
+            onClick={() => onViewChange(v.id)}
+            className={`px-3 py-1 rounded text-sm whitespace-nowrap border transition-colors ${
+              v.id === view.id
+                ? 'bg-text text-bg border-text'
+                : 'bg-bg text-text border-border hover:bg-surface'
+            }`}
+          >
+            {v.name}
+            <span className="ml-1.5 text-xs opacity-60">({VIEW_TYPE_LABELS[v.type] ?? v.type})</span>
+          </button>
+        ))}
+      </div>
+      {renderViewContent(view)}
+    </div>
+  );
+
   return (
     <div className="space-y-4">
+      {/* Toolbar */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
-            placeholder="New page title..."
+            placeholder="New page title…"
             value={newPageTitle}
             onChange={(e) => setNewPageTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && addPage()}
-            className="px-3 py-1 border rounded"
+            className="px-3 py-1.5 bg-bg text-text border border-border rounded focus:outline-none focus:ring-1 focus:ring-accent text-sm"
           />
           <button
             onClick={addPage}
-            className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="p-2 bg-accent text-white rounded hover:bg-accent/80 transition-colors"
+            title="Add page"
           >
             <Plus size={16} />
           </button>
           <button
-            onClick={addProperty}
-            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+            onClick={() => setShowAddProperty(true)}
+            className="px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border transition-colors text-sm"
           >
             Add Property
           </button>
           <button
-            onClick={addView}
-            className="px-3 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-600"
+            onClick={() => setShowAddView(true)}
+            className="px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border transition-colors text-sm"
           >
             Add View
           </button>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          {database.views.map((view) => (
-            <button
-              key={view.id}
-              onClick={() => setSelectedViewId(view.id)}
-              className={`px-3 py-1 rounded border ${selectedViewId === view.id ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300'}`}
-            >
-              {view.name}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowPropertyPanel((v) => !v)}
+            title="Toggle property visibility"
+            className={`p-2 rounded border transition-colors ${showPropertyPanel ? 'bg-accent text-white border-accent' : 'bg-surface text-text border-border hover:bg-border'}`}
+          >
+            <Settings size={16} />
+          </button>
+          <button
+            onClick={() => setSplitEnabled((v) => !v)}
+            title="Toggle split view"
+            className={`p-2 rounded border transition-colors ${splitEnabled ? 'bg-accent text-white border-accent' : 'bg-surface text-text border-border hover:bg-border'}`}
+          >
+            <Columns size={16} />
+          </button>
         </div>
       </div>
 
-      <div className="flex gap-2 flex-wrap items-center text-sm text-gray-500">
-        <span>View type:</span>
-        <span className="font-medium capitalize">{selectedView.type}</span>
-      </div>
-
-      {selectedView.type === 'gallery' ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          {renderedPages.map((page) => (
-            <div
-              key={page.id}
-              draggable
-              onDragStart={() => setDragPageId(page.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => handlePageDrop(page.id)}
-              className="border rounded p-4 hover:shadow-sm"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <span>{page.icon ?? '📄'}</span>
-                <div>
-                  <div className="font-semibold">{page.title}</div>
-                  <div className="text-xs text-gray-500">Drag to reorder</div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                {page.properties.map((pv) => (
-                  <div key={pv.property.id} className="text-sm">
-                    <span className="font-medium">{pv.property.name}:</span> {pv.value ?? ''}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+      {/* Property visibility panel */}
+      {showPropertyPanel && (
+        <div className="border border-border rounded-lg p-3 bg-surface">
+          <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">Property Visibility</div>
+          <div className="flex flex-wrap gap-2">
+            {database.properties.map((prop) => {
+              const visible = !hiddenPropertyIds.has(prop.id);
+              return (
+                <button
+                  key={prop.id}
+                  onClick={() => togglePropertyVisibility(prop.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                    visible ? 'bg-accent/10 text-accent border-accent/30' : 'bg-bg text-muted border-border'
+                  }`}
+                >
+                  {visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                  {prop.name}
+                  <span className="opacity-60 capitalize">({prop.type})</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      ) : selectedView.type === 'list' ? (
-        <div className="space-y-3">
-          {renderedPages.map((page) => (
-            <div
-              key={page.id}
-              draggable
-              onDragStart={() => setDragPageId(page.id)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => handlePageDrop(page.id)}
-              className="flex items-center justify-between gap-4 border rounded p-3 hover:bg-gray-50"
-            >
-              <div>
-                <div className="font-semibold">{page.title}</div>
-                <div className="text-sm text-gray-600">
-                  {database.properties
-                    .map((prop) => {
-                      const pv = page.properties.find((value) => value.property.id === prop.id);
-                      return pv ? `${prop.name}: ${pv.value}` : '';
-                    })
-                    .filter(Boolean)
-                    .join(' · ')}
-                </div>
-              </div>
-              <GripHorizontal size={20} className="text-gray-500" />
-            </div>
-          ))}
+      )}
+
+      {/* View content: single or split */}
+      {splitEnabled && splitView ? (
+        <div className="grid grid-cols-2 gap-6 min-w-0">
+          <div className="min-w-0 border-r border-border pr-6">
+            {renderViewPane(selectedView, setSelectedViewId)}
+          </div>
+          <div className="min-w-0">
+            {renderViewPane(splitView, setSplitViewId)}
+          </div>
+        </div>
+      ) : splitEnabled && !splitView ? (
+        <div className="text-sm text-muted border border-border rounded-lg p-4 bg-surface">
+          Add a second view to use split mode.
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse border border-gray-300">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="border border-gray-300 px-4 py-2 text-left">Name</th>
-                {database.properties.map((prop) => (
-                  <th
-                    key={prop.id}
-                    draggable
-                    onDragStart={() => setDragPropertyId(prop.id)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={() => handlePropertyDrop(prop.id)}
-                    className="border border-gray-300 px-4 py-2 text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <GripHorizontal size={16} />
-                      <span>{prop.name}</span>
-                      {prop.formula ? <span className="text-xs text-gray-500">(formula)</span> : null}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {renderedPages.map((page) => (
-                <tr
-                  key={page.id}
-                  draggable
-                  onDragStart={() => setDragPageId(page.id)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => handlePageDrop(page.id)}
-                  className="hover:bg-gray-50"
+        <div>
+          <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
+            {database.views.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setSelectedViewId(v.id)}
+                className={`px-3 py-1 rounded text-sm whitespace-nowrap border transition-colors ${
+                  v.id === selectedViewId
+                    ? 'bg-text text-bg border-text'
+                    : 'bg-bg text-text border-border hover:bg-surface'
+                }`}
+              >
+                {v.name}
+                <span className="ml-1.5 text-xs opacity-60">({VIEW_TYPE_LABELS[v.type] ?? v.type})</span>
+              </button>
+            ))}
+          </div>
+          {renderViewContent(selectedView)}
+        </div>
+      )}
+
+      {/* Add Property Modal */}
+      {showAddProperty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAddProperty(false)}>
+          <div
+            className="bg-bg border border-border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-text text-lg">Add Property</h3>
+              <button onClick={() => setShowAddProperty(false)} className="text-muted hover:text-text">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Name</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={newPropName}
+                  onChange={(e) => setNewPropName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddProperty()}
+                  placeholder="Property name"
+                  className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Type</label>
+                <select
+                  value={newPropType}
+                  onChange={(e) => setNewPropType(e.target.value)}
+                  className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
                 >
-                  <td className="border border-gray-300 px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <span>{page.icon ?? '📄'}</span>
-                      <span>{page.title}</span>
-                    </div>
-                  </td>
-                  {page.properties.map((pv) => (
-                    <td key={pv.property.id} className="border border-gray-300 px-4 py-2">
-                      {pv.property.formula ? (
-                        <div className="text-sm text-gray-700">{pv.value ?? ''}</div>
-                      ) : (
-                        <input
-                          type={pv.property.type === 'number' ? 'number' : 'text'}
-                          value={pv.value ?? ''}
-                          onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value, pv.property.type)}
-                          className="w-full px-2 py-1 border rounded"
-                          placeholder={`Enter ${pv.property.name}`}
-                        />
-                      )}
-                    </td>
+                  <option value="text">Text</option>
+                  <option value="number">Number</option>
+                  <option value="date">Date</option>
+                  <option value="checkbox">Checkbox</option>
+                  <option value="select">Select</option>
+                  <option value="formula">Formula</option>
+                </select>
+              </div>
+              {newPropType === 'select' && (
+                <div>
+                  <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Options (one per line)</label>
+                  <textarea
+                    value={newPropOptions}
+                    onChange={(e) => setNewPropOptions(e.target.value)}
+                    placeholder={"To Do\nIn Progress\nDone"}
+                    rows={4}
+                    className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent resize-none"
+                  />
+                </div>
+              )}
+              {newPropType === 'formula' && (
+                <div>
+                  <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Formula</label>
+                  <input
+                    type="text"
+                    value={newPropFormula}
+                    onChange={(e) => setNewPropFormula(e.target.value)}
+                    placeholder="e.g. Price * Quantity"
+                    className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={handleAddProperty}
+                disabled={!newPropName.trim()}
+                className="flex-1 bg-accent text-white rounded px-4 py-2 text-sm font-medium hover:bg-accent/80 disabled:opacity-40 transition-colors"
+              >
+                Add Property
+              </button>
+              <button
+                onClick={() => setShowAddProperty(false)}
+                className="px-4 py-2 bg-surface text-text border border-border rounded text-sm hover:bg-border transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add View Modal */}
+      {showAddView && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAddView(false)}>
+          <div
+            className="bg-bg border border-border rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-text text-lg">Add View</h3>
+              <button onClick={() => setShowAddView(false)} className="text-muted hover:text-text">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Name</label>
+                <input
+                  autoFocus
+                  type="text"
+                  value={newViewName}
+                  onChange={(e) => setNewViewName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddView()}
+                  className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['table', 'gallery', 'list', 'board', 'calendar'] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setNewViewType(t)}
+                      className={`px-3 py-2 rounded border text-sm capitalize transition-colors ${
+                        newViewType === t
+                          ? 'bg-accent text-white border-accent'
+                          : 'bg-bg text-text border-border hover:bg-surface'
+                      }`}
+                    >
+                      {VIEW_TYPE_LABELS[t]}
+                    </button>
                   ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={handleAddView}
+                disabled={!newViewName.trim()}
+                className="flex-1 bg-accent text-white rounded px-4 py-2 text-sm font-medium hover:bg-accent/80 disabled:opacity-40 transition-colors"
+              >
+                Add View
+              </button>
+              <button
+                onClick={() => setShowAddView(false)}
+                className="px-4 py-2 bg-surface text-text border border-border rounded text-sm hover:bg-border transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
