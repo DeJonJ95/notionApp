@@ -11,8 +11,9 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Star, Trash2 } from 'lucide-react';
+import { Star, Trash2, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { OrganizeModal } from '@/components/extract/OrganizeModal';
 
 type PageData = {
   id: string;
@@ -41,6 +42,7 @@ export function PageEditor({
   const [favorite, setFavorite] = useState(page.isFavorite);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved'>('saved');
   const [slashOpen, setSlashOpen] = useState(false);
+  const [organizeOpen, setOrganizeOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [slashRange, setSlashRange] = useState<{ from: number; to: number } | null>(null);
   // Shadow ref keeps slash state accessible inside the editor's stable (stale-closure) keydown handler.
@@ -346,7 +348,27 @@ export function PageEditor({
             {item.title}
           </button>
         ))}
+        <div className="w-px bg-border mx-1 self-stretch" />
+        <button
+          type="button"
+          onClick={() => setOrganizeOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface text-accent"
+        >
+          <Sparkles size={13} />
+          Organize with AI
+        </button>
       </div>
+
+      {organizeOpen && editor && (
+        <OrganizeModal
+          rawText={editor.getText()}
+          onClose={() => setOrganizeOpen(false)}
+          onAccept={(html) => {
+            editor.commands.setContent(html);
+            scheduleSave();
+          }}
+        />
+      )}
 
       <div className="relative">
         {slashOpen && (
