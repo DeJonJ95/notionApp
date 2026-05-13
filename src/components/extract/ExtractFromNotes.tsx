@@ -233,7 +233,7 @@ export function ExtractFromNotes({ onClose }: Props) {
                           {v === null || v === undefined ? '—' : String(v)}
                         </span>
                       ))}
-                    {c.action === 'create' && c.row['Name'] && (
+                    {c.action === 'create' && Boolean(c.row['Name']) && (
                       <span className="text-xs bg-surface border border-border rounded px-2 py-0.5 text-text">
                         <span className="text-muted">Name:</span> {String(c.row['Name'])}
                       </span>
