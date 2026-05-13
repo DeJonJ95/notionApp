@@ -8,7 +8,8 @@ import { SearchModal } from '@/components/search/SearchModal';
 import { TemplateModal } from '@/components/templates/TemplateModal';
 import { cn } from '@/lib/utils';
 
-type Workspace = { id: string; name: string; slug: string; icon: string | null };
+type Database = { id: string; name: string };
+type Workspace = { id: string; name: string; slug: string; icon: string | null; databases: Database[] };
 type Page = {
   id: string;
   title: string;
@@ -74,6 +75,10 @@ export function Sidebar() {
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(setPages)
       .catch((err) => console.error('Failed to refresh pages:', err));
+    fetch('/api/workspaces')
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(setWorkspaces)
+      .catch((err) => console.error('Failed to refresh workspaces:', err));
   };
 
   const favorites = pages.filter((p) => p.isFavorite);
@@ -193,6 +198,7 @@ export function Sidebar() {
                 key={w.id}
                 workspace={w}
                 pages={pages.filter((p) => p.workspaceId === w.id)}
+                databases={w.databases}
                 onChange={refresh}
                 onNavigate={() => setOpen(false)}
               />
