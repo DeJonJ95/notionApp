@@ -41,7 +41,6 @@ export function PageTree({
     if (res.ok) {
       const page = await res.json();
       onChange();
-      // Use client-side navigation to preserve React state instead of a full reload.
       router.push(`/page/${page.id}`);
     }
   };
@@ -49,17 +48,26 @@ export function PageTree({
   return (
     <div>
       <div className="flex items-center group px-1">
+        {/* Expand/collapse chevron — separate from navigation */}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1 flex-1 px-1 py-1 rounded hover:bg-bg text-xs uppercase tracking-wide text-muted"
+          className="p-1 rounded hover:bg-bg text-muted shrink-0"
+          aria-label={expanded ? 'Collapse' : 'Expand'}
         >
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          <span>{workspace.icon}</span>
-          <span className="truncate">{workspace.name}</span>
         </button>
+        {/* Workspace name — navigates to workspace page */}
+        <Link
+          href={`/workspace/${workspace.slug}`}
+          onClick={onNavigate}
+          className="flex-1 flex items-center gap-1 px-1 py-1 rounded hover:bg-bg text-xs uppercase tracking-wide text-muted truncate min-w-0"
+        >
+          {workspace.icon && <span>{workspace.icon}</span>}
+          <span className="truncate">{workspace.name}</span>
+        </Link>
         <button
           onClick={() => createPage(null)}
-          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-bg"
+          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-bg shrink-0"
           aria-label="New page"
         >
           <Plus size={12} />
