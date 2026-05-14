@@ -149,8 +149,8 @@ export function AudioRecorder({ editor, onClose }: { editor: Editor; onClose: ()
             >
               <Square size={22} />
             </button>
-            {/* Pulse ring */}
-            <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping" />
+            {/* Pulse ring — pointer-events-none so clicks reach the button beneath */}
+            <span className="absolute inset-0 rounded-full bg-red-500/30 animate-ping pointer-events-none" />
           </div>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
