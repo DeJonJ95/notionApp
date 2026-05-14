@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -516,6 +516,15 @@ export function CanvasPageEditor({
     editorRefs.current[id] = editor;
   }, []);
 
+  // Run a TipTap command on whichever block currently has focus.
+  // Uses onMouseDown + preventDefault on the calling button so focus stays put.
+  const runOnFocused = useCallback((fn: (editor: any) => void) => {
+    const id = focusedBlockRef.current;
+    if (!id) return;
+    const ed = editorRefs.current[id];
+    if (ed) fn(ed);
+  }, []);
+
   const getAllText = () =>
     blocks
       .filter((b) => b.type === 'text')
@@ -701,6 +710,37 @@ export function CanvasPageEditor({
         </div>
       </div>
 
+      {/* ── Formatting toolbar (operates on currently-focused block) ──── */}
+      <div className="flex items-center gap-0.5 px-5 py-1 border-b border-border bg-surface/50 shrink-0 flex-wrap text-muted">
+        <FmtBtn icon={<Heading1 size={14} />} title="Heading 1"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleHeading({ level: 1 }).run())} />
+        <FmtBtn icon={<Heading2 size={14} />} title="Heading 2"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleHeading({ level: 2 }).run())} />
+        <FmtBtn icon={<Heading3 size={14} />} title="Heading 3"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleHeading({ level: 3 }).run())} />
+        <div className="w-px self-stretch bg-border mx-1" />
+        <FmtBtn icon={<List size={14} />} title="Bulleted list"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleBulletList().run())} />
+        <FmtBtn icon={<ListOrdered size={14} />} title="Numbered list"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleOrderedList().run())} />
+        <FmtBtn icon={<ListChecks size={14} />} title="To-do list"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleTaskList().run())} />
+        <div className="w-px self-stretch bg-border mx-1" />
+        <FmtBtn icon={<Quote size={14} />} title="Quote"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleBlockquote().run())} />
+        <FmtBtn icon={<Code size={14} />} title="Code block"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleCodeBlock().run())} />
+        <div className="w-px self-stretch bg-border mx-1" />
+        <FmtBtn icon={<ImageIcon size={14} />} title="Insert image (URL)"
+          onAct={() => {
+            const src = window.prompt('Image URL');
+            if (src) runOnFocused((e) => e.chain().focus().setImage({ src }).run());
+          }} />
+        <span className="ml-2 text-[10px] text-muted/60 hidden sm:inline">
+          Tip: press &quot;/&quot; in any block for the slash menu
+        </span>
+      </div>
+
       {/* ── Audio recorder panel ─────────────────────────────────────── */}
       {recordOpen && (
         <div className="px-5 py-3 border-b border-border bg-surface shrink-0">
@@ -782,6 +822,29 @@ export function CanvasPageEditor({
         />
       )}
     </div>
+  );
+}
+
+// ——— Compact formatting toolbar button ————————————————————————————————
+// onMouseDown + preventDefault keeps focus on the editor while the command runs.
+function FmtBtn({
+  icon,
+  title,
+  onAct,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  onAct: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onMouseDown={(e) => { e.preventDefault(); onAct(); }}
+      className="p-1.5 rounded hover:bg-bg hover:text-text transition-colors"
+    >
+      {icon}
+    </button>
   );
 }
 
