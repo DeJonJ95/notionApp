@@ -5,6 +5,12 @@ import type { Editor } from '@tiptap/react';
 
 type Status = 'idle' | 'recording' | 'transcribing' | 'done' | 'error';
 
+// Rotate the MediaRecorder every 2.5 minutes — at 32 kbps Opus that's ~600 KB
+// per chunk, well under Vercel's 4.5 MB request-body limit and Groq's 25 MB cap.
+const CHUNK_DURATION_MS = 150_000;
+// Voice-quality mono Opus. Plenty for speech, ~4× smaller than the default.
+const AUDIO_BITRATE = 32_000;
+
 function getBestMimeType(): string {
   const types = [
     'audio/webm;codecs=opus',
@@ -31,85 +37,173 @@ function formatDuration(secs: number) {
 export function AudioRecorder({ editor, onClose }: { editor: Editor; onClose: () => void }) {
   const [status, setStatus] = useState<Status>('idle');
   const [duration, setDuration] = useState(0);
-  const [transcript, setTranscript] = useState('');
+  // Ordered list of per-chunk transcripts (null = pending / failed slot kept for ordering)
+  const [transcripts, setTranscripts] = useState<(string | null)[]>([]);
+  const [chunksTotal, setChunksTotal] = useState(0);
+  const [chunksDone, setChunksDone] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
 
+  const streamRef = useRef<MediaStream | null>(null);
   const mrRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chunkIndexRef = useRef(0);
 
-  // Clean up on unmount
+  // ── Lifecycle ─────────────────────────────────────────────────────────
   useEffect(() => {
-    return () => {
-      timerRef.current && clearInterval(timerRef.current);
-      mrRef.current?.state === 'recording' && mrRef.current.stop();
-    };
+    return () => { cleanup(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const cleanup = () => {
+    if (rotateTimerRef.current) clearTimeout(rotateTimerRef.current);
+    if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+    rotateTimerRef.current = null;
+    durationTimerRef.current = null;
+    const mr = mrRef.current;
+    if (mr && mr.state === 'recording') {
+      try { mr.stop(); } catch {}
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    mrRef.current = null;
+  };
+
+  // ── Transcribe a single chunk and write it back into its slot ────────
+  const transcribeChunk = async (blob: Blob, mime: string, idx: number) => {
+    try {
+      const fd = new FormData();
+      fd.append('audio', blob, `chunk-${idx}.${mimeToExt(mime)}`);
+      const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Transcription failed');
+      setTranscripts((prev) => {
+        const next = [...prev];
+        while (next.length <= idx) next.push(null);
+        next[idx] = json.text ?? '';
+        return next;
+      });
+      setChunksDone((n) => n + 1);
+    } catch (e: any) {
+      setErrorMsg(e.message ?? 'Transcription failed');
+      setStatus('error');
+    }
+  };
+
+  // ── Start a fresh MediaRecorder on the stream; rotate after CHUNK_DURATION_MS ──
+  const startChunkRecorder = (stream: MediaStream) => {
+    const mime = getBestMimeType();
+    const mr = new MediaRecorder(stream, {
+      mimeType: mime || undefined,
+      audioBitsPerSecond: AUDIO_BITRATE,
+    });
+    const buffer: Blob[] = [];
+    const myIdx = chunkIndexRef.current++;
+    setChunksTotal((n) => Math.max(n, myIdx + 1));
+
+    mr.ondataavailable = (e) => {
+      if (e.data.size > 0) buffer.push(e.data);
+    };
+
+    mr.onstop = () => {
+      if (buffer.length === 0) {
+        // Empty chunk (recorder never received data) — still count it as done
+        // so chunksDone can catch up to chunksTotal.
+        setChunksDone((n) => n + 1);
+        return;
+      }
+      const blob = new Blob(buffer, { type: mr.mimeType || 'audio/webm' });
+      void transcribeChunk(blob, mr.mimeType || 'audio/webm', myIdx);
+    };
+
+    mr.start(500);
+    mrRef.current = mr;
+
+    rotateTimerRef.current = setTimeout(() => rotateChunk(stream), CHUNK_DURATION_MS);
+  };
+
+  // Stop the current MR and immediately start a new one on the same stream.
+  // The old MR's onstop fires asynchronously and ships its chunk to Whisper.
+  const rotateChunk = (stream: MediaStream) => {
+    const old = mrRef.current;
+    if (old && old.state === 'recording') {
+      try { old.stop(); } catch {}
+    }
+    startChunkRecorder(stream);
+  };
 
   const startRecording = useCallback(async () => {
     setErrorMsg('');
     setDuration(0);
-    chunksRef.current = [];
+    setTranscripts([]);
+    setChunksTotal(0);
+    setChunksDone(0);
+    chunkIndexRef.current = 0;
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
     } catch {
       setErrorMsg('Microphone access denied.');
       return;
     }
+    streamRef.current = stream;
 
-    const mime = getBestMimeType();
-    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-    mrRef.current = mr;
-
-    mr.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-    };
-
-    mr.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' });
-      await runTranscription(blob, mr.mimeType || 'audio/webm');
-    };
-
-    mr.start(500);
+    startChunkRecorder(stream);
     setStatus('recording');
-    timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
+    durationTimerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
   }, []);
 
   const stopRecording = useCallback(() => {
-    timerRef.current && clearInterval(timerRef.current);
-    mrRef.current?.stop();
+    if (rotateTimerRef.current) {
+      clearTimeout(rotateTimerRef.current);
+      rotateTimerRef.current = null;
+    }
+    if (durationTimerRef.current) {
+      clearInterval(durationTimerRef.current);
+      durationTimerRef.current = null;
+    }
+    const mr = mrRef.current;
+    if (mr && mr.state === 'recording') {
+      try { mr.stop(); } catch {}
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
     setStatus('transcribing');
   }, []);
 
-  const runTranscription = useCallback(async (blob: Blob, mime: string) => {
-    const fd = new FormData();
-    fd.append('audio', blob, `recording.${mimeToExt(mime)}`);
-
-    try {
-      const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Transcription failed');
-      setTranscript(json.text ?? '');
+  // Flip to 'done' once every chunk has come back.
+  useEffect(() => {
+    if (status === 'transcribing' && chunksTotal > 0 && chunksDone >= chunksTotal) {
       setStatus('done');
-    } catch (e: any) {
-      setErrorMsg(e.message ?? 'Unknown error');
-      setStatus('error');
     }
-  }, []);
+  }, [status, chunksDone, chunksTotal]);
+
+  const fullTranscript = transcripts
+    .filter((t): t is string => typeof t === 'string')
+    .join(' ')
+    .trim();
 
   const insertTranscript = useCallback(() => {
-    if (!transcript) return;
-    editor.chain().focus().insertContent(`<p>${transcript}</p>`).run();
+    if (!fullTranscript) return;
+    editor.chain().focus().insertContent(`<p>${fullTranscript}</p>`).run();
     onClose();
-  }, [editor, transcript, onClose]);
+  }, [editor, fullTranscript, onClose]);
 
   const reset = useCallback(() => {
+    cleanup();
     setStatus('idle');
     setDuration(0);
-    setTranscript('');
+    setTranscripts([]);
+    setChunksTotal(0);
+    setChunksDone(0);
+    chunkIndexRef.current = 0;
     setErrorMsg('');
   }, []);
 
@@ -136,6 +230,9 @@ export function AudioRecorder({ editor, onClose }: { editor: Editor; onClose: ()
             <Mic size={28} />
           </button>
           <span className="text-sm text-muted">Tap to start recording</span>
+          <span className="text-xs text-muted/70 max-w-xs text-center">
+            Long recordings split into 2.5-min chunks and transcribe in parallel.
+          </span>
           {errorMsg && <p className="text-xs text-red-500 text-center">{errorMsg}</p>}
         </div>
       )}
@@ -156,6 +253,11 @@ export function AudioRecorder({ editor, onClose }: { editor: Editor; onClose: ()
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
             <span className="text-sm font-mono text-text">{formatDuration(duration)}</span>
           </div>
+          {chunksDone > 0 && (
+            <span className="text-xs text-muted">
+              {chunksDone} chunk{chunksDone !== 1 ? 's' : ''} transcribed in background
+            </span>
+          )}
           <span className="text-xs text-muted">Tap square to stop</span>
         </div>
       )}
@@ -163,19 +265,21 @@ export function AudioRecorder({ editor, onClose }: { editor: Editor; onClose: ()
       {status === 'transcribing' && (
         <div className="flex flex-col items-center gap-3 py-6">
           <Loader2 size={32} className="animate-spin text-accent" />
-          <span className="text-sm text-muted">Transcribing audio…</span>
+          <span className="text-sm text-muted">
+            Transcribing {chunksDone}/{chunksTotal} chunk{chunksTotal !== 1 ? 's' : ''}…
+          </span>
         </div>
       )}
 
       {status === 'done' && (
         <div className="flex flex-col gap-3">
           <div className="rounded-lg bg-bg border border-border p-3 text-sm text-text max-h-40 overflow-y-auto">
-            {transcript || <span className="text-muted italic">No speech detected</span>}
+            {fullTranscript || <span className="text-muted italic">No speech detected</span>}
           </div>
           <div className="flex gap-2">
             <button
               onClick={insertTranscript}
-              disabled={!transcript}
+              disabled={!fullTranscript}
               className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/80 transition-colors disabled:opacity-40"
             >
               <Check size={14} /> Insert into note
