@@ -9,10 +9,11 @@ import {
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 
-type SplitPageData = { id: string; title: string; icon: string | null; cover: string | null; isFavorite: boolean; content: any };
+import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
+type SplitPageData = { id: string; title: string; icon: string | null; cover: string | null; isFavorite: boolean; blocks: CanvasBlockData[] };
 
-const PageEditorPanel = dynamic(
-  () => import('@/components/editor/PageEditor').then((m) => m.PageEditor),
+const CanvasPageEditorPanel = dynamic(
+  () => import('@/components/editor/CanvasPageEditor').then((m) => m.CanvasPageEditor),
   { ssr: false, loading: () => <div className="flex items-center justify-center h-32 text-sm text-muted">Loading editor…</div> }
 );
 
@@ -342,7 +343,15 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d) return;
-        setSplitPageData({ id: d.id, title: d.title, icon: d.icon, cover: d.cover ?? null, isFavorite: d.isFavorite, content: d.content });
+        const blocks: CanvasBlockData[] = (d.blocks ?? []).map((b: any) => ({
+          id: b.id,
+          type: b.type,
+          content: b.content,
+          canvasX: b.canvasX ?? 60,
+          canvasY: b.canvasY ?? 60,
+          canvasWidth: b.canvasWidth ?? 420,
+        }));
+        setSplitPageData({ id: d.id, title: d.title, icon: d.icon, cover: d.cover ?? null, isFavorite: d.isFavorite, blocks });
       })
       .catch(() => {});
   }, [inspectPageId]);
@@ -1433,10 +1442,10 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
           </div>
           <div className="flex-1 overflow-y-auto">
             {splitPageData ? (
-              <PageEditorPanel
+              <CanvasPageEditorPanel
                 key={splitPageData.id}
                 page={splitPageData}
-                initialContent={splitPageData.content}
+                initialBlocks={splitPageData.blocks}
               />
             ) : (
               <div className="flex items-center justify-center h-32 text-sm text-muted">Loading…</div>

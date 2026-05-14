@@ -11,7 +11,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Maximize2, Minimize2, Mic, ClipboardList, LayoutDashboard } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Maximize2, Minimize2, Mic, ClipboardList } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { DatabaseEmbed } from '@/components/editor/extensions/DatabaseEmbed';
@@ -20,7 +20,6 @@ import { HeadingCollapseExtension, CollapsibleHeadingOverlay } from '@/component
 import { TableOfContents } from '@/components/editor/extensions/TableOfContents';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
 import { SummarizeModal } from '@/components/editor/SummarizeModal';
-import { CanvasMode } from '@/components/editor/CanvasMode';
 
 type PageData = {
   id: string;
@@ -53,7 +52,6 @@ export function PageEditor({
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
   const [summarizeOpen, setSummarizeOpen] = useState(false);
-  const [isCanvas, setIsCanvas] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [slashRange, setSlashRange] = useState<{ from: number; to: number } | null>(null);
   // Shadow ref keeps slash state accessible inside the editor's stable (stale-closure) keydown handler.
@@ -442,15 +440,6 @@ export function PageEditor({
           <Sparkles size={13} />
           Organize
         </button>
-        <div className="w-px bg-border mx-1 self-stretch" />
-        <button
-          type="button"
-          onClick={() => setIsCanvas(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface"
-        >
-          <LayoutDashboard size={13} />
-          Canvas
-        </button>
       </div>
 
       {/* Audio recorder panel — inline below toolbar */}
@@ -525,17 +514,6 @@ export function PageEditor({
     </div>
     </div>
     {editor && <TableOfContents editor={editor} isFullscreen={isFullscreen} />}
-    {isCanvas && editor && (
-      <CanvasMode
-        initialDoc={editor.getJSON()}
-        pageId={page.id}
-        onExit={() => setIsCanvas(false)}
-        onSave={(doc) => {
-          editor.commands.setContent(doc);
-          scheduleSave();
-        }}
-      />
-    )}
   </div>
   );
 }
