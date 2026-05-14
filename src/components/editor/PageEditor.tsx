@@ -16,6 +16,8 @@ import { useRouter } from 'next/navigation';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { DatabaseEmbed } from '@/components/editor/extensions/DatabaseEmbed';
 import { DragHandleOverlay } from '@/components/editor/extensions/DragHandle';
+import { HeadingCollapseExtension, CollapsibleHeadingOverlay } from '@/components/editor/extensions/CollapsibleHeading';
+import { TableOfContents } from '@/components/editor/extensions/TableOfContents';
 
 type PageData = {
   id: string;
@@ -131,6 +133,7 @@ export function PageEditor({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      HeadingCollapseExtension,
       Placeholder.configure({ placeholder: "Press '/' for commands, or just start writing…" }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -322,8 +325,9 @@ export function PageEditor({
     router.refresh();
   };
 
-  const pageContent = (
-    <div className="max-w-3xl mx-auto px-6 md:px-12 py-10">
+  // Shared editor body used in both normal and fullscreen layouts
+  const editorBody = (
+    <div className={isFullscreen ? 'max-w-4xl mx-auto px-8 md:px-20 py-10' : 'max-w-3xl mx-auto px-6 md:px-12 py-10'}>
       <div className="flex items-center justify-between mb-4 text-xs text-muted">
         <span>
           {savingState === 'saving' && 'Saving…'}
@@ -454,15 +458,30 @@ export function PageEditor({
           </div>
         )}
 
-        <EditorContent editor={editor} />
+        <div style={isFullscreen ? { minHeight: 'calc(100vh - 260px)' } : undefined}>
+          <EditorContent editor={editor} />
+        </div>
         {editor && <DragHandleOverlay editor={editor} />}
+        {editor && <CollapsibleHeadingOverlay editor={editor} />}
       </div>
     </div>
   );
 
-  return isFullscreen ? (
-    <div className="fixed inset-0 z-50 bg-bg overflow-y-auto">
-      {pageContent}
-    </div>
-  ) : pageContent;
+  if (isFullscreen) {
+    return (
+      <div className="fixed inset-0 z-50 bg-bg flex overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
+          {editorBody}
+        </div>
+        {editor && <TableOfContents editor={editor} isFullscreen />}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {editorBody}
+      {editor && <TableOfContents editor={editor} />}
+    </>
+  );
 }
