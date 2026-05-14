@@ -124,18 +124,6 @@ export function PageEditor({
     []
   );
 
-  const uploadImage = useCallback(async (file: File) => {
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: file.name, contentType: file.type }),
-    });
-    if (!res.ok) return;
-    const { uploadUrl, publicUrl } = await res.json();
-    await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-    editor?.chain().focus().setImage({ src: publicUrl }).run();
-  }, [editor]);
-
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -217,6 +205,18 @@ export function PageEditor({
     onUpdate: () => scheduleSave(),
     immediatelyRender: false,
   });
+
+  const uploadImage = useCallback(async (file: File) => {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    });
+    if (!res.ok) return;
+    const { uploadUrl, publicUrl } = await res.json();
+    await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    editor?.chain().focus().setImage({ src: publicUrl }).run();
+  }, [editor]);
 
   const executeSlashCommand = (action: (editor: any) => void) => {
     if (!editor) return;
