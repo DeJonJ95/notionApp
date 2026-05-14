@@ -2,11 +2,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
 import { SummarizeModal } from '@/components/editor/SummarizeModal';
+import { YouTubeImportModal } from '@/components/editor/YouTubeImportModal';
 
 // Break circular dep: CanvasPageEditor → DatabaseView → CanvasPageEditor
 const DatabaseViewDynamic = dynamic(
@@ -306,6 +307,7 @@ export function CanvasPageEditor({
   const [recordOpen, setRecordOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [summarizeOpen, setSummarizeOpen] = useState(false);
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
   const [newBlockId, setNewBlockId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -590,6 +592,30 @@ export function CanvasPageEditor({
     }
   };
 
+  // ── Handle YouTube transcript import ──────────────────────────────────
+  const handleYouTubeImport = ({ title, text }: { title: string; text: string }) => {
+    // Split the transcript into ~150-word paragraphs for readability
+    const words = text.split(/\s+/);
+    const PARA_SIZE = 150;
+    const paragraphs: any[] = [
+      {
+        type: 'heading',
+        attrs: { level: 2 },
+        content: [{ type: 'text', text: `📺 ${title}` }],
+      },
+    ];
+    for (let i = 0; i < words.length; i += PARA_SIZE) {
+      const chunk = words.slice(i, i + PARA_SIZE).join(' ');
+      if (chunk) {
+        paragraphs.push({ type: 'paragraph', content: [{ type: 'text', text: chunk }] });
+      }
+    }
+    createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
+      type: 'doc',
+      content: paragraphs,
+    });
+  };
+
   // ── Handle summarize insert ────────────────────────────────────────────
   const handleSummarizeInsert = async (html: string) => {
     // Insert a new text block at top of the doc column
@@ -651,6 +677,13 @@ export function CanvasPageEditor({
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
           >
             <ClipboardList size={12} /> Summarize
+          </button>
+          <button
+            onClick={() => setYoutubeOpen(true)}
+            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
+            title="Import a YouTube video's transcript"
+          >
+            <Youtube size={12} className="text-red-500" /> YouTube
           </button>
           <button
             onClick={() => setOrganizeOpen(true)}
@@ -740,6 +773,12 @@ export function CanvasPageEditor({
           rawText={getAllText()}
           onClose={() => setSummarizeOpen(false)}
           onInsert={handleSummarizeInsert}
+        />
+      )}
+      {youtubeOpen && (
+        <YouTubeImportModal
+          onClose={() => setYoutubeOpen(false)}
+          onImport={handleYouTubeImport}
         />
       )}
     </div>
