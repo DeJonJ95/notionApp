@@ -19,6 +19,7 @@ interface Props {
   onUpdate: (blockId: string, content: any) => void;
   onEmpty?: (blockId: string) => void; // called when block becomes empty + backspace
   getEditorRef?: (blockId: string, editor: any) => void;
+  onFocusChange?: (blockId: string | null) => void;
 }
 
 export function CanvasTextBlock({
@@ -28,6 +29,7 @@ export function CanvasTextBlock({
   onUpdate,
   onEmpty,
   getEditorRef,
+  onFocusChange,
 }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -56,6 +58,8 @@ export function CanvasTextBlock({
     ],
     content: initialContent ?? { type: 'doc', content: [{ type: 'paragraph' }] },
     onUpdate: ({ editor }) => scheduleSave(editor),
+    onFocus: () => onFocusChange?.(blockId),
+    onBlur: () => onFocusChange?.(null),
     editorProps: {
       handleKeyDown: (view, event) => {
         // Backspace on empty block → delete block

@@ -107,8 +107,10 @@ function estimateNodeHeight(node: any): number {
 // Default column for stacked content (Notion-style left margin).
 const DOC_X = 80;
 const DOC_W_TEXT = 720;
-const DOC_W_DB = 720;
+const DOC_W_DB = 1100; // wider default so DB split-view is actually usable
 const BLOCK_GAP = 18;
+const MIN_BLOCK_W = 240;
+const MAX_BLOCK_W = 2400;
 
 function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
   const nodes: any[] = doc?.content ?? [];
@@ -170,6 +172,10 @@ function CanvasCard({
   onContentUpdate,
   onBlockEmpty,
   registerEditor,
+  onHover,
+  onFocusChange,
+  onResize,
+  onResizeEnd,
 }: {
   block: CanvasBlockData;
   onDragStart: (blockId: string, cx: number, cy: number, ox: number, oy: number) => void;
@@ -177,10 +183,17 @@ function CanvasCard({
   onContentUpdate: (id: string, content: any) => void;
   onBlockEmpty: (id: string) => void;
   registerEditor: (id: string, editor: any) => void;
+  onHover: (id: string | null) => void;
+  onFocusChange: (id: string | null) => void;
+  onResize: (id: string, width: number) => void;
+  onResizeEnd: (id: string) => void;
 }) {
   const isDraggingRef = useRef(false);
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Don't hijack pointer events that start on the resize handle
+    if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
     // Alt+drag anywhere on the card, OR pointer on the grip handle
     const onHandle = (e.target as HTMLElement).closest('[data-drag-handle]');
     if (!e.altKey && !onHandle) return;
@@ -188,6 +201,25 @@ function CanvasCard({
     onDragStart(block.id, e.clientX, e.clientY, block.canvasX, block.canvasY);
     e.preventDefault();
     e.stopPropagation();
+  };
+
+  // ── Resize handlers ────────────────────────────────────────────────────
+  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    resizeRef.current = { startX: e.clientX, startW: block.canvasWidth };
+  };
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeRef.current) return;
+    const dx = e.clientX - resizeRef.current.startX;
+    const w = Math.max(MIN_BLOCK_W, Math.min(MAX_BLOCK_W, resizeRef.current.startW + dx));
+    onResize(block.id, w);
+  };
+  const onResizeUp = () => {
+    if (!resizeRef.current) return;
+    resizeRef.current = null;
+    onResizeEnd(block.id);
   };
 
   return (
@@ -201,6 +233,8 @@ function CanvasCard({
       }}
       className="group"
       onPointerDown={handlePointerDown}
+      onMouseEnter={() => onHover(block.id)}
+      onMouseLeave={() => onHover(null)}
     >
       {/* Notion-style hover handle on the left — no card chrome on the block itself */}
       <div className="absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10">
@@ -215,7 +249,7 @@ function CanvasCard({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onDelete(block.id)}
           className="p-1 rounded text-muted hover:text-red-500 hover:bg-surface transition-colors"
-          title="Delete block"
+          title="Delete block (Alt+Delete)"
         >
           <X size={12} />
         </button>
@@ -235,8 +269,21 @@ function CanvasCard({
           onUpdate={onContentUpdate}
           onEmpty={onBlockEmpty}
           getEditorRef={registerEditor}
+          onFocusChange={onFocusChange}
         />
       )}
+
+      {/* Right-edge resize handle — invisible until hover, blue on grab */}
+      <div
+        data-resize-handle
+        onPointerDown={onResizeDown}
+        onPointerMove={onResizeMove}
+        onPointerUp={onResizeUp}
+        onPointerCancel={onResizeUp}
+        className="absolute top-1 -right-0.5 w-2 h-[calc(100%-8px)] cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-accent/60 transition-colors z-10 rounded"
+        style={{ touchAction: 'none' }}
+        title="Drag to resize"
+      />
     </div>
   );
 }
@@ -270,6 +317,9 @@ export function CanvasPageEditor({
   } | null>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRefs = useRef<Record<string, any>>({});
+  // Track which block is "active" for keyboard shortcuts (Alt+Delete)
+  const hoveredBlockRef = useRef<string | null>(null);
+  const focusedBlockRef = useRef<string | null>(null);
   // Track if we've already migrated this page so we don't re-migrate on re-render
   const migratedRef = useRef(false);
 
@@ -413,7 +463,51 @@ export function CanvasPageEditor({
   const handleDeleteBlock = useCallback((id: string) => {
     setBlocks((prev) => prev.filter((b) => b.id !== id));
     fetch(`/api/blocks/${id}`, { method: 'DELETE' }).catch(() => {});
+    if (hoveredBlockRef.current === id) hoveredBlockRef.current = null;
+    if (focusedBlockRef.current === id) focusedBlockRef.current = null;
   }, []);
+
+  // ── Hover/focus tracking for Alt+Delete ───────────────────────────────
+  const handleHover = useCallback((id: string | null) => {
+    hoveredBlockRef.current = id;
+  }, []);
+  const handleFocusChange = useCallback((id: string | null) => {
+    focusedBlockRef.current = id;
+  }, []);
+
+  // ── Resize ────────────────────────────────────────────────────────────
+  const handleResize = useCallback((id: string, width: number) => {
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, canvasWidth: width } : b)));
+  }, []);
+  const handleResizeEnd = useCallback((id: string) => {
+    setBlocks((prev) => {
+      const b = prev.find((x) => x.id === id);
+      if (b) {
+        fetch(`/api/blocks/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ canvasWidth: b.canvasWidth }),
+        }).catch(() => {});
+      }
+      return prev;
+    });
+  }, []);
+
+  // ── Alt+Delete keyboard shortcut ──────────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.altKey || e.key !== 'Delete') return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      // Skip if focused inside a plain input or textarea (e.g. page title)
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const target = focusedBlockRef.current || hoveredBlockRef.current;
+      if (!target) return;
+      e.preventDefault();
+      handleDeleteBlock(target);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [handleDeleteBlock]);
 
   // ── Editor ref registry (for summarize/organize) ──────────────────────
   const registerEditor = useCallback((id: string, editor: any) => {
@@ -617,6 +711,10 @@ export function CanvasPageEditor({
               onContentUpdate={handleContentUpdate}
               onBlockEmpty={handleDeleteBlock}
               registerEditor={registerEditor}
+              onHover={handleHover}
+              onFocusChange={handleFocusChange}
+              onResize={handleResize}
+              onResizeEnd={handleResizeEnd}
             />
           ))}
 
