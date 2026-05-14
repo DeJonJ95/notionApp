@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import Link from 'next/link';
 import {
   Plus, GripHorizontal, Trash2, ChevronLeft, ChevronRight,
-  Eye, EyeOff, X, Settings, Columns,
+  Eye, EyeOff, X, Settings, Columns, ExternalLink,
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 
@@ -134,11 +135,42 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const [calendarDatePropertyId, setCalendarDatePropertyId] = useState<string | null>(null);
   const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>('Monthly');
   const [budgetWindowDate, setBudgetWindowDate] = useState(() => new Date());
+  const [inspectPageId, setInspectPageId] = useState<string | null>(null);
+  const [dragColId, setDragColId] = useState<string | null>(null);
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    try {
+      const saved = typeof window !== 'undefined'
+        ? localStorage.getItem(`col-order-${database.id}`) : null;
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return ['__title__', ...database.properties.map((p) => p.id)];
+  });
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try {
+      const saved = typeof window !== 'undefined'
+        ? localStorage.getItem(`col-widths-${database.id}`) : null;
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+  const resizeRef = useRef<{ colId: string; startX: number; startW: number } | null>(null);
 
   useEffect(() => {
     const stillExists = database.views.some((v) => v.id === selectedViewId);
     if (!stillExists) setSelectedViewId(database.views?.[0]?.id ?? '');
   }, [database.views, selectedViewId]);
+
+  // Keep columnOrder in sync when properties are added or removed.
+  useEffect(() => {
+    setColumnOrder((prev) => {
+      const valid = new Set(['__title__', ...database.properties.map((p) => p.id)]);
+      const filtered = prev.filter((id) => valid.has(id));
+      const missing = [...valid].filter((id) => !filtered.includes(id));
+      const updated = [...filtered, ...missing];
+      try { localStorage.setItem(`col-order-${database.id}`, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, [database.properties, database.id]);
 
   const selectedView = useMemo(() => {
     return (
@@ -293,6 +325,44 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     setDragPageId(null);
   };
 
+  const handleColDrop = (targetId: string) => {
+    if (!dragColId || dragColId === targetId) { setDragColId(null); return; }
+    setColumnOrder((prev) => {
+      const next = [...prev];
+      const fromIdx = next.indexOf(dragColId);
+      const toIdx = next.indexOf(targetId);
+      if (fromIdx < 0 || toIdx < 0) return prev;
+      next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, dragColId);
+      try { localStorage.setItem(`col-order-${database.id}`, JSON.stringify(next)); } catch {}
+      return next;
+    });
+    setDragColId(null);
+  };
+
+  const startColResize = (colId: string, startX: number) => {
+    const startW = colWidths[colId] ?? (colId === '__title__' ? 200 : 150);
+    resizeRef.current = { colId, startX, startW };
+
+    const onMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const { colId: id, startX: sx, startW: sw } = resizeRef.current;
+      const w = Math.max(80, sw + e.clientX - sx);
+      setColWidths((prev) => {
+        const next = { ...prev, [id]: w };
+        try { localStorage.setItem(`col-widths-${database.id}`, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    };
+    const onUp = () => {
+      resizeRef.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
   const advanceBudgetWindow = (dir: 1 | -1) => {
     setBudgetWindowDate((prev) => {
       const d = new Date(prev);
@@ -375,66 +445,103 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
   // --- View renderers ---
 
-  const renderTableView = () => (
-    <div className="overflow-x-auto">
-      <table className="min-w-full border-collapse border border-border text-text">
-        <thead>
-          <tr className="bg-surface">
-            <th className="border border-border px-4 py-2 text-left text-sm font-semibold text-text">Name</th>
-            {visibleProperties.map((prop) => (
-              <th
-                key={prop.id}
-                draggable
-                onDragStart={() => setDragPropertyId(prop.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handlePropertyDrop(prop.id)}
-                className="border border-border px-4 py-2 text-left text-sm font-semibold text-text group"
-              >
-                <div className="flex items-center gap-1 min-w-0">
-                  <GripHorizontal size={14} className="text-muted shrink-0 cursor-grab" />
-                  <span className="truncate">{prop.name}</span>
-                  <span className="text-xs text-muted capitalize shrink-0">({prop.type})</span>
-                  <button
-                    onClick={() => deleteProperty(prop.id)}
-                    className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 transition-opacity shrink-0"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {renderedPages.map((page) => (
-            <tr
-              key={page.id}
-              draggable
-              onDragStart={() => setDragPageId(page.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handlePageDrop(page.id)}
-              className="hover:bg-surface transition-colors"
-            >
-              <td className="border border-border px-4 py-2">
-                <div className="flex items-center gap-2 text-text font-medium">
-                  <span>{page.icon ?? '📄'}</span>
-                  <span>{page.title}</span>
-                </div>
-              </td>
-              {visibleProperties.map((prop) => {
-                const pv = page.properties.find((v) => v.property.id === prop.id) ?? { property: prop, value: '' };
+  const renderTableView = () => {
+    const orderedCols = columnOrder.filter((id) => {
+      if (id === '__title__') return true;
+      const prop = database.properties.find((p) => p.id === id);
+      return prop && !hiddenPropertyIds.has(id);
+    });
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-full border-collapse border border-border text-text table-fixed">
+          <thead>
+            <tr className="bg-surface">
+              {orderedCols.map((colId) => {
+                const isTitle = colId === '__title__';
+                const prop = isTitle ? null : database.properties.find((p) => p.id === colId);
+                if (!isTitle && !prop) return null;
+                const w = colWidths[colId] ?? (isTitle ? 220 : 160);
                 return (
-                  <td key={prop.id} className="border border-border px-4 py-2">
-                    {renderPropertyInput(page, pv)}
-                  </td>
+                  <th
+                    key={colId}
+                    style={{ width: w, minWidth: w }}
+                    draggable
+                    onDragStart={(e) => { e.stopPropagation(); setDragColId(colId); }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => { e.preventDefault(); handleColDrop(colId); }}
+                    className="relative border border-border px-3 py-2 text-left text-sm font-semibold text-text group select-none"
+                  >
+                    <div className="flex items-center gap-1 min-w-0 pr-2">
+                      <GripHorizontal size={14} className="text-muted shrink-0 cursor-grab" />
+                      <span className="truncate">{isTitle ? 'Name' : prop!.name}</span>
+                      {!isTitle && (
+                        <>
+                          <span className="text-xs text-muted capitalize shrink-0">({prop!.type})</span>
+                          <button
+                            onClick={() => deleteProperty(colId)}
+                            className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 transition-opacity shrink-0"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {/* Resize handle */}
+                    <div
+                      className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-accent/50 active:bg-accent"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); startColResize(colId, e.clientX); }}
+                    />
+                  </th>
                 );
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+          </thead>
+          <tbody>
+            {renderedPages.map((page) => (
+              <tr
+                key={page.id}
+                draggable
+                onDragStart={() => setDragPageId(page.id)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handlePageDrop(page.id)}
+                className="hover:bg-surface transition-colors"
+              >
+                {orderedCols.map((colId) => {
+                  const isTitle = colId === '__title__';
+                  const prop = isTitle ? null : database.properties.find((p) => p.id === colId);
+                  if (!isTitle && !prop) return null;
+                  const w = colWidths[colId];
+                  return (
+                    <td
+                      key={colId}
+                      className="border border-border px-3 py-2"
+                      style={w ? { width: w, maxWidth: w, overflow: 'hidden' } : undefined}
+                    >
+                      {isTitle ? (
+                        <button
+                          onClick={() => setInspectPageId(page.id)}
+                          className="flex items-center gap-2 text-text font-medium hover:text-accent text-left w-full truncate"
+                        >
+                          <span>{page.icon ?? '📄'}</span>
+                          <span className="truncate">{page.title}</span>
+                        </button>
+                      ) : (
+                        renderPropertyInput(
+                          page,
+                          page.properties.find((v) => v.property.id === colId) ?? { property: prop!, value: '' }
+                        )
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   const renderGalleryView = () => (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -1251,6 +1358,64 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
           </div>
         </div>
       )}
+
+      {/* Row inspector panel */}
+      {inspectPageId && (() => {
+        const page = renderedPages.find((p) => p.id === inspectPageId);
+        if (!page) return null;
+        return (
+          <div className="fixed inset-y-0 right-0 w-80 z-50 bg-bg border-l border-border shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <span className="font-semibold text-sm text-text">Page details</span>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/page/${page.id}`}
+                  className="flex items-center gap-1 text-xs text-accent hover:underline"
+                >
+                  Open full page <ExternalLink size={11} />
+                </Link>
+                <button
+                  onClick={() => setInspectPageId(null)}
+                  className="p-1 rounded hover:bg-surface text-muted"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div>
+                <div className="text-xs text-muted uppercase tracking-wide mb-1">Title</div>
+                <input
+                  key={page.id + '-title'}
+                  type="text"
+                  defaultValue={page.title}
+                  onBlur={async (e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== page.title) {
+                      await fetch(`/api/pages/${page.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: v }),
+                      });
+                      onUpdate();
+                    }
+                  }}
+                  className="w-full bg-bg text-text border border-border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+              {database.properties.map((prop) => {
+                const pv = page.properties.find((v) => v.property.id === prop.id) ?? { property: prop, value: '' };
+                return (
+                  <div key={prop.id}>
+                    <div className="text-xs text-muted uppercase tracking-wide mb-1">{prop.name}</div>
+                    {renderPropertyInput(page, pv)}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

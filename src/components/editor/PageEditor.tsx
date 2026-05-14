@@ -11,9 +11,10 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Star, Trash2, Sparkles } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
+import { DatabaseEmbed } from '@/components/editor/extensions/DatabaseEmbed';
 
 type PageData = {
   id: string;
@@ -50,6 +51,7 @@ export function PageEditor({
   const slashRef = useRef({ open: false, cmd: 0, range: null as { from: number; to: number } | null });
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const hasMountedRef = useRef(false);
   const lastSavedRef = useRef<{ title: string; content: any }>({
     title: page.title,
@@ -108,9 +110,31 @@ export function PageEditor({
         description: 'Insert a table.',
         action: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
       },
+      {
+        title: 'Image',
+        description: 'Upload an image from your device.',
+        action: () => imageInputRef.current?.click(),
+      },
+      {
+        title: 'Embed database',
+        description: 'Embed a live database view inside this note.',
+        action: (editor) => editor.chain().focus().insertContent({ type: 'databaseEmbed', attrs: { databaseId: null } }).run(),
+      },
     ],
     []
   );
+
+  const uploadImage = useCallback(async (file: File) => {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    });
+    if (!res.ok) return;
+    const { uploadUrl, publicUrl } = await res.json();
+    await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    editor?.chain().focus().setImage({ src: publicUrl }).run();
+  }, [editor]);
 
   const editor = useEditor({
     extensions: [
@@ -122,6 +146,7 @@ export function PageEditor({
       TaskItem.configure({ nested: true }),
       Link.configure({ openOnClick: false, autolink: true }),
       Image,
+      DatabaseEmbed,
       Table.configure({ resizable: true }),
       TableRow,
       TableHeader,
@@ -351,6 +376,23 @@ export function PageEditor({
         <div className="w-px bg-border mx-1 self-stretch" />
         <button
           type="button"
+          onClick={() => imageInputRef.current?.click()}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface"
+        >
+          <ImageIcon size={13} />
+          Image
+        </button>
+        <button
+          type="button"
+          onClick={() => editor?.chain().focus().insertContent({ type: 'databaseEmbed', attrs: { databaseId: null } }).run()}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface"
+        >
+          <Database size={13} />
+          Embed DB
+        </button>
+        <div className="w-px bg-border mx-1 self-stretch" />
+        <button
+          type="button"
           onClick={() => setOrganizeOpen(true)}
           className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface text-accent"
         >
@@ -358,6 +400,17 @@ export function PageEditor({
           Organize with AI
         </button>
       </div>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) uploadImage(file);
+          e.target.value = '';
+        }}
+      />
 
       {organizeOpen && editor && (
         <OrganizeModal
