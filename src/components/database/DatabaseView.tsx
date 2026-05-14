@@ -1445,6 +1445,6 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
         </div>
       </>
     )}
-    </div>{/* end outer flex */}
+    </div>
   );
 }
