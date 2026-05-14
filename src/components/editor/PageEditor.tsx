@@ -11,10 +11,11 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Star, Trash2, Sparkles, ImageIcon, Database } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Maximize2, Minimize2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { DatabaseEmbed } from '@/components/editor/extensions/DatabaseEmbed';
+import { DragHandleOverlay } from '@/components/editor/extensions/DragHandle';
 
 type PageData = {
   id: string;
@@ -42,6 +43,7 @@ export function PageEditor({
   const [icon, setIcon] = useState(page.icon);
   const [favorite, setFavorite] = useState(page.isFavorite);
   const [savingState, setSavingState] = useState<'idle' | 'saving' | 'saved'>('saved');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState(0);
@@ -320,7 +322,7 @@ export function PageEditor({
     router.refresh();
   };
 
-  return (
+  const pageContent = (
     <div className="max-w-3xl mx-auto px-6 md:px-12 py-10">
       <div className="flex items-center justify-between mb-4 text-xs text-muted">
         <span>
@@ -328,6 +330,13 @@ export function PageEditor({
           {savingState === 'saved' && 'Saved'}
         </span>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setIsFullscreen((v) => !v)}
+            className="p-1.5 rounded hover:bg-surface"
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+          >
+            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
           <button
             onClick={toggleFavorite}
             className="p-1.5 rounded hover:bg-surface"
@@ -446,7 +455,14 @@ export function PageEditor({
         )}
 
         <EditorContent editor={editor} />
+        {editor && <DragHandleOverlay editor={editor} />}
       </div>
     </div>
   );
+
+  return isFullscreen ? (
+    <div className="fixed inset-0 z-50 bg-bg overflow-y-auto">
+      {pageContent}
+    </div>
+  ) : pageContent;
 }

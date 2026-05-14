@@ -385,7 +385,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     const onMove = (e: MouseEvent) => {
       if (!resizeRef.current) return;
       const { colId: id, startX: sx, startW: sw } = resizeRef.current;
-      const w = Math.max(80, sw + e.clientX - sx);
+      const w = Math.max(36, sw + e.clientX - sx);
       setColWidths((prev) => {
         const next = { ...prev, [id]: w };
         try { localStorage.setItem(`col-widths-${database.id}`, JSON.stringify(next)); } catch {}
@@ -500,20 +500,21 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                 const prop = isTitle ? null : database.properties.find((p) => p.id === colId);
                 if (!isTitle && !prop) return null;
                 const w = colWidths[colId] ?? (isTitle ? 220 : 160);
+                const isNarrow = w < 80;
                 return (
                   <th
                     key={colId}
-                    style={{ width: w, minWidth: w }}
+                    style={{ width: w, minWidth: 36, maxWidth: w, overflow: 'hidden' }}
                     draggable
                     onDragStart={(e) => { e.stopPropagation(); setDragColId(colId); }}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => { e.preventDefault(); handleColDrop(colId); }}
-                    className="relative border border-border px-3 py-2 text-left text-sm font-semibold text-text group select-none"
+                    className="relative border border-border px-2 py-2 text-left text-sm font-semibold text-text group select-none"
                   >
-                    <div className="flex items-center gap-1 min-w-0 pr-2">
+                    <div className="flex items-center gap-1 overflow-hidden pr-2">
                       <GripHorizontal size={14} className="text-muted shrink-0 cursor-grab" />
-                      <span className="truncate">{isTitle ? 'Name' : prop!.name}</span>
-                      {!isTitle && (
+                      {!isNarrow && <span className="truncate">{isTitle ? 'Name' : prop!.name}</span>}
+                      {!isTitle && !isNarrow && (
                         <>
                           <span className="text-xs text-muted capitalize shrink-0">({prop!.type})</span>
                           <button
