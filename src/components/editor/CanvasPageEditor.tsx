@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -168,6 +168,7 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
 
 function CanvasCard({
   block,
+  zoom,
   onDragStart,
   onDelete,
   onContentUpdate,
@@ -179,6 +180,7 @@ function CanvasCard({
   onResizeEnd,
 }: {
   block: CanvasBlockData;
+  zoom: number;
   onDragStart: (blockId: string, cx: number, cy: number, ox: number, oy: number) => void;
   onDelete: (id: string) => void;
   onContentUpdate: (id: string, content: any) => void;
@@ -213,7 +215,8 @@ function CanvasCard({
   };
   const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!resizeRef.current) return;
-    const dx = e.clientX - resizeRef.current.startX;
+    // Screen-space delta → canvas-space delta when scaled
+    const dx = (e.clientX - resizeRef.current.startX) / (zoom || 1);
     const w = Math.max(MIN_BLOCK_W, Math.min(MAX_BLOCK_W, resizeRef.current.startW + dx));
     onResize(block.id, w);
   };
@@ -309,6 +312,11 @@ export function CanvasPageEditor({
   const [summarizeOpen, setSummarizeOpen] = useState(false);
   const [youtubeOpen, setYoutubeOpen] = useState(false);
   const [newBlockId, setNewBlockId] = useState<string | null>(null);
+  // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom)
+  const [zoom, setZoom] = useState(1);
+  // Mirror in a ref so pointer/touch handlers always read the live value
+  const zoomRef = useRef(1);
+  zoomRef.current = zoom;
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -414,8 +422,10 @@ export function CanvasPageEditor({
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!dragState.current) return;
     const { blockId, startCX, startCY, origX, origY } = dragState.current;
-    const newX = Math.max(0, origX + e.clientX - startCX);
-    const newY = Math.max(0, origY + e.clientY - startCY);
+    // Screen-space delta → canvas-space delta when canvas is scaled
+    const z = zoomRef.current;
+    const newX = Math.max(0, origX + (e.clientX - startCX) / z);
+    const newY = Math.max(0, origY + (e.clientY - startCY) / z);
     setBlocks((prev) =>
       prev.map((b) => (b.id === blockId ? { ...b, canvasX: newX, canvasY: newY } : b))
     );
@@ -444,8 +454,10 @@ export function CanvasPageEditor({
       if (dragState.current) return;
       if (e.target !== innerRef.current) return; // only on blank canvas
       const rect = innerRef.current!.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      // rect is the transformed (visual) box; divide by zoom to recover canvas coords
+      const z = zoomRef.current;
+      const x = (e.clientX - rect.left) / z;
+      const y = (e.clientY - rect.top) / z;
       createBlock(x, y);
     },
     [createBlock]
@@ -587,6 +599,40 @@ export function CanvasPageEditor({
   // ── Canvas size — grows with content ──────────────────────────────────
   const canvasW = Math.max(900, ...blocks.map((b) => b.canvasX + b.canvasWidth + 80));
   const canvasH = Math.max(600, ...blocks.map((b) => b.canvasY + 400));
+
+  // ── Pinch-zoom on touch ───────────────────────────────────────────────
+  const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 2) return;
+    const [a, b] = [e.touches[0], e.touches[1]];
+    pinchRef.current = {
+      initialDist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+      initialZoom: zoomRef.current,
+    };
+  };
+  const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 2 || !pinchRef.current) return;
+    const [a, b] = [e.touches[0], e.touches[1]];
+    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    const ratio = dist / pinchRef.current.initialDist;
+    const z = Math.max(0.25, Math.min(2, pinchRef.current.initialZoom * ratio));
+    setZoom(z);
+  };
+  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length < 2) pinchRef.current = null;
+  };
+
+  const fitToScreen = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const fitX = el.clientWidth / canvasW;
+    const fitY = el.clientHeight / canvasH;
+    setZoom(Math.max(0.25, Math.min(1, Math.min(fitX, fitY))));
+  }, [canvasW, canvasH]);
+
+  const stepZoom = useCallback((delta: number) => {
+    setZoom((z) => Math.max(0.25, Math.min(2, +(z + delta).toFixed(2))));
+  }, []);
 
   // ── Handle "organize" result: replace all text blocks ─────────────────
   const handleOrganize = (html: string) => {
@@ -760,11 +806,16 @@ export function CanvasPageEditor({
       {/* ── Canvas scroll area ────────────────────────────────────────── */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-auto"
+        className="flex-1 overflow-auto relative"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
       >
+        {/* Wrapper sized to the scaled content so scrollbars stay correct */}
+        <div style={{ width: canvasW * zoom, height: canvasH * zoom }}>
         <div
           ref={innerRef}
           style={{
@@ -772,6 +823,8 @@ export function CanvasPageEditor({
             width: canvasW,
             height: canvasH,
             cursor: 'text',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top left',
           }}
           onClick={handleCanvasClick}
         >
@@ -779,6 +832,7 @@ export function CanvasPageEditor({
             <CanvasCard
               key={b.id}
               block={b}
+              zoom={zoom}
               onDragStart={startDrag}
               onDelete={handleDeleteBlock}
               onContentUpdate={handleContentUpdate}
@@ -798,6 +852,40 @@ export function CanvasPageEditor({
             </div>
           )}
         </div>
+        </div>
+
+      </div>
+
+      {/* Floating zoom controls — fixed to bottom-right of viewport */}
+      <div className="fixed bottom-4 right-4 z-30 flex items-center gap-0.5 bg-surface/95 border border-border rounded-lg shadow-md px-1 py-0.5 backdrop-blur">
+        <button
+          onClick={() => stepZoom(-0.1)}
+          className="p-1.5 rounded hover:bg-bg text-muted hover:text-text"
+          title="Zoom out"
+        >
+          <ZoomOut size={14} />
+        </button>
+        <button
+          onClick={fitToScreen}
+          className="px-2 py-0.5 text-xs font-mono text-muted hover:text-text rounded hover:bg-bg min-w-[3.5rem]"
+          title="Fit to screen"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <button
+          onClick={() => stepZoom(0.1)}
+          className="p-1.5 rounded hover:bg-bg text-muted hover:text-text"
+          title="Zoom in"
+        >
+          <ZoomIn size={14} />
+        </button>
+        <button
+          onClick={() => setZoom(1)}
+          className="p-1.5 rounded hover:bg-bg text-muted hover:text-text"
+          title="Reset to 100%"
+        >
+          <Maximize2 size={13} />
+        </button>
       </div>
 
       {/* ── Modals ─────────────────────────────────────────────────────── */}

@@ -17,9 +17,9 @@ export const viewport: Viewport = {
   themeColor: '#ffffff',
   width: 'device-width',
   initialScale: 1,
-  // Allow pinch-zoom on mobile so users can see the whole canvas
-  maximumScale: 5,
-  userScalable: true,
+  // Browser zoom disabled — the canvas has its own pinch-zoom and buttons
+  // (browser zoom would only scale UI chrome, not reveal canvas content).
+  maximumScale: 1,
   viewportFit: 'cover',
 };
 
