@@ -54,8 +54,18 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
 
   const load = useCallback(() => {
     setLoading(true);
+    setError('');
     fetch('/api/budget/recurring')
-      .then((r) => (r.ok ? r.json() : []))
+      .then(async (r) => {
+        const text = await r.text();
+        let json: any = [];
+        try { json = text ? JSON.parse(text) : []; } catch { json = []; }
+        if (!r.ok) {
+          setError((json && json.error) || `Failed to load rules (HTTP ${r.status})`);
+          return [];
+        }
+        return Array.isArray(json) ? json : [];
+      })
       .then((r) => setRules(r))
       .finally(() => setLoading(false));
   }, []);
@@ -82,14 +92,19 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
+      // Parse JSON defensively — a 500 may return HTML
+      let json: any = {};
+      const text = await res.text();
+      try { json = text ? JSON.parse(text) : {}; } catch { json = { error: text.slice(0, 200) }; }
       if (!res.ok) {
-        setError(json.error ?? 'Save failed');
+        setError(json.error ?? `Save failed (HTTP ${res.status})`);
         return;
       }
       setEditing(null);
       load();
       onChanged();
+    } catch (e: any) {
+      setError(e?.message ?? 'Network error');
     } finally {
       setSavingId(null);
     }
@@ -130,6 +145,12 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
             Each scheduled occurrence is automatically added to your budget on its due date — paychecks
             show as income, bills as expenses. Catches up when you visit the budget page (no cron needed).
           </p>
+
+          {error && !editing && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-600 text-xs px-3 py-2">
+              {error}
+            </div>
+          )}
 
           {/* List */}
           {loading ? (

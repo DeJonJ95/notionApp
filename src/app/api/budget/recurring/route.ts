@@ -9,11 +9,23 @@ export async function GET() {
   const session = await auth();
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const rules = await prisma.recurringRule.findMany({
-    where: { userId },
-    orderBy: [{ type: 'asc' }, { anchorDate: 'asc' }],
-  });
-  return NextResponse.json(rules);
+  try {
+    const rules = await prisma.recurringRule.findMany({
+      where: { userId },
+      orderBy: [{ type: 'asc' }, { anchorDate: 'asc' }],
+    });
+    return NextResponse.json(rules);
+  } catch (e: any) {
+    // Most common cause: RecurringRule table doesn't exist yet (migration not run)
+    console.error('[recurring GET] failed:', e?.message);
+    if (e?.message?.includes('does not exist') || e?.code === 'P2021') {
+      return NextResponse.json(
+        { error: 'RecurringRule table missing — run the migration SQL in Neon (see commit notes).' },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ error: e?.message ?? 'Failed to load rules' }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -33,16 +45,27 @@ export async function POST(req: NextRequest) {
   const anchor = new Date(anchorDate);
   if (isNaN(anchor.getTime())) return NextResponse.json({ error: 'Invalid anchor date' }, { status: 400 });
 
-  const rule = await prisma.recurringRule.create({
-    data: {
-      userId,
-      type,
-      name: name.trim(),
-      category: category.trim(),
-      amount: amt,
-      frequency,
-      anchorDate: anchor,
-    },
-  });
-  return NextResponse.json(rule);
+  try {
+    const rule = await prisma.recurringRule.create({
+      data: {
+        userId,
+        type,
+        name: name.trim(),
+        category: category.trim(),
+        amount: amt,
+        frequency,
+        anchorDate: anchor,
+      },
+    });
+    return NextResponse.json(rule);
+  } catch (e: any) {
+    console.error('[recurring POST] failed:', e?.message);
+    if (e?.message?.includes('does not exist') || e?.code === 'P2021') {
+      return NextResponse.json(
+        { error: 'RecurringRule table missing — run the migration SQL in Neon.' },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ error: e?.message ?? 'Failed to create rule' }, { status: 500 });
+  }
 }
