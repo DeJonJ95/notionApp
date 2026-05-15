@@ -297,6 +297,51 @@ function parseCaptionBody(body: string): string {
   return trimmed;
 }
 
+// ── Supadata (paid, reliable) ──────────────────────────────────────────
+// Only used when SUPADATA_API_KEY env var is set. Free tier: 100/month.
+// Sign up: https://supadata.ai
+async function fetchViaSupadata(videoId: string): Promise<{ text: string } | null> {
+  const key = process.env.SUPADATA_API_KEY;
+  if (!key) return null;
+  try {
+    const r = await fetch(
+      `https://api.supadata.ai/v1/youtube/transcript?videoId=${videoId}&text=true`,
+      { headers: { 'x-api-key': key }, cache: 'no-store' }
+    );
+    if (!r.ok) {
+      console.error(`[yt-transcript] Supadata returned ${r.status}`);
+      return null;
+    }
+    const json = await r.json();
+    const text: string = json?.content ?? '';
+    if (!text.trim()) {
+      console.error('[yt-transcript] Supadata: empty content');
+      return null;
+    }
+    console.log('[yt-transcript] Supadata: success');
+    return { text: text.trim() };
+  } catch (e: any) {
+    console.error('[yt-transcript] Supadata threw:', e?.message);
+    return null;
+  }
+}
+
+// YouTube's public oEmbed endpoint — free, unauthenticated, just returns
+// title + author. Used to enrich Supadata responses with the video title.
+async function fetchYouTubeTitle(videoId: string): Promise<string> {
+  try {
+    const r = await fetch(
+      `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+      { cache: 'no-store' }
+    );
+    if (!r.ok) return 'YouTube video';
+    const json = await r.json();
+    return json?.title ?? 'YouTube video';
+  } catch {
+    return 'YouTube video';
+  }
+}
+
 // Piped is a privacy-focused YouTube frontend with public API instances.
 // Routes through their servers, which often work when direct YouTube calls
 // from datacenter IPs don't. Free, no auth.
@@ -366,7 +411,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Could not parse YouTube URL or video ID' }, { status: 400 });
   }
 
-  // Walk through fallbacks: InnerTube clients → HTML scrape → Piped
+  // Primary: Supadata (paid, configured via SUPADATA_API_KEY).
+  // Returns the full transcript text directly — no caption-fetch step needed.
+  const sup = await fetchViaSupadata(videoId);
+  if (sup) {
+    const title = await fetchYouTubeTitle(videoId);
+    return NextResponse.json({ title, text: sup.text, videoId });
+  }
+
+  // Free fallbacks: InnerTube clients → HTML scrape → Piped
   let info: VideoInfo | null = null;
   for (const client of CLIENTS) {
     info = await fetchViaInnerTube(videoId, client);
