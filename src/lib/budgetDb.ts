@@ -76,6 +76,173 @@ export async function findOrCreateBudgetDb(userId: string): Promise<BudgetDb> {
   };
 }
 
+// ── Recurring transaction engine ───────────────────────────────────────────
+
+export type RuleFrequency = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly';
+
+// Given an anchor date and a frequency, list all occurrence dates from
+// `from` (inclusive) up to and including `to` (inclusive). For semimonthly
+// the rule generates 2x/month: at anchor's day-of-month and 14 days later
+// (or the 15th if anchor.day <= 15, else end-of-month).
+export function occurrencesBetween(
+  anchor: Date,
+  frequency: RuleFrequency,
+  from: Date,
+  to: Date,
+): Date[] {
+  if (to < from) return [];
+  const result: Date[] = [];
+  // ── Weekly/Biweekly: simple stride ──────────────────────────────────────
+  if (frequency === 'weekly' || frequency === 'biweekly') {
+    const strideDays = frequency === 'weekly' ? 7 : 14;
+    // Roll anchor forward in stride steps until we're >= from
+    const cursor = new Date(anchor);
+    while (cursor < from) cursor.setDate(cursor.getDate() + strideDays);
+    while (cursor <= to) {
+      result.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + strideDays);
+    }
+    return result;
+  }
+  // ── Monthly: same day-of-month each month ───────────────────────────────
+  if (frequency === 'monthly') {
+    const day = anchor.getDate();
+    let y = from.getFullYear();
+    let m = from.getMonth();
+    // Step back one if `from` is before this month's occurrence
+    if (new Date(y, m, day) < from) m++;
+    while (true) {
+      const d = new Date(y, m, day);
+      if (d > to) break;
+      if (d >= from) result.push(d);
+      m++;
+      if (m > 11) { m = 0; y++; }
+    }
+    return result;
+  }
+  // ── Semimonthly: anchor day + (anchor day + 14, capped to end-of-month) ─
+  if (frequency === 'semimonthly') {
+    const day1 = anchor.getDate();
+    const day2 = day1 + 14; // may overflow into next month; we clamp below
+    let y = from.getFullYear();
+    let m = from.getMonth();
+    while (true) {
+      const lastDay = new Date(y, m + 1, 0).getDate();
+      const d1 = new Date(y, m, Math.min(day1, lastDay));
+      const d2 = new Date(y, m, Math.min(day2, lastDay));
+      for (const d of [d1, d2]) {
+        if (d >= from && d <= to) result.push(d);
+      }
+      m++;
+      if (m > 11) { m = 0; y++; }
+      if (new Date(y, m, 1) > to) break;
+    }
+    return result;
+  }
+  return result;
+}
+
+// Next occurrence STRICTLY AFTER the given date.
+export function nextOccurrenceAfter(anchor: Date, frequency: RuleFrequency, after: Date): Date {
+  const horizonEnd = new Date(after);
+  horizonEnd.setFullYear(horizonEnd.getFullYear() + 1);
+  const after1 = new Date(after);
+  after1.setDate(after1.getDate() + 1);
+  const occs = occurrencesBetween(anchor, frequency, after1, horizonEnd);
+  return occs[0] ?? horizonEnd;
+}
+
+// Process every active rule for a user — generate any past-due transactions
+// up through today, advance the anchor, and update lastGeneratedDate.
+export async function runRecurringEngine(userId: string, today: Date = new Date()): Promise<{
+  generated: number;
+}> {
+  const rules = await prisma.recurringRule.findMany({
+    where: { userId, isActive: true },
+  });
+  if (rules.length === 0) return { generated: 0 };
+
+  const db = await findOrCreateBudgetDb(userId);
+
+  let generated = 0;
+  const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+
+  for (const rule of rules) {
+    // Start window: day AFTER the last generated date (so we never duplicate);
+    // if never generated, start at the anchor itself.
+    const startWindow = rule.lastGeneratedDate
+      ? new Date(rule.lastGeneratedDate.getFullYear(), rule.lastGeneratedDate.getMonth(), rule.lastGeneratedDate.getDate() + 1)
+      : new Date(rule.anchorDate);
+
+    const due = occurrencesBetween(rule.anchorDate, rule.frequency as RuleFrequency, startWindow, endOfToday);
+    if (due.length === 0) continue;
+
+    // Create one transaction per due date
+    const transactions: ParsedTransaction[] = due.map((d) => {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const signed = rule.type === 'income' ? rule.amount : -rule.amount;
+      return {
+        date: iso,
+        vendor: rule.name,
+        description: `Recurring ${rule.type}: ${rule.name}`,
+        amount: signed,
+        category: rule.category,
+      };
+    });
+    await writeTransactions(userId, db.id, transactions);
+    generated += transactions.length;
+
+    // Advance anchor + lastGeneratedDate
+    const lastDue = due[due.length - 1];
+    const nextAnchor = nextOccurrenceAfter(rule.anchorDate, rule.frequency as RuleFrequency, lastDue);
+    await prisma.recurringRule.update({
+      where: { id: rule.id },
+      data: {
+        anchorDate: nextAnchor,
+        lastGeneratedDate: lastDue,
+      },
+    });
+  }
+
+  return { generated };
+}
+
+export type ForecastItem = {
+  date: string;
+  amount: number;       // signed: + = income, - = expense
+  name: string;
+  category: string;
+  type: string;
+  ruleId: string;
+};
+
+// Forward-looking forecast: every scheduled occurrence in the next N days.
+export async function forecastOccurrences(userId: string, days: number, today: Date = new Date()): Promise<ForecastItem[]> {
+  const rules = await prisma.recurringRule.findMany({
+    where: { userId, isActive: true },
+  });
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + days);
+
+  const out: ForecastItem[] = [];
+  for (const rule of rules) {
+    const occs = occurrencesBetween(rule.anchorDate, rule.frequency as RuleFrequency, start, end);
+    for (const d of occs) {
+      out.push({
+        date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+        amount: rule.type === 'income' ? rule.amount : -rule.amount,
+        name: rule.name,
+        category: rule.category,
+        type: rule.type,
+        ruleId: rule.id,
+      });
+    }
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
+}
+
 export type ParsedTransaction = {
   date: string;        // ISO YYYY-MM-DD
   vendor: string;

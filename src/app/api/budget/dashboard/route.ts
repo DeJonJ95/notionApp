@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { findOrCreateBudgetDb } from '@/lib/budgetDb';
+import {
+  findOrCreateBudgetDb,
+  runRecurringEngine,
+  forecastOccurrences,
+  type ForecastItem,
+} from '@/lib/budgetDb';
 
 export type Tx = {
   pageId: string;
@@ -33,6 +38,10 @@ export type DashboardPayload = {
   excesses: { category: string; spent: number; vsPrior: number; pctChange: number }[];
   subscriptions: Subscription[];
   recentTransactions: Tx[];
+  // Recurring + forecast additions
+  forecast: ForecastItem[];      // next 14 days of scheduled income/expense
+  projectedMonthEnd: number;     // expected net = current + remaining scheduled this month
+  generatedThisLoad: number;     // how many tx were auto-created by the engine on this request
 };
 
 function ymd(d: Date) {
@@ -45,6 +54,18 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const db = await findOrCreateBudgetDb(userId);
+  // Run the recurring engine BEFORE pulling transactions so any newly-due
+  // paychecks/bills are included in the period totals on this same request.
+  // Wrapped in try/catch so the dashboard still renders before the
+  // RecurringRule table migration is applied.
+  let generated = 0;
+  try {
+    const result = await runRecurringEngine(userId);
+    generated = result.generated;
+  } catch (e) {
+    console.warn('[budget-dashboard] recurring engine skipped:', (e as Error).message);
+  }
+
   const propId: Record<string, string> = {};
   for (const p of db.properties) propId[p.name] = p.id;
 
@@ -176,6 +197,24 @@ export async function GET() {
 
   const recentTransactions = all.slice(0, 25);
 
+  // ── Forecast: next 14 days of scheduled income/expense ──────────────────
+  // Same fallback as above — graceful degradation before the migration runs.
+  let forecast: ForecastItem[] = [];
+  try { forecast = await forecastOccurrences(userId, 14, now); } catch {}
+
+  // Projected end-of-month net: current month's actual + every scheduled
+  // occurrence whose date falls before the end of the displayed month.
+  // (Uses the same month window we used for income/expenses above.)
+  const monthEnd = thisM.length > 0 || all.length === 0
+    ? new Date(nextMonthStart.getTime() - 1)
+    : new Date(); // fallback — shouldn't matter, just a safety
+  const scheduledThisMonth = forecast.filter((f) => {
+    const d = new Date(f.date + 'T00:00:00');
+    return d >= now && d <= monthEnd;
+  });
+  const scheduledNet = scheduledThisMonth.reduce((s, f) => s + f.amount, 0);
+  const projectedMonthEnd = (income - expenses) + scheduledNet;
+
   const payload: DashboardPayload = {
     databaseId: db.id,
     databaseName: db.name,
@@ -188,6 +227,9 @@ export async function GET() {
     excesses,
     subscriptions,
     recentTransactions,
+    forecast,
+    projectedMonthEnd,
+    generatedThisLoad: generated,
   };
 
   return NextResponse.json(payload);
