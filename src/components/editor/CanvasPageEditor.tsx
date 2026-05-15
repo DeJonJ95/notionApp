@@ -169,6 +169,7 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
 function CanvasCard({
   block,
   zoom,
+  isMoving,
   onDragStart,
   onDelete,
   onContentUpdate,
@@ -181,7 +182,8 @@ function CanvasCard({
 }: {
   block: CanvasBlockData;
   zoom: number;
-  onDragStart: (blockId: string, cx: number, cy: number, ox: number, oy: number) => void;
+  isMoving: boolean;
+  onDragStart: (blockId: string, cx: number, cy: number, ox: number, oy: number, pointerId: number) => void;
   onDelete: (id: string) => void;
   onContentUpdate: (id: string, content: any) => void;
   onBlockEmpty: (id: string) => void;
@@ -191,62 +193,23 @@ function CanvasCard({
   onResize: (id: string, width: number) => void;
   onResizeEnd: (id: string) => void;
 }) {
-  const isDraggingRef = useRef(false);
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
-  // Long-press support (touch devices): hold the block for 500ms to drag.
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDrag = useRef<{ cx: number; cy: number; pointerId: number; el: HTMLElement } | null>(null);
 
-  const beginDrag = (cx: number, cy: number, pointerId: number, el: HTMLElement) => {
-    try { el.setPointerCapture(pointerId); } catch {}
-    isDraggingRef.current = true;
-    onDragStart(block.id, cx, cy, block.canvasX, block.canvasY);
+  const beginDrag = (cx: number, cy: number, pointerId: number) => {
+    onDragStart(block.id, cx, cy, block.canvasX, block.canvasY, pointerId);
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
     const onHandle = (e.target as HTMLElement).closest('[data-drag-handle]');
 
-    // Immediate drag: tap on a drag handle, or Alt-drag on desktop
+    // Drag handle tap or Alt-drag: start immediately
     if (onHandle || e.altKey) {
-      beginDrag(e.clientX, e.clientY, e.pointerId, e.currentTarget as HTMLElement);
       e.preventDefault();
       e.stopPropagation();
+      beginDrag(e.clientX, e.clientY, e.pointerId);
       return;
     }
-
-    // Touch / pen: long-press anywhere on the block to start dragging
-    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
-      const el = e.currentTarget as HTMLElement;
-      pendingDrag.current = { cx: e.clientX, cy: e.clientY, pointerId: e.pointerId, el };
-      longPressTimer.current = setTimeout(() => {
-        if (!pendingDrag.current) return;
-        const p = pendingDrag.current;
-        beginDrag(p.cx, p.cy, p.pointerId, p.el);
-        pendingDrag.current = null;
-        longPressTimer.current = null;
-        if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(40);
-      }, 500);
-    }
-  };
-
-  // Cancel long-press if the finger moves significantly before the timer fires
-  const handleLocalPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (longPressTimer.current && pendingDrag.current) {
-      const dx = Math.abs(e.clientX - pendingDrag.current.cx);
-      const dy = Math.abs(e.clientY - pendingDrag.current.cy);
-      if (dx > 10 || dy > 10) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = null;
-        pendingDrag.current = null;
-      }
-    }
-  };
-
-  const handleLocalPointerUp = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTimer.current = null;
-    pendingDrag.current = null;
   };
 
   // ── Resize handlers ────────────────────────────────────────────────────
@@ -276,13 +239,10 @@ function CanvasCard({
         left: block.canvasX,
         top: block.canvasY,
         width: block.canvasWidth,
-        zIndex: 2,
+        zIndex: isMoving ? 10 : 2,
       }}
-      className="group"
+      className={`group transition-shadow ${isMoving ? 'ring-2 ring-accent rounded-lg shadow-xl' : ''}`}
       onPointerDown={handlePointerDown}
-      onPointerMove={handleLocalPointerMove}
-      onPointerUp={handleLocalPointerUp}
-      onPointerCancel={handleLocalPointerUp}
       onMouseEnter={() => onHover(block.id)}
       onMouseLeave={() => onHover(null)}
     >
@@ -306,17 +266,25 @@ function CanvasCard({
         </button>
       </div>
 
-      {/* Mobile drag bar — always visible on touch devices (hover:none) */}
+      {/* Mobile drag bar — always visible on touch devices (hover:none).
+          Tap it to immediately start dragging; the border + shadow shows you're in move mode. */}
       <div
         data-drag-handle
         style={{ touchAction: 'none' }}
-        className="hidden [@media(hover:none)]:flex absolute -top-5 left-0 right-0 h-5 items-center justify-center cursor-grab z-10"
+        className={`hidden [@media(hover:none)]:flex absolute -top-6 left-0 right-0 h-6 items-center justify-center z-10 rounded-t-lg transition-colors ${
+          isMoving ? 'bg-accent/20' : 'bg-transparent'
+        }`}
       >
-        <div className="w-10 h-1 bg-muted/40 rounded-full" />
+        <div className={`w-10 h-1 rounded-full transition-colors ${isMoving ? 'bg-accent/70' : 'bg-muted/40'}`} />
+        {isMoving && (
+          <span className="absolute left-2 text-[10px] text-accent font-medium select-none">
+            moving — lift to drop
+          </span>
+        )}
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onDelete(block.id)}
-          className="absolute right-0 top-0 p-0.5 rounded text-muted hover:text-red-500 hover:bg-surface"
+          className="absolute right-1 top-0.5 p-0.5 rounded text-muted hover:text-red-500 hover:bg-surface"
           title="Delete block"
         >
           <X size={14} />
@@ -376,6 +344,7 @@ export function CanvasPageEditor({
   const [summarizeOpen, setSummarizeOpen] = useState(false);
   const [youtubeOpen, setYoutubeOpen] = useState(false);
   const [newBlockId, setNewBlockId] = useState<string | null>(null);
+  const [movingBlockId, setMovingBlockId] = useState<string | null>(null);
   // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom)
   const [zoom, setZoom] = useState(1);
   // Mirror in a ref so pointer/touch handlers always read the live value
@@ -477,8 +446,14 @@ export function CanvasPageEditor({
 
   // ── Drag ───────────────────────────────────────────────────────────────
   const startDrag = useCallback(
-    (blockId: string, cx: number, cy: number, ox: number, oy: number) => {
+    (blockId: string, cx: number, cy: number, ox: number, oy: number, pointerId: number) => {
       dragState.current = { blockId, startCX: cx, startCY: cy, origX: ox, origY: oy };
+      setMovingBlockId(blockId);
+      // Capture on the scroll container so it receives all pointer events even
+      // when the finger moves outside the block — the block's own div won't work
+      // because the canvas onPointerMove is what actually repositions the block.
+      try { scrollRef.current?.setPointerCapture(pointerId); } catch {}
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
     },
     []
   );
@@ -499,6 +474,7 @@ export function CanvasPageEditor({
     if (!dragState.current) return;
     const { blockId } = dragState.current;
     dragState.current = null;
+    setMovingBlockId(null);
     setBlocks((prev) => {
       const b = prev.find((x) => x.id === blockId);
       if (b) {
@@ -871,6 +847,7 @@ export function CanvasPageEditor({
       <div
         ref={scrollRef}
         className="flex-1 overflow-auto relative"
+        style={{ touchAction: movingBlockId ? 'none' : 'auto' }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
@@ -897,6 +874,7 @@ export function CanvasPageEditor({
               key={b.id}
               block={b}
               zoom={zoom}
+              isMoving={movingBlockId === b.id}
               onDragStart={startDrag}
               onDelete={handleDeleteBlock}
               onContentUpdate={handleContentUpdate}
