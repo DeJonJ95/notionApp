@@ -360,6 +360,7 @@ export function CanvasPageEditor({
   } | null>(null);
   const titleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRefs = useRef<Record<string, any>>({});
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   // Track which block is "active" for keyboard shortcuts (Alt+Delete)
   const hoveredBlockRef = useRef<string | null>(null);
   const focusedBlockRef = useRef<string | null>(null);
@@ -711,6 +712,28 @@ export function CanvasPageEditor({
     });
   };
 
+  // ── Image upload ───────────────────────────────────────────────────────
+  const uploadImage = useCallback(async (file: File) => {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, contentType: file.type }),
+    });
+    if (!res.ok) return;
+    const { uploadUrl, publicUrl } = await res.json();
+    await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+    const id = focusedBlockRef.current;
+    if (id && editorRefs.current[id]) {
+      editorRefs.current[id].chain().focus().setImage({ src: publicUrl }).run();
+    } else {
+      // No block focused — create a new text block with the image
+      createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
+        type: 'doc',
+        content: [{ type: 'image', attrs: { src: publicUrl } }],
+      });
+    }
+  }, [createBlock, nextStackY]);
+
   // ── Handle summarize insert ────────────────────────────────────────────
   const handleSummarizeInsert = async (html: string) => {
     // Insert a new text block at top of the doc column
@@ -817,11 +840,14 @@ export function CanvasPageEditor({
         <FmtBtn icon={<Code size={14} />} title="Code block"
           onAct={() => runOnFocused((e) => e.chain().focus().toggleCodeBlock().run())} />
         <div className="w-px self-stretch bg-border mx-1" />
-        <FmtBtn icon={<ImageIcon size={14} />} title="Insert image (URL)"
-          onAct={() => {
-            const src = window.prompt('Image URL');
-            if (src) runOnFocused((e) => e.chain().focus().setImage({ src }).run());
-          }} />
+        <button
+          type="button"
+          title="Upload image"
+          onMouseDown={(e) => { e.preventDefault(); imageInputRef.current?.click(); }}
+          className="p-1.5 rounded hover:bg-bg hover:text-text transition-colors"
+        >
+          <ImageIcon size={14} />
+        </button>
         <span className="ml-2 text-[10px] text-muted/60 hidden sm:inline">
           Tip: press &quot;/&quot; in any block for the slash menu
         </span>
@@ -951,6 +977,19 @@ export function CanvasPageEditor({
           onImport={handleYouTubeImport}
         />
       )}
+
+      {/* Hidden file input for image uploads */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) uploadImage(file);
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }
