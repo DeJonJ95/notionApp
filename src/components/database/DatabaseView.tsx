@@ -144,6 +144,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const [calendarDatePropertyId, setCalendarDatePropertyId] = useState<string | null>(null);
   const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>('Monthly');
   const [budgetWindowDate, setBudgetWindowDate] = useState(() => new Date());
+  // Which Budget Summary categories are expanded to show their transactions
+  const [expandedBudgetCats, setExpandedBudgetCats] = useState<Set<string>>(new Set());
   const [inspectPageId, setInspectPageId] = useState<string | null>(null);
   const [splitPageData, setSplitPageData] = useState<SplitPageData | null>(null);
   const [splitWidth, setSplitWidth] = useState(440);
@@ -1086,7 +1088,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     const getVal = (page: (typeof renderedPages)[0], propId: string) =>
       page.properties.find((v) => v.property.id === propId)?.value ?? null;
 
-    interface CatData { budgeted: number; spent: number }
+    type TxLine = { id: string; title: string; date: string; amount: number };
+    interface CatData { budgeted: number; spent: number; txns: TxLine[] }
     const map = new Map<string, CatData>();
 
     for (const page of renderedPages) {
@@ -1095,26 +1098,44 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       const type = typeProp ? String(getVal(page, typeProp.id) ?? '') : '';
       const amount = Math.abs(Number(getVal(page, amountProp.id) ?? 0));
       const budgetedRaw = budgetedProp ? Math.abs(Number(getVal(page, budgetedProp.id) ?? 0)) : 0;
-      if (!map.has(cat)) map.set(cat, { budgeted: 0, spent: 0 });
+      if (!map.has(cat)) map.set(cat, { budgeted: 0, spent: 0, txns: [] });
       const entry = map.get(cat)!;
       if (type === 'Budget') {
         const rawBudget = budgetedRaw || amount;
         const fromPeriod = budgetPeriodProp ? String(getVal(page, budgetPeriodProp.id) ?? '') : '';
         entry.budgeted += fromPeriod ? normalizeBudgetAmount(rawBudget, fromPeriod, budgetPeriod) : rawBudget;
       } else if (type !== 'Income') {
-        if (inWindow(dateProp ? getVal(page, dateProp.id) : null)) {
+        const dateVal = dateProp ? getVal(page, dateProp.id) : null;
+        if (inWindow(dateVal)) {
           entry.spent += amount;
+          entry.txns.push({
+            id: page.id,
+            title: page.title || 'Untitled',
+            date: dateVal ? String(dateVal).slice(0, 10) : '',
+            amount,
+          });
         }
       }
     }
 
     const categories = Array.from(map.entries())
-      .map(([category, d]) => ({ category, ...d }))
+      .map(([category, d]) => ({
+        category,
+        ...d,
+        txns: [...d.txns].sort((a, b) => b.date.localeCompare(a.date)),
+      }))
       .filter((c) => c.budgeted > 0 || c.spent > 0)
       .sort((a, b) => {
         const ra = a.budgeted > 0 ? a.spent / a.budgeted : (a.spent > 0 ? 2 : 0);
         const rb = b.budgeted > 0 ? b.spent / b.budgeted : (b.spent > 0 ? 2 : 0);
         return rb - ra;
+      });
+
+    const toggleCat = (category: string) =>
+      setExpandedBudgetCats((prev) => {
+        const next = new Set(prev);
+        next.has(category) ? next.delete(category) : next.add(category);
+        return next;
       });
 
     const totalBudgeted = categories.reduce((s, c) => s + c.budgeted, 0);
@@ -1150,22 +1171,58 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
               const warn = !over && pct >= 80;
               const barColor = over ? 'bg-red-500' : warn ? 'bg-yellow-500' : 'bg-green-500';
               const remaining = c.budgeted - c.spent;
+              const expanded = expandedBudgetCats.has(c.category);
+              const hasTxns = c.txns.length > 0;
+              const fmtCents = (n: number) =>
+                new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
               return (
-                <div key={c.category} className="rounded-lg border border-border bg-surface p-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-text">{c.category}</span>
-                    <div className="flex items-center gap-3 text-xs">
-                      <span className="text-muted">{fmtCurrency(c.spent)} / {fmtCurrency(c.budgeted)}</span>
-                      <span className={over ? 'text-red-500 font-semibold' : remaining >= 0 ? 'text-green-600' : 'text-red-500'}>
-                        {over ? `${fmtCurrency(Math.abs(remaining))} over` : `${fmtCurrency(remaining)} left`}
+                <div key={c.category} className="rounded-lg border border-border bg-surface">
+                  <button
+                    type="button"
+                    onClick={() => hasTxns && toggleCat(c.category)}
+                    className={`w-full text-left p-3 ${hasTxns ? 'cursor-pointer hover:bg-bg/40' : 'cursor-default'} transition-colors rounded-lg`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-text flex items-center gap-1.5">
+                        {hasTxns && (
+                          <ChevronRight
+                            size={13}
+                            className={`text-muted transition-transform ${expanded ? 'rotate-90' : ''}`}
+                          />
+                        )}
+                        {c.category}
+                        {hasTxns && (
+                          <span className="text-[10px] text-muted font-normal">({c.txns.length})</span>
+                        )}
                       </span>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-muted">{fmtCurrency(c.spent)} / {fmtCurrency(c.budgeted)}</span>
+                        <span className={over ? 'text-red-500 font-semibold' : remaining >= 0 ? 'text-green-600' : 'text-red-500'}>
+                          {over ? `${fmtCurrency(Math.abs(remaining))} over` : `${fmtCurrency(remaining)} left`}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="h-2 bg-bg rounded-full overflow-hidden border border-border/50">
-                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-                  </div>
-                  {c.budgeted === 0 && c.spent > 0 && (
-                    <div className="text-xs text-yellow-600 mt-1">No budget set — {fmtCurrency(c.spent)} unbudgeted</div>
+                    <div className="h-2 bg-bg rounded-full overflow-hidden border border-border/50">
+                      <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    {c.budgeted === 0 && c.spent > 0 && (
+                      <div className="text-xs text-yellow-600 mt-1">No budget set — {fmtCurrency(c.spent)} unbudgeted</div>
+                    )}
+                  </button>
+                  {expanded && hasTxns && (
+                    <div className="border-t border-border/60 divide-y divide-border/40">
+                      {c.txns.map((t) => (
+                        <Link
+                          key={t.id}
+                          href={`/page/${t.id}`}
+                          className="flex items-center gap-3 px-3 py-1.5 text-xs hover:bg-bg/50 transition-colors"
+                        >
+                          <span className="text-muted w-20 shrink-0 font-mono">{t.date || '—'}</span>
+                          <span className="flex-1 truncate text-text">{t.title}</span>
+                          <span className="text-red-500 font-mono shrink-0">{fmtCents(t.amount)}</span>
+                        </Link>
+                      ))}
+                    </div>
                   )}
                 </div>
               );
