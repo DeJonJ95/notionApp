@@ -83,6 +83,25 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        // If the AI returned a `body` summary, drop it on the new page as a
+        // single paragraph block so the new entry has narrative context.
+        if (change.body && change.body.trim()) {
+          await prisma.block.create({
+            data: {
+              pageId: page.id,
+              type: 'text',
+              position: 1024,
+              content: {
+                type: 'doc',
+                content: [{
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: change.body.trim() }],
+                }],
+              },
+            },
+          });
+        }
+
         results.push({ ok: true, action: 'create', detail: `Created "${title}"` });
       }
     } catch (err) {

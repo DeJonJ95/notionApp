@@ -21,6 +21,7 @@ export type ResolvedCreate = {
   databaseId: string;
   workspaceId: string;
   row: Record<string, unknown>;
+  body?: string; // optional descriptive paragraph for the new page body
   propertyMap: Record<string, PropertyInfo>;
 };
 
@@ -32,7 +33,41 @@ type AiChange = {
   match?: Record<string, string>;
   changes?: Record<string, unknown>;
   row?: Record<string, unknown>;
+  body?: string;
 };
+
+// Walk a TipTap-style JSON tree (or any nested object) and concatenate all
+// `text` leaves, with newlines for paragraph-ish boundaries.
+function extractTextFromBlockJson(node: any): string {
+  if (!node) return '';
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return node.map(extractTextFromBlockJson).join(' ');
+  if (typeof node === 'object') {
+    if (typeof node.text === 'string') return node.text;
+    const inner = node.content ? extractTextFromBlockJson(node.content) : '';
+    // Add a paragraph break after block-level nodes
+    const blockTypes = new Set(['paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'blockquote', 'codeBlock']);
+    return blockTypes.has(node.type) ? `${inner}\n` : inner;
+  }
+  return '';
+}
+
+async function loadPagesAsText(pageIds: string[], userId: string): Promise<{ title: string; text: string }[]> {
+  if (pageIds.length === 0) return [];
+  const pages = await prisma.page.findMany({
+    where: { id: { in: pageIds }, workspace: { ownerId: userId }, isArchived: false },
+    include: { blocks: { orderBy: { position: 'asc' }, take: 200 } },
+  });
+  return pages.map((p) => ({
+    title: p.title,
+    text: p.blocks
+      .map((b) => extractTextFromBlockJson(b.content))
+      .filter((t) => t.trim())
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+  }));
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -42,10 +77,31 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) return NextResponse.json({ error: 'DeepSeek API key not configured' }, { status: 500 });
 
-  const { notes, databaseIds } = await req.json() as { notes: string; databaseIds: string[] };
-  if (!notes?.trim()) return NextResponse.json({ error: 'Notes are required' }, { status: 400 });
+  const {
+    notes: rawNotes,
+    databaseIds,
+    pageIds,
+  } = (await req.json()) as {
+    notes?: string;
+    databaseIds: string[];
+    pageIds?: string[];
+  };
+
   if (!Array.isArray(databaseIds) || databaseIds.length === 0) {
     return NextResponse.json({ error: 'Select at least one database' }, { status: 400 });
+  }
+
+  // Compose the source text: combine pasted notes + page bodies (if any)
+  const loadedPages = await loadPagesAsText(pageIds ?? [], userId);
+  const sections: string[] = [];
+  if (rawNotes?.trim()) sections.push(rawNotes.trim());
+  for (const p of loadedPages) {
+    if (!p.text) continue;
+    sections.push(`=== Page: ${p.title} ===\n${p.text}`);
+  }
+  const notes = sections.join('\n\n');
+  if (!notes.trim()) {
+    return NextResponse.json({ error: 'No source content (paste notes or pick a page)' }, { status: 400 });
   }
 
   // Fetch databases with properties and rows (owned by user)
@@ -101,7 +157,8 @@ Rules:
 - Return [] if nothing relevant.
 - Each element must be one of:
   {"action":"update","database":"<name>","match":{"Name":"<row name>"},"changes":{"<col>":"<value>"}}
-  {"action":"create","database":"<name>","row":{"Name":"<title>","<col>":"<value>"}}
+  {"action":"create","database":"<name>","row":{"Name":"<title>","<col>":"<value>"},"body":"<optional 1-3 sentence summary of what the notes said about this item — context the property columns can't capture>"}
+- "body" is OPTIONAL. Include it on create when the notes give meaningful narrative context that should live on the new page. Skip it for simple records with no extra context. Keep it factual and short.
 - Values must match the column type: numbers for number columns, strings for text/select, ISO dates for date columns, true/false for checkbox.`;
 
   const userPrompt = `Meeting notes:\n"""\n${notes.trim()}\n"""`;
@@ -117,7 +174,7 @@ Rules:
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.1,
-      max_tokens: 1024,
+      max_tokens: 2048,
     }),
   });
 
@@ -186,6 +243,7 @@ Rules:
         databaseId: db.id,
         workspaceId: db.workspaceId,
         row: change.row,
+        body: typeof change.body === 'string' && change.body.trim() ? change.body.trim() : undefined,
         propertyMap,
       });
     }
