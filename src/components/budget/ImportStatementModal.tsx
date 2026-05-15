@@ -25,6 +25,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
   const [stage, setStage] = useState<'upload' | 'preview' | 'saving' | 'done'>('upload');
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
+  const [truncated, setTruncated] = useState(false);
 
   const upload = async (file: File) => {
     setError('');
@@ -48,6 +49,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
       setDatabaseName(json.databaseName);
       setTxs(json.transactions);
       setCategories(json.categories);
+      setTruncated(Boolean(json.truncated));
       setStage('preview');
     } catch (e: any) {
       setError(e?.message ?? 'Network error');
@@ -166,6 +168,15 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
                 Will save to <strong className="text-text">{databaseName}</strong>. Edit anything below, then confirm.
                 Click the <X size={11} className="inline -mt-px" /> on a row to skip it.
               </div>
+              {truncated && (
+                <div className="mb-3 p-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-700 flex items-start gap-2">
+                  <AlertCircle size={14} className="shrink-0 mt-px" />
+                  <span>
+                    The AI hit its output cap on one of the chunks — a few transactions near the end may have been
+                    dropped. If totals look short, re-upload a smaller statement (or a single page).
+                  </span>
+                </div>
+              )}
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead className="bg-surface text-xs text-muted">
