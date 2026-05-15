@@ -16,11 +16,15 @@ function ResizableImageView({ node, updateAttributes }: any) {
   const storedWidth: number | null = node.attrs.width;
   const currentWidth = displayWidth ?? storedWidth;
 
-  // Tap/click image body → enter resize mode
+  // Tap/click image body → enter resize mode.
+  // EXCEPTION: if Alt is held (desktop) or the touch landed on the block's
+  // drag handle, let the event bubble up so the canvas block can be dragged.
   const handleImagePointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
+    if ((e.target as HTMLElement).closest('[data-drag-handle]')) return;
+    if (e.altKey) return; // allow Alt+drag to move the whole block
     setIsSelected(true);
-    e.stopPropagation(); // don't trigger canvas block drag
+    e.stopPropagation();
   };
 
   // Click/touch outside the image → exit resize mode
@@ -35,37 +39,45 @@ function ResizableImageView({ node, updateAttributes }: any) {
     return () => document.removeEventListener('pointerdown', handler);
   }, [isSelected]);
 
-  // Resize handle — pointer events with capture so drag works on mobile too
+  // Resize via document-level pointer events so the finger can leave the
+  // image (and even leave the viewport edge) without losing the drag.
   const onResizePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const currentW = containerRef.current?.offsetWidth ?? (storedWidth ?? 400);
     resizeRef.current = { startX: e.clientX, startW: currentW };
-  }, [storedWidth]);
 
-  const onResizePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!resizeRef.current) return;
-    const newW = Math.max(80, resizeRef.current.startW + (e.clientX - resizeRef.current.startX));
-    liveWidthRef.current = Math.round(newW);
-    setDisplayWidth(Math.round(newW));
-  }, []);
+    const onMove = (ev: PointerEvent) => {
+      if (!resizeRef.current) return;
+      const newW = Math.max(80, resizeRef.current.startW + (ev.clientX - resizeRef.current.startX));
+      liveWidthRef.current = Math.round(newW);
+      setDisplayWidth(Math.round(newW));
+      if (ev.cancelable) ev.preventDefault();
+    };
 
-  const onResizePointerUp = useCallback(() => {
-    if (resizeRef.current !== null && liveWidthRef.current !== null) {
-      updateAttributes({ width: liveWidthRef.current });
-    }
-    resizeRef.current = null;
-    liveWidthRef.current = null;
-    setDisplayWidth(null);
-  }, [updateAttributes]);
+    const onEnd = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onEnd);
+      document.removeEventListener('pointercancel', onEnd);
+      if (resizeRef.current !== null && liveWidthRef.current !== null) {
+        updateAttributes({ width: liveWidthRef.current });
+      }
+      resizeRef.current = null;
+      liveWidthRef.current = null;
+      setDisplayWidth(null);
+    };
+
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', onEnd);
+    document.addEventListener('pointercancel', onEnd);
+  }, [storedWidth, updateAttributes]);
 
   return (
     <NodeViewWrapper>
       <div
         ref={containerRef}
-        className="group/img relative inline-block max-w-full select-none"
-        style={{ width: currentWidth ? `${currentWidth}px` : '100%' }}
+        className="group/img relative inline-block select-none"
+        style={{ width: currentWidth ? `${currentWidth}px` : 'auto', maxWidth: 'none' }}
         contentEditable={false}
         onPointerDown={handleImagePointerDown}
       >
@@ -78,6 +90,7 @@ function ResizableImageView({ node, updateAttributes }: any) {
           style={{
             outline: isSelected ? '2px solid var(--color-accent, #6366f1)' : 'none',
             outlineOffset: 2,
+            maxWidth: 'none',
           }}
         />
 
@@ -89,7 +102,11 @@ function ResizableImageView({ node, updateAttributes }: any) {
                        flex items-center justify-center cursor-pointer
                        opacity-0 group-hover/img:opacity-100 [@media(hover:none)]:opacity-70
                        transition-opacity"
-            onPointerDown={(e) => { e.stopPropagation(); setIsSelected(true); }}
+            onPointerDown={(e) => {
+              if (e.altKey) return; // let Alt-drag bubble up to move the block
+              e.stopPropagation();
+              setIsSelected(true);
+            }}
           >
             {/* Simple resize arrow glyph */}
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
@@ -106,9 +123,6 @@ function ResizableImageView({ node, updateAttributes }: any) {
             <div
               data-resize-handle
               onPointerDown={onResizePointerDown}
-              onPointerMove={onResizePointerMove}
-              onPointerUp={onResizePointerUp}
-              onPointerCancel={onResizePointerUp}
               title="Drag to resize"
               className="absolute -bottom-1.5 -right-1.5 rounded cursor-se-resize
                          bg-accent shadow-md z-10
@@ -171,9 +185,7 @@ export const ResizableImage = Node.create({
     const { width, ...rest } = HTMLAttributes;
     return [
       'img',
-      mergeAttributes(rest, {
-        style: width ? `width:${width}px;max-width:100%` : 'max-width:100%',
-      }),
+      mergeAttributes(rest, width ? { style: `width:${width}px` } : {}),
     ];
   },
 
