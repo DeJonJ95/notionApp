@@ -195,6 +195,17 @@ function CanvasCard({
 }) {
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
 
+  // When an image inside this block resizes, follow it with the block width
+  // so the block doesn't extend past the visible content.
+  const handleImageResize = useCallback(
+    (w: number, isFinal: boolean) => {
+      const clamped = Math.max(MIN_BLOCK_W, Math.min(MAX_BLOCK_W, w));
+      onResize(block.id, clamped);
+      if (isFinal) onResizeEnd(block.id);
+    },
+    [block.id, onResize, onResizeEnd]
+  );
+
   const beginDrag = (cx: number, cy: number, pointerId: number) => {
     onDragStart(block.id, cx, cy, block.canvasX, block.canvasY, pointerId);
   };
@@ -306,6 +317,7 @@ function CanvasCard({
           onEmpty={onBlockEmpty}
           getEditorRef={registerEditor}
           onFocusChange={onFocusChange}
+          onImageResize={handleImageResize}
         />
       )}
 

@@ -5,7 +5,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 
 // ── Node View ────────────────────────────────────────────────────────────────
 
-function ResizableImageView({ node, updateAttributes }: any) {
+function ResizableImageView({ node, updateAttributes, editor }: any) {
   const [isSelected, setIsSelected] = useState(false);
   // Live width during drag — stored in ref to avoid stale closure in pointerup
   const liveWidthRef = useRef<number | null>(null);
@@ -26,6 +26,28 @@ function ResizableImageView({ node, updateAttributes }: any) {
     setIsSelected(true);
     e.stopPropagation();
   };
+
+  // First-load auto-size: when an image is added without an explicit width,
+  // clamp its natural size to a sensible default and tell the canvas block to
+  // size to match. Otherwise huge uploads create huge block footprints that
+  // cover content underneath even after the user shrinks the image.
+  useEffect(() => {
+    if (storedWidth !== null) return;
+    const img = containerRef.current?.querySelector('img');
+    if (!img) return;
+    const setInitial = () => {
+      if (!img.naturalWidth) return;
+      const w = Math.min(img.naturalWidth, 600);
+      updateAttributes({ width: w });
+      editor?.storage?.image?.onResize?.(w, true);
+    };
+    if (img.complete && img.naturalWidth > 0) {
+      setInitial();
+    } else {
+      img.addEventListener('load', setInitial, { once: true });
+      return () => img.removeEventListener('load', setInitial);
+    }
+  }, [storedWidth, updateAttributes, editor]);
 
   // Click/touch outside the image → exit resize mode
   useEffect(() => {
@@ -49,9 +71,11 @@ function ResizableImageView({ node, updateAttributes }: any) {
 
     const onMove = (ev: PointerEvent) => {
       if (!resizeRef.current) return;
-      const newW = Math.max(80, resizeRef.current.startW + (ev.clientX - resizeRef.current.startX));
-      liveWidthRef.current = Math.round(newW);
-      setDisplayWidth(Math.round(newW));
+      const newW = Math.round(Math.max(80, resizeRef.current.startW + (ev.clientX - resizeRef.current.startX)));
+      liveWidthRef.current = newW;
+      setDisplayWidth(newW);
+      // Live-sync the canvas block width too so the block follows the image
+      editor?.storage?.image?.onResize?.(newW, false);
       if (ev.cancelable) ev.preventDefault();
     };
 
@@ -60,7 +84,9 @@ function ResizableImageView({ node, updateAttributes }: any) {
       document.removeEventListener('pointerup', onEnd);
       document.removeEventListener('pointercancel', onEnd);
       if (resizeRef.current !== null && liveWidthRef.current !== null) {
-        updateAttributes({ width: liveWidthRef.current });
+        const finalW = liveWidthRef.current;
+        updateAttributes({ width: finalW });
+        editor?.storage?.image?.onResize?.(finalW, true);
       }
       resizeRef.current = null;
       liveWidthRef.current = null;
@@ -70,7 +96,7 @@ function ResizableImageView({ node, updateAttributes }: any) {
     document.addEventListener('pointermove', onMove, { passive: false });
     document.addEventListener('pointerup', onEnd);
     document.addEventListener('pointercancel', onEnd);
-  }, [storedWidth, updateAttributes]);
+  }, [storedWidth, updateAttributes, editor]);
 
   return (
     <NodeViewWrapper>
@@ -196,6 +222,14 @@ export const ResizableImage = Node.create({
         ({ commands }: any) =>
           commands.insertContent({ type: this.name, attrs: options }),
     } as any;
+  },
+
+  // The host (CanvasTextBlock) writes a callback here so the canvas block
+  // can size to match the rendered image.
+  addStorage() {
+    return {
+      onResize: null as null | ((width: number, isFinal: boolean) => void),
+    };
   },
 
   addNodeView() {

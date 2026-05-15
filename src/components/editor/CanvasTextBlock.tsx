@@ -38,6 +38,9 @@ interface Props {
   onEmpty?: (blockId: string) => void;
   getEditorRef?: (blockId: string, editor: any) => void;
   onFocusChange?: (blockId: string | null) => void;
+  // Called by the embedded ResizableImage when the user resizes an image
+  // inside this block. Lets the parent canvas block follow the image width.
+  onImageResize?: (width: number, isFinal: boolean) => void;
 }
 
 export function CanvasTextBlock({
@@ -48,6 +51,7 @@ export function CanvasTextBlock({
   onEmpty,
   getEditorRef,
   onFocusChange,
+  onImageResize,
 }: Props) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [slashOpen, setSlashOpen] = useState(false);
@@ -167,6 +171,17 @@ export function CanvasTextBlock({
     },
     immediatelyRender: false,
   });
+
+  // Expose the image-resize callback to the ResizableImage NodeView
+  useEffect(() => {
+    if (!editor) return;
+    if (editor.storage?.image) {
+      editor.storage.image.onResize = onImageResize ?? null;
+    }
+    return () => {
+      if (editor.storage?.image) editor.storage.image.onResize = null;
+    };
+  }, [editor, onImageResize]);
 
   useEffect(() => {
     if (editor && getEditorRef) getEditorRef(blockId, editor);
