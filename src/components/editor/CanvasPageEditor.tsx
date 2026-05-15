@@ -2,12 +2,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
 import { SummarizeModal } from '@/components/editor/SummarizeModal';
 import { YouTubeImportModal } from '@/components/editor/YouTubeImportModal';
+import { TikTokImportModal } from '@/components/editor/TikTokImportModal';
 
 // Break circular dep: CanvasPageEditor → DatabaseView → CanvasPageEditor
 const DatabaseViewDynamic = dynamic(
@@ -355,6 +356,7 @@ export function CanvasPageEditor({
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [summarizeOpen, setSummarizeOpen] = useState(false);
   const [youtubeOpen, setYoutubeOpen] = useState(false);
+  const [tiktokOpen, setTiktokOpen] = useState(false);
   const [newBlockId, setNewBlockId] = useState<string | null>(null);
   const [movingBlockId, setMovingBlockId] = useState<string | null>(null);
   // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom)
@@ -766,16 +768,15 @@ export function CanvasPageEditor({
     }
   };
 
-  // ── Handle YouTube transcript import ──────────────────────────────────
-  const handleYouTubeImport = ({ title, text }: { title: string; text: string }) => {
-    // Split the transcript into ~150-word paragraphs for readability
+  // ── Handle YouTube / TikTok transcript import ─────────────────────────
+  const insertTranscriptBlock = (title: string, text: string, emoji: string) => {
     const words = text.split(/\s+/);
     const PARA_SIZE = 150;
     const paragraphs: any[] = [
       {
         type: 'heading',
         attrs: { level: 2 },
-        content: [{ type: 'text', text: `📺 ${title}` }],
+        content: [{ type: 'text', text: `${emoji} ${title}` }],
       },
     ];
     for (let i = 0; i < words.length; i += PARA_SIZE) {
@@ -789,6 +790,10 @@ export function CanvasPageEditor({
       content: paragraphs,
     });
   };
+  const handleYouTubeImport = ({ title, text }: { title: string; text: string }) =>
+    insertTranscriptBlock(title, text, '📺');
+  const handleTikTokImport = ({ title, text }: { title: string; text: string }) =>
+    insertTranscriptBlock(title, text, '🎵');
 
   // ── Image upload ───────────────────────────────────────────────────────
   const uploadImage = useCallback(async (file: File) => {
@@ -875,6 +880,13 @@ export function CanvasPageEditor({
             title="Import a YouTube video's transcript"
           >
             <Youtube size={12} className="text-red-500" /> YouTube
+          </button>
+          <button
+            onClick={() => setTiktokOpen(true)}
+            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
+            title="Import a TikTok video's transcript (only works if the video has captions)"
+          >
+            <Music2 size={12} className="text-pink-500" /> TikTok
           </button>
           <button
             onClick={() => setOrganizeOpen(true)}
@@ -1045,6 +1057,12 @@ export function CanvasPageEditor({
         <YouTubeImportModal
           onClose={() => setYoutubeOpen(false)}
           onImport={handleYouTubeImport}
+        />
+      )}
+      {tiktokOpen && (
+        <TikTokImportModal
+          onClose={() => setTiktokOpen(false)}
+          onImport={handleTikTokImport}
         />
       )}
 
