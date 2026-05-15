@@ -21,7 +21,7 @@ export function BudgetDashboard() {
   const [importOpen, setImportOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
   const [recurringOpen, setRecurringOpen] = useState(false);
-  const [recurringPrefill, setRecurringPrefill] = useState<{ name: string; amount: number; category: string } | null>(null);
+  const [recurringPrefill, setRecurringPrefill] = useState<{ name: string; amount: number; category: string; type?: 'income' | 'expense' } | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -235,6 +235,49 @@ export function BudgetDashboard() {
         </Section>
       )}
 
+      {/* Other repeat vendors — strictly: 2+ charges from same vendor in 90d
+          that didn't pass the subscription heuristic (food/transport/varying
+          amounts). Lets you manually flag car payments, weekly coffee shops,
+          gas stations, utility bills with variable amounts, etc. */}
+      {data.repeatVendors && data.repeatVendors.length > 0 && (
+        <Section
+          title="Other repeat vendors"
+          icon={<Repeat size={13} className="text-muted" />}
+        >
+          <p className="text-xs text-muted mb-2">
+            Vendors with 2+ charges in the last 90 days that the auto-detector skipped.
+            Tap <strong>Track</strong> to make any of them recurring.
+          </p>
+          <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
+            {data.repeatVendors.slice(0, 30).map((v) => (
+              <div key={v.vendor} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{v.vendor}</div>
+                  <div className="text-xs text-muted">
+                    {v.occurrences}× · avg {fmt2(v.averageAmount)} · total {fmt(v.totalAmount)} · last {v.lastDate} · {v.category}
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setRecurringPrefill({ name: v.vendor, amount: v.averageAmount, category: v.category });
+                    setRecurringOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
+                  title="Make this a recurring expense"
+                >
+                  <Repeat size={12} /> Track
+                </button>
+              </div>
+            ))}
+            {data.repeatVendors.length > 30 && (
+              <p className="text-xs text-muted text-center py-1">
+                Showing top 30 by total spend.
+              </p>
+            )}
+          </div>
+        </Section>
+      )}
+
       {/* Subscriptions / recurring */}
       {data.subscriptions.length > 0 && (
         <Section title="Recurring charges" icon={<RefreshCw size={13} className="text-accent" />}>
@@ -292,11 +335,12 @@ export function BudgetDashboard() {
                   <th className="text-left px-3 py-2 font-medium">Vendor</th>
                   <th className="text-left px-3 py-2 font-medium">Category</th>
                   <th className="text-right px-3 py-2 font-medium">Amount</th>
+                  <th className="w-8" />
                 </tr>
               </thead>
               <tbody>
                 {data.recentTransactions.map((t) => (
-                  <tr key={t.pageId} className="border-t border-border/40">
+                  <tr key={t.pageId} className="border-t border-border/40 group/row">
                     <td className="px-3 py-1.5 text-xs text-muted">{t.date}</td>
                     <td className="px-3 py-1.5 truncate max-w-[200px]">{t.vendor}</td>
                     <td className="px-3 py-1.5 text-xs">
@@ -306,6 +350,23 @@ export function BudgetDashboard() {
                     </td>
                     <td className={`px-3 py-1.5 text-right font-mono text-xs ${t.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                       {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
+                    </td>
+                    <td className="px-2 py-1">
+                      <button
+                        onClick={() => {
+                          setRecurringPrefill({
+                            name: t.vendor || 'Untitled',
+                            amount: Math.abs(t.amount),
+                            category: t.category,
+                            type: t.amount >= 0 ? 'income' : 'expense',
+                          });
+                          setRecurringOpen(true);
+                        }}
+                        className="p-1 rounded text-muted hover:text-accent hover:bg-bg opacity-0 group-hover/row:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+                        title="Make this a recurring rule"
+                      >
+                        <Repeat size={12} />
+                      </button>
                     </td>
                   </tr>
                 ))}
