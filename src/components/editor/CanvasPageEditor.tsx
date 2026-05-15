@@ -253,13 +253,17 @@ function CanvasCard({
         width: block.canvasWidth,
         zIndex: isMoving ? 10 : 2,
       }}
-      className={`group transition-shadow ${isMoving ? 'ring-2 ring-accent rounded-lg shadow-xl' : ''}`}
+      // pointer-events-none on the wrapper means empty space inside the
+      // block's rectangle (when it's wider/taller than its content) does
+      // NOT intercept clicks — they pass through to blocks behind/below.
+      // Interactive children below opt back in with pointer-events-auto.
+      // Pointer events still bubble from those children to onPointerDown,
+      // so Alt-drag-anywhere keeps working.
+      className={`group transition-shadow pointer-events-none ${isMoving ? 'ring-2 ring-accent rounded-lg shadow-xl' : ''}`}
       onPointerDown={handlePointerDown}
-      onMouseEnter={() => onHover(block.id)}
-      onMouseLeave={() => onHover(null)}
     >
       {/* Desktop hover handles — only on hover-capable devices */}
-      <div className="absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10 [@media(hover:none)]:!hidden">
+      <div className="pointer-events-auto absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10 [@media(hover:none)]:!hidden">
         <button
           data-drag-handle
           style={{ touchAction: 'none' }}
@@ -283,7 +287,7 @@ function CanvasCard({
       <div
         data-drag-handle
         style={{ touchAction: 'none' }}
-        className={`hidden [@media(hover:none)]:flex absolute -top-6 left-0 right-0 h-6 items-center justify-center z-10 rounded-t-lg transition-colors ${
+        className={`pointer-events-auto hidden [@media(hover:none)]:flex absolute -top-6 left-0 right-0 h-6 items-center justify-center z-10 rounded-t-lg transition-colors ${
           isMoving ? 'bg-accent/20' : 'bg-transparent'
         }`}
       >
@@ -303,24 +307,33 @@ function CanvasCard({
         </button>
       </div>
 
-      {block.type === 'database' ? (
-        // Databases keep their own border since they're a structured thing
-        <div className="rounded-lg border border-border bg-surface overflow-hidden">
-          <CanvasDatabaseBlock databaseId={block.content?.databaseId} />
-        </div>
-      ) : (
-        // Text blocks render flush — no card, no border, no padding.
-        // Looks like normal document content.
-        <CanvasTextBlock
-          blockId={block.id}
-          initialContent={block.content}
-          onUpdate={onContentUpdate}
-          onEmpty={onBlockEmpty}
-          getEditorRef={registerEditor}
-          onFocusChange={onFocusChange}
-          onImageResize={handleImageResize}
-        />
-      )}
+      {/* Content wrapper opts back into pointer events and carries hover
+          tracking. inline-block so it shrink-wraps content width and the
+          hit area never exceeds what's visible. */}
+      <div
+        className="pointer-events-auto inline-block w-full align-top"
+        onMouseEnter={() => onHover(block.id)}
+        onMouseLeave={() => onHover(null)}
+      >
+        {block.type === 'database' ? (
+          // Databases keep their own border since they're a structured thing
+          <div className="rounded-lg border border-border bg-surface overflow-hidden">
+            <CanvasDatabaseBlock databaseId={block.content?.databaseId} />
+          </div>
+        ) : (
+          // Text blocks render flush — no card, no border, no padding.
+          // Looks like normal document content.
+          <CanvasTextBlock
+            blockId={block.id}
+            initialContent={block.content}
+            onUpdate={onContentUpdate}
+            onEmpty={onBlockEmpty}
+            getEditorRef={registerEditor}
+            onFocusChange={onFocusChange}
+            onImageResize={handleImageResize}
+          />
+        )}
+      </div>
 
       {/* Right-edge resize handle — invisible until hover, blue on grab */}
       <div
@@ -329,7 +342,7 @@ function CanvasCard({
         onPointerMove={onResizeMove}
         onPointerUp={onResizeUp}
         onPointerCancel={onResizeUp}
-        className="absolute top-1 -right-0.5 w-2 h-[calc(100%-8px)] cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-accent/60 transition-colors z-10 rounded"
+        className="pointer-events-auto absolute top-1 -right-0.5 w-2 h-[calc(100%-8px)] cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-accent/60 transition-colors z-10 rounded"
         style={{ touchAction: 'none' }}
         title="Drag to resize"
       />
