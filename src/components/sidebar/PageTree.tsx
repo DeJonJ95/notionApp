@@ -29,7 +29,7 @@ export function PageTree({
   onChange: () => void;
   onNavigate?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(workspace.name);
   const router = useRouter();
