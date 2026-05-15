@@ -9,6 +9,9 @@ const nextConfig = {
   },
   experimental: {
     serverActions: { bodySizeLimit: '10mb' },
+    // pdf-parse pulls in pdfjs which has dynamic requires Next can't bundle.
+    // Leave them as external CJS at runtime instead.
+    serverComponentsExternalPackages: ['pdf-parse'],
   },
 };
 
