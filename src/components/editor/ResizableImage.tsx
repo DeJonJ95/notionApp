@@ -27,7 +27,7 @@ function ResizableImageView({ node, updateAttributes }: any) {
   useEffect(() => {
     if (!isSelected) return;
     const handler = (e: PointerEvent) => {
-      if (!containerRef.current?.contains(e.target as Node)) {
+      if (!containerRef.current?.contains(e.target as globalThis.Node)) {
         setIsSelected(false);
       }
     };
