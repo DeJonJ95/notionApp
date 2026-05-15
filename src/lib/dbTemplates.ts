@@ -38,17 +38,19 @@ export const DB_TEMPLATES: DbTemplate[] = [
     ],
   },
 
-  // ── Advanced Personal Budget (transactions ledger) ──────────────────────────
+  // ── Personal Budget (transaction ledger) ───────────────────────────────────
+  // Lean by design: add a row with Type=Budget to set a category envelope,
+  // then log Income/Expense rows against it. Budget Summary view sums them.
   {
     id: 'personal-budget',
     name: 'Personal Budget',
-    description: 'YNAB-inspired transaction ledger with due-date reminders, category envelopes, budget period targets, and overspending alerts.',
+    description: 'Track income, expenses, and category budgets. Add a row with Type = Budget to set an envelope, then log transactions against it.',
     icon: '💰',
     properties: [
       {
         name: 'Type',
         type: 'select',
-        options: ['Budget', 'Income', 'Fixed Expense', 'Variable Expense', 'Savings', 'Debt Payment', 'Transfer'],
+        options: ['Income', 'Expense', 'Budget', 'Savings'],
       },
       {
         name: 'Category',
@@ -56,7 +58,7 @@ export const DB_TEMPLATES: DbTemplate[] = [
         options: [
           'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
           'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
-          'Subscriptions', 'Investments', 'Debt', 'Business', 'Gifts & Donations',
+          'Subscriptions', 'Investments', 'Debt', 'Gifts & Donations',
           'Emergency Fund', 'Other',
         ],
       },
@@ -64,41 +66,18 @@ export const DB_TEMPLATES: DbTemplate[] = [
       { name: 'Budgeted Amount', type: 'number' },
       { name: 'Date', type: 'date' },
       { name: 'Due Date', type: 'date' },
-      {
-        name: 'Month',
-        type: 'select',
-        options: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
-      },
-      {
-        name: 'Budget Period',
-        type: 'select',
-        options: ['Weekly', 'Bi-Weekly', 'Monthly', 'Quarterly', 'Annual', 'One-Time'],
-      },
-      {
-        name: 'Priority',
-        type: 'select',
-        options: ['Must Pay', 'Need', 'Want', 'Saving Goal'],
-      },
-      {
-        name: 'Alert',
-        type: 'select',
-        options: ['On Track', 'Due Soon', 'Overdue', 'Over Budget', 'Needs Attention'],
-      },
+      { name: 'Vendor', type: 'text' },
       {
         name: 'Payment Method',
         type: 'select',
-        options: ['Checking', 'Savings', 'Credit Card', 'Debit Card', 'Cash', 'Venmo / Zelle', 'Other'],
+        options: ['Checking', 'Credit Card', 'Cash', 'Other'],
       },
       {
         name: 'Status',
         type: 'select',
-        options: ['Planned', 'Pending', 'Cleared'],
+        options: ['Planned', 'Cleared'],
       },
-      { name: 'Recurring', type: 'checkbox' },
-      { name: 'Tax Deductible', type: 'checkbox' },
-      { name: 'Vendor', type: 'text' },
       { name: 'Notes', type: 'text' },
-      { name: 'Remaining', type: 'formula', formula: 'Budgeted Amount - Amount' },
     ],
     views: [
       { name: 'All Transactions', type: 'table' },
