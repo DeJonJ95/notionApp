@@ -278,19 +278,58 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     }
   };
 
-  const updatePropertyValue = async (pageId: string, propertyId: string, value: any, propertyType: string) => {
+  // Local edit buffer so cell inputs feel instant. Every keystroke writes
+  // here; the actual network save is debounced. Parent refresh is also
+  // debounced (longer) so derived views like Budget Summary update without
+  // forcing a full table re-render mid-typing.
+  const [localEdits, setLocalEdits] = useState<Record<string, any>>({});
+  const cellSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cellKey = (pageId: string, propertyId: string) => `${pageId}|${propertyId}`;
+
+  const updatePropertyValue = (pageId: string, propertyId: string, value: any, propertyType: string) => {
     if (propertyType === 'formula') return;
-    const coerced =
-      propertyType === 'number' ? (value === '' ? null : Number(value)) :
-      propertyType === 'checkbox' ? Boolean(value) :
-      (value === '' ? null : value);
-    await fetch('/api/property-values', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pageId, propertyId, value: coerced }),
-    });
-    onUpdate();
+    const key = cellKey(pageId, propertyId);
+
+    // 1. Instant local update — keeps the input responsive
+    setLocalEdits((prev) => ({ ...prev, [key]: value }));
+
+    // 2. Debounced save (500ms per cell). Coercion happens here so partial
+    //    number input like "1." or "-" doesn't get NaN-ed mid-typing.
+    if (cellSaveTimers.current[key]) clearTimeout(cellSaveTimers.current[key]);
+    cellSaveTimers.current[key] = setTimeout(async () => {
+      const coerced =
+        propertyType === 'number' ? (value === '' || value == null ? null : Number(value)) :
+        propertyType === 'checkbox' ? Boolean(value) :
+        (value === '' ? null : value);
+      try {
+        await fetch('/api/property-values', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageId, propertyId, value: coerced }),
+        });
+      } catch {}
+      delete cellSaveTimers.current[key];
+
+      // 3. Eventual-consistency refresh for derived views (Budget Summary, etc).
+      //    Debounced 1.2s after the last save so rapid edits don't thrash.
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => {
+        refreshTimer.current = null;
+        onUpdate();
+      }, 1200);
+    }, 500);
   };
+
+  // Flush any pending edits on unmount so a quick navigation doesn't lose
+  // the last few keystrokes.
+  useEffect(() => {
+    return () => {
+      Object.values(cellSaveTimers.current).forEach((t) => clearTimeout(t));
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    };
+  }, []);
 
   const handlePageDrop = async (targetId: string) => {
     if (!dragPageId || dragPageId === targetId) { setDragPageId(null); return; }
@@ -437,28 +476,38 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     const base = 'bg-bg text-text border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent w-full';
     switch (pv.property.type) {
       case 'checkbox':
-        return (
-          <input
-            type="checkbox"
-            checked={!!pv.value}
-            onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.checked, 'checkbox')}
-            className="w-4 h-4 cursor-pointer accent-accent"
-          />
-        );
+        {
+          const buf = localEdits[cellKey(page.id, pv.property.id)];
+          const checked = buf !== undefined ? !!buf : !!pv.value;
+          return (
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.checked, 'checkbox')}
+              className="w-4 h-4 cursor-pointer accent-accent"
+            />
+          );
+        }
       case 'date':
         return (
           <input
             type="date"
-            value={pv.value ? String(pv.value) : ''}
+            value={(() => {
+              const buf = localEdits[cellKey(page.id, pv.property.id)];
+              const v = buf !== undefined ? buf : pv.value;
+              return v ? String(v) : '';
+            })()}
             onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value || null, 'date')}
             className={base}
           />
         );
       case 'select': {
         const options = getSelectOptions(pv.property);
+        const buf = localEdits[cellKey(page.id, pv.property.id)];
+        const value = buf !== undefined ? buf : pv.value;
         return (
           <select
-            value={String(pv.value ?? '')}
+            value={String(value ?? '')}
             onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value || null, 'select')}
             className={base}
           >
@@ -467,26 +516,33 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
           </select>
         );
       }
-      case 'number':
+      case 'number': {
+        const buf = localEdits[cellKey(page.id, pv.property.id)];
+        // Show raw buffer string while typing so "1." / "-" don't snap to NaN.
+        const value = buf !== undefined ? buf : pv.value;
         return (
           <input
             type="number"
-            value={pv.value !== null && pv.value !== undefined ? String(pv.value) : ''}
+            value={value !== null && value !== undefined ? String(value) : ''}
             onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value, 'number')}
             className={base}
             placeholder="0"
           />
         );
-      default:
+      }
+      default: {
+        const buf = localEdits[cellKey(page.id, pv.property.id)];
+        const value = buf !== undefined ? buf : pv.value;
         return (
           <input
             type="text"
-            value={String(pv.value ?? '')}
+            value={String(value ?? '')}
             onChange={(e) => updatePropertyValue(page.id, pv.property.id, e.target.value, 'text')}
             className={base}
             placeholder={`${pv.property.name}…`}
           />
         );
+      }
     }
   };
 

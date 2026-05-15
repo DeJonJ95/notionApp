@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
@@ -262,6 +262,23 @@ export function Sidebar() {
                 onNavigate={() => setOpen(false)}
               />
             ))}
+            <button
+              onClick={async () => {
+                const name = window.prompt('Workspace name', 'New workspace');
+                if (name === null) return;
+                const trimmed = name.trim() || 'New workspace';
+                await fetch('/api/workspaces', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: trimmed }),
+                });
+                refresh();
+              }}
+              className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-xs text-muted hover:bg-bg hover:text-text transition-colors"
+              title="Create a new workspace"
+            >
+              <Plus size={12} /> New workspace
+            </button>
           </div>
         </nav>
 
