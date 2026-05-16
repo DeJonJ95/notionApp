@@ -318,7 +318,7 @@ function CanvasCard({
           tracking. inline-block so it shrink-wraps content width and the
           hit area never exceeds what's visible. */}
       <div
-        className="pointer-events-auto inline-block w-full align-top"
+        className="pointer-events-auto block w-full"
         onMouseEnter={() => onHover(block.id)}
         onMouseLeave={() => onHover(null)}
       >

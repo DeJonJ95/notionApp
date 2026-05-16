@@ -29,15 +29,20 @@ html, body {
   overscroll-behavior-y: none;
 }
 
-/* TipTap editor */
+/* TipTap editor — canvas blocks are individual ProseMirror instances, so
+   the editor must hug its content (no forced viewport-height minimum). */
 .ProseMirror {
   outline: none;
-  min-height: 70vh;
+  min-height: 0;
 }
 
 .ProseMirror > * + * {
   margin-top: 0.5em;
 }
+
+/* Don't pad the top/bottom of the block — the box should hug the content */
+.ProseMirror > *:first-child { margin-top: 0; }
+.ProseMirror > *:last-child { margin-bottom: 0; }
 
 .ProseMirror h1 { font-size: 2rem; font-weight: 700; line-height: 1.2; margin-top: 1.5rem; }
 .ProseMirror h2 { font-size: 1.5rem; font-weight: 600; line-height: 1.3; margin-top: 1.25rem; }
