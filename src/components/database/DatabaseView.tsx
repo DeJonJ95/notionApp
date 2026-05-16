@@ -957,6 +957,20 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                 </tr>
               );
 
+              if (viewedPages.length === 0) {
+                return (
+                  <tr>
+                    <td colSpan={orderedCols.length} className="border border-border px-3 py-10 text-center">
+                      <div className="text-sm text-muted">
+                        {renderedPages.length === 0
+                          ? 'No rows yet — add one with the title field above, or "Move page in".'
+                          : 'No rows match this view’s filter. Adjust or clear the filter above.'}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              }
+
               if (viewGroup && viewGroup.propertyId) {
                 const groups = new Map<string, typeof viewedPages>();
                 for (const p of viewedPages) {
