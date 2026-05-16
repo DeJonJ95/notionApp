@@ -4,10 +4,13 @@ import Link from 'next/link';
 import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
+  Target, Tag, BarChart3,
 } from 'lucide-react';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
 import { RecurringRulesModal } from './RecurringRulesModal';
+import { SavingsGoalsModal } from './SavingsGoalsModal';
+import { CategorizationRulesModal } from './CategorizationRulesModal';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
 
 const fmt = (n: number) =>
@@ -22,6 +25,8 @@ export function BudgetDashboard() {
   const [cancelTarget, setCancelTarget] = useState<Subscription | null>(null);
   const [recurringOpen, setRecurringOpen] = useState(false);
   const [recurringPrefill, setRecurringPrefill] = useState<{ name: string; amount: number; category: string; type?: 'income' | 'expense' } | null>(null);
+  const [goalsOpen, setGoalsOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -78,6 +83,12 @@ export function BudgetDashboard() {
           onClose={() => { setRecurringOpen(false); setRecurringPrefill(null); }}
         />
       )}
+      {goalsOpen && (
+        <SavingsGoalsModal onChanged={load} onClose={() => setGoalsOpen(false)} />
+      )}
+      {rulesOpen && (
+        <CategorizationRulesModal onClose={() => setRulesOpen(false)} />
+      )}
 
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
@@ -97,6 +108,20 @@ export function BudgetDashboard() {
           title="Refresh"
         >
           <RefreshCw size={14} />
+        </button>
+        <button
+          onClick={() => setGoalsOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm hover:bg-surface"
+          title="Savings goals"
+        >
+          <Target size={14} /> Goals
+        </button>
+        <button
+          onClick={() => setRulesOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm hover:bg-surface"
+          title="Categorization rules"
+        >
+          <Tag size={14} /> Rules
         </button>
         <button
           onClick={() => { setRecurringPrefill(null); setRecurringOpen(true); }}
@@ -212,6 +237,43 @@ export function BudgetDashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Spending trends — last 6 months, income vs expenses */}
+      {data.trends && data.trends.some((t) => t.income || t.expenses) && (
+        <Section title="Trends — last 6 months" icon={<BarChart3 size={13} className="text-accent" />}>
+          {(() => {
+            const max = Math.max(
+              1,
+              ...data.trends.map((t) => Math.max(t.income, t.expenses))
+            );
+            return (
+              <div className="flex items-end justify-between gap-2 h-40 px-1">
+                {data.trends.map((t) => (
+                  <div key={t.month} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                    <div className="w-full flex items-end justify-center gap-1 h-full">
+                      <div
+                        className="w-1/2 bg-green-500/70 rounded-t hover:bg-green-500 transition-colors"
+                        style={{ height: `${(t.income / max) * 100}%` }}
+                        title={`Income ${fmt(t.income)}`}
+                      />
+                      <div
+                        className="w-1/2 bg-red-500/70 rounded-t hover:bg-red-500 transition-colors"
+                        style={{ height: `${(t.expenses / max) * 100}%` }}
+                        title={`Expenses ${fmt(t.expenses)}`}
+                      />
+                    </div>
+                    <span className="text-[10px] text-muted whitespace-nowrap">{t.month}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          <div className="flex items-center justify-center gap-4 mt-2 text-[11px] text-muted">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500/70 inline-block" /> Income</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/70 inline-block" /> Expenses</span>
           </div>
         </Section>
       )}

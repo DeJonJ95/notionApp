@@ -19,6 +19,34 @@ model User {
   accounts   Account[]
   sessions   Session[]
   recurringRules RecurringRule[]
+  categorizationRules CategorizationRule[]
+  savingsGoals SavingsGoal[]
+}
+
+model CategorizationRule {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match     String   // lowercased substring matched against vendor
+  category  String   // category to force when matched
+  createdAt DateTime @default(now())
+
+  @@unique([userId, match])
+  @@index([userId])
+}
+
+model SavingsGoal {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  targetAmount  Float
+  currentAmount Float     @default(0)
+  deadline      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
 }
 
 model RecurringRule {
