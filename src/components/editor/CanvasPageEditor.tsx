@@ -245,13 +245,19 @@ function CanvasCard({
     onResizeEnd(block.id);
   };
 
+  // Text blocks shrink-wrap to their content (max-content) but wrap at
+  // canvasWidth — so a short line is a small block and the resize handle
+  // sits at the real content edge. Databases keep an explicit width.
+  const isText = block.type !== 'database';
   return (
     <div
       style={{
         position: 'absolute',
         left: block.canvasX,
         top: block.canvasY,
-        width: block.canvasWidth,
+        ...(isText
+          ? { width: 'max-content', maxWidth: block.canvasWidth }
+          : { width: block.canvasWidth }),
         zIndex: isMoving ? 10 : 2,
       }}
       // pointer-events-none on the wrapper means empty space inside the
