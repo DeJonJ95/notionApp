@@ -130,6 +130,7 @@ model View {
   database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   filters    Json?    // filter conditions
   sorts      Json?    // sort conditions
+  grouping   Json?    // group-by config { propertyId }
   createdAt  DateTime @default(now())
 
   @@index([databaseId])

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
@@ -209,6 +209,51 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       return { ...page, properties };
     });
   }, [database.pages, database.properties]);
+
+  // ── Per-view filter / sort (persisted on the View row) ─────────────────
+  const viewFilter = (selectedView as any).filters as
+    | { propertyId: string; op: 'eq' | 'contains'; value: string }
+    | null
+    | undefined;
+  const viewSort = (selectedView as any).sorts as
+    | { propertyId: string; dir: 'asc' | 'desc' }
+    | null
+    | undefined;
+  const viewGroup = (selectedView as any).grouping as
+    | { propertyId: string }
+    | null
+    | undefined;
+
+  const cellValue = (page: (typeof renderedPages)[0], propId: string): any => {
+    if (propId === '__title__') return page.title ?? '';
+    return page.properties.find((v) => v.property.id === propId)?.value ?? '';
+  };
+
+  const viewedPages = useMemo(() => {
+    let rows = renderedPages;
+    if (viewFilter && viewFilter.propertyId) {
+      const needle = String(viewFilter.value ?? '').toLowerCase();
+      rows = rows.filter((p) => {
+        const v = String(cellValue(p, viewFilter.propertyId) ?? '').toLowerCase();
+        return viewFilter.op === 'contains' ? v.includes(needle) : v === needle;
+      });
+    }
+    if (viewSort && viewSort.propertyId) {
+      rows = [...rows].sort((a, b) => {
+        const av = cellValue(a, viewSort.propertyId);
+        const bv = cellValue(b, viewSort.propertyId);
+        const an = Number(av);
+        const bn = Number(bv);
+        let cmp: number;
+        if (!isNaN(an) && !isNaN(bn) && av !== '' && bv !== '') cmp = an - bn;
+        else cmp = String(av).localeCompare(String(bv));
+        return viewSort.dir === 'desc' ? -cmp : cmp;
+      });
+    }
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderedPages, JSON.stringify(viewFilter), JSON.stringify(viewSort)]);
+
 
   const visibleProperties = useMemo(
     () => database.properties.filter((p) => !hiddenPropertyIds.has(p.id)),
@@ -718,45 +763,70 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
             </tr>
           </thead>
           <tbody>
-            {renderedPages.map((page) => (
-              <tr
-                key={page.id}
-                draggable
-                onDragStart={() => setDragPageId(page.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handlePageDrop(page.id)}
-                className="hover:bg-surface transition-colors"
-              >
-                {orderedCols.map((colId) => {
-                  const isTitle = colId === '__title__';
-                  const prop = isTitle ? null : database.properties.find((p) => p.id === colId);
-                  if (!isTitle && !prop) return null;
-                  const w = colWidths[colId];
-                  return (
-                    <td
-                      key={colId}
-                      className="border border-border px-3 py-2"
-                      style={w ? { width: w, maxWidth: w, overflow: 'hidden' } : undefined}
-                    >
-                      {isTitle ? (
-                        <button
-                          onClick={() => setInspectPageId(page.id)}
-                          className="flex items-center gap-2 text-text font-medium hover:text-accent text-left w-full truncate"
-                        >
-                          <span>{page.icon ?? '📄'}</span>
-                          <span className="truncate">{page.title}</span>
-                        </button>
-                      ) : (
-                        renderPropertyInput(
-                          page,
-                          page.properties.find((v) => v.property.id === colId) ?? { property: prop!, value: '' }
-                        )
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {(() => {
+              const renderRow = (page: (typeof viewedPages)[0]) => (
+                <tr
+                  key={page.id}
+                  draggable
+                  onDragStart={() => setDragPageId(page.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handlePageDrop(page.id)}
+                  className="hover:bg-surface transition-colors"
+                >
+                  {orderedCols.map((colId) => {
+                    const isTitle = colId === '__title__';
+                    const prop = isTitle ? null : database.properties.find((p) => p.id === colId);
+                    if (!isTitle && !prop) return null;
+                    const w = colWidths[colId];
+                    return (
+                      <td
+                        key={colId}
+                        className="border border-border px-3 py-2"
+                        style={w ? { width: w, maxWidth: w, overflow: 'hidden' } : undefined}
+                      >
+                        {isTitle ? (
+                          <button
+                            onClick={() => setInspectPageId(page.id)}
+                            className="flex items-center gap-2 text-text font-medium hover:text-accent text-left w-full truncate"
+                          >
+                            <span>{page.icon ?? '📄'}</span>
+                            <span className="truncate">{page.title}</span>
+                          </button>
+                        ) : (
+                          renderPropertyInput(
+                            page,
+                            page.properties.find((v) => v.property.id === colId) ?? { property: prop!, value: '' }
+                          )
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+
+              if (viewGroup && viewGroup.propertyId) {
+                const groups = new Map<string, typeof viewedPages>();
+                for (const p of viewedPages) {
+                  const key = String(cellValue(p, viewGroup.propertyId) || '— none —');
+                  if (!groups.has(key)) groups.set(key, []);
+                  groups.get(key)!.push(p);
+                }
+                return Array.from(groups.entries()).map(([groupKey, rows]) => (
+                  <Fragment key={groupKey}>
+                    <tr className="bg-surface/70">
+                      <td
+                        colSpan={orderedCols.length}
+                        className="border border-border px-3 py-1.5 text-xs font-semibold text-muted uppercase tracking-wide"
+                      >
+                        {groupKey} <span className="text-muted/60 normal-case">({rows.length})</span>
+                      </td>
+                    </tr>
+                    {rows.map(renderRow)}
+                  </Fragment>
+                ));
+              }
+              return viewedPages.map(renderRow);
+            })()}
           </tbody>
         </table>
       </div>
@@ -765,7 +835,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
   const renderGalleryView = () => (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {renderedPages.map((page) => (
+      {viewedPages.map((page) => (
         <div
           key={page.id}
           draggable
@@ -796,7 +866,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
 
   const renderListView = () => (
     <div className="space-y-2">
-      {renderedPages.map((page) => (
+      {viewedPages.map((page) => (
         <div
           key={page.id}
           draggable
@@ -845,7 +915,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     ];
 
     const getColPages = (colId: string) =>
-      renderedPages.filter((p) => {
+      viewedPages.filter((p) => {
         const pv = p.properties.find((v) => v.property.id === boardGroupProperty.id);
         return (String(pv?.value ?? '')) === colId;
       });
@@ -1350,6 +1420,102 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     }
   };
 
+  const renderViewConfigBar = (view: View) => {
+    // Only the generic record views support filter/sort/group
+    if (!['table', 'list', 'gallery', 'board'].includes(view.type)) return null;
+    const f = (view as any).filters as { propertyId: string; op: string; value: string } | null;
+    const s = (view as any).sorts as { propertyId: string; dir: string } | null;
+    const g = (view as any).grouping as { propertyId: string } | null;
+    const patch = (p: any) => {
+      fetch(`/api/databases/${database.id}/views/${view.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p),
+      }).then((r) => { if (r.ok) onUpdate(); }).catch(() => {});
+    };
+    const props = database.properties;
+    const selectProps = props.filter((p) => p.type === 'select');
+    return (
+      <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+        {/* Filter */}
+        <div className="flex items-center gap-1 border border-border rounded-lg px-2 py-1 bg-bg">
+          <span className="text-muted">Filter</span>
+          <select
+            value={f?.propertyId ?? ''}
+            onChange={(e) => patch({ filters: e.target.value ? { propertyId: e.target.value, op: f?.op ?? 'contains', value: f?.value ?? '' } : null })}
+            className="bg-transparent text-text focus:outline-none"
+          >
+            <option value="">—</option>
+            <option value="__title__">Name</option>
+            {props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {f?.propertyId && (
+            <>
+              <select
+                value={f.op}
+                onChange={(e) => patch({ filters: { ...f, op: e.target.value } })}
+                className="bg-transparent text-text focus:outline-none"
+              >
+                <option value="contains">contains</option>
+                <option value="eq">is</option>
+              </select>
+              <input
+                defaultValue={f.value}
+                onBlur={(e) => patch({ filters: { ...f, value: e.target.value } })}
+                placeholder="value"
+                className="w-24 bg-surface border border-border rounded px-1 py-0.5 text-text focus:outline-none"
+              />
+            </>
+          )}
+        </div>
+        {/* Sort */}
+        <div className="flex items-center gap-1 border border-border rounded-lg px-2 py-1 bg-bg">
+          <span className="text-muted">Sort</span>
+          <select
+            value={s?.propertyId ?? ''}
+            onChange={(e) => patch({ sorts: e.target.value ? { propertyId: e.target.value, dir: s?.dir ?? 'asc' } : null })}
+            className="bg-transparent text-text focus:outline-none"
+          >
+            <option value="">—</option>
+            <option value="__title__">Name</option>
+            {props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {s?.propertyId && (
+            <button
+              onClick={() => patch({ sorts: { ...s, dir: s.dir === 'asc' ? 'desc' : 'asc' } })}
+              className="text-text hover:text-accent"
+              title="Toggle direction"
+            >
+              {s.dir === 'desc' ? '↓' : '↑'}
+            </button>
+          )}
+        </div>
+        {/* Group (table only, by a select property) */}
+        {view.type === 'table' && selectProps.length > 0 && (
+          <div className="flex items-center gap-1 border border-border rounded-lg px-2 py-1 bg-bg">
+            <span className="text-muted">Group</span>
+            <select
+              value={g?.propertyId ?? ''}
+              onChange={(e) => patch({ grouping: e.target.value ? { propertyId: e.target.value } : null })}
+              className="bg-transparent text-text focus:outline-none"
+            >
+              <option value="">—</option>
+              {selectProps.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+        )}
+        {(f || s || g) && (
+          <button
+            onClick={() => patch({ filters: null, sorts: null, grouping: null })}
+            className="text-muted hover:text-red-500 underline"
+          >
+            clear
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const renderViewPane = (view: View, onViewChange: (id: string) => void) => (
     <div className="min-w-0">
       <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
@@ -1368,6 +1534,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
           </button>
         ))}
       </div>
+      {renderViewConfigBar(view)}
       {renderViewContent(view)}
     </div>
   );
