@@ -549,6 +549,45 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     };
   }, []);
 
+  // ── Touch long-press reorder (HTML5 DnD is mouse-only) ─────────────────
+  const [reorderId, setReorderId] = useState<string | null>(null);
+  const lpTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lpStart = useRef<{ x: number; y: number; id: string } | null>(null);
+
+  const rowPointerDown = (e: React.PointerEvent, pageId: string) => {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    // Don't hijack long-press on the interactive cell controls — only the
+    // row "body" (title cell text, padding) starts a reorder.
+    const t = e.target as HTMLElement;
+    if (t.closest('input, select, textarea, [data-resize-handle], [data-relation-cell]')) return;
+    lpStart.current = { x: e.clientX, y: e.clientY, id: pageId };
+    if (lpTimer.current) clearTimeout(lpTimer.current);
+    lpTimer.current = setTimeout(() => {
+      setDragPageId(pageId);
+      setReorderId(pageId);
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
+    }, 450);
+  };
+  const rowPointerMove = (e: React.PointerEvent) => {
+    if (lpTimer.current && lpStart.current) {
+      if (Math.abs(e.clientX - lpStart.current.x) > 10 || Math.abs(e.clientY - lpStart.current.y) > 10) {
+        clearTimeout(lpTimer.current);
+        lpTimer.current = null;
+      }
+    }
+    if (reorderId && e.cancelable) e.preventDefault(); // stop page scroll while dragging
+  };
+  const rowPointerUp = (e: React.PointerEvent) => {
+    if (lpTimer.current) { clearTimeout(lpTimer.current); lpTimer.current = null; }
+    if (!reorderId) return;
+    const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    const row = under?.closest('[data-page-row]') as HTMLElement | null;
+    const targetId = row?.getAttribute('data-page-row');
+    if (targetId) handlePageDrop(targetId);
+    else setDragPageId(null);
+    setReorderId(null);
+  };
+
   const handlePageDrop = async (targetId: string) => {
     if (!dragPageId || dragPageId === targetId) { setDragPageId(null); return; }
     const ordered = database.pages.filter((p) => p.id !== dragPageId);
@@ -864,11 +903,19 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
               const renderRow = (page: (typeof viewedPages)[0]) => (
                 <tr
                   key={page.id}
+                  data-page-row={page.id}
                   draggable
                   onDragStart={() => setDragPageId(page.id)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => handlePageDrop(page.id)}
-                  className="hover:bg-surface transition-colors"
+                  onPointerDown={(e) => rowPointerDown(e, page.id)}
+                  onPointerMove={rowPointerMove}
+                  onPointerUp={rowPointerUp}
+                  onPointerCancel={() => { if (lpTimer.current) clearTimeout(lpTimer.current); setReorderId(null); }}
+                  style={reorderId ? { touchAction: 'none' } : undefined}
+                  className={`hover:bg-surface transition-colors ${
+                    reorderId === page.id ? 'ring-2 ring-accent ring-inset bg-accent/5' : ''
+                  }`}
                 >
                   {orderedCols.map((colId) => {
                     const isTitle = colId === '__title__';
