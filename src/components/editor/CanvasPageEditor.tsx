@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -372,10 +372,16 @@ export function CanvasPageEditor({
   const [tiktokOpen, setTiktokOpen] = useState(false);
   const [newBlockId, setNewBlockId] = useState<string | null>(null);
   const [movingBlockId, setMovingBlockId] = useState<string | null>(null);
-  // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom)
-  const [zoom, setZoom] = useState(1);
+  // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom).
+  // On a phone the document column (720px) is far wider than the viewport,
+  // so default to ~0.55 there — it lands roughly fit-to-width instead of
+  // opening zoomed into the top-left corner.
+  const [zoom, setZoom] = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return 0.55;
+    return 1;
+  });
   // Mirror in a ref so pointer/touch handlers always read the live value
-  const zoomRef = useRef(1);
+  const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -919,6 +925,59 @@ export function CanvasPageEditor({
 
       {/* ── Formatting toolbar (operates on currently-focused block) ──── */}
       <div className="flex items-center gap-0.5 px-5 py-1 border-b border-border bg-surface/50 shrink-0 flex-wrap text-muted">
+        {/* Inline marks */}
+        <FmtBtn icon={<Bold size={14} />} title="Bold (Ctrl/Cmd+B)"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleBold().run())} />
+        <FmtBtn icon={<Italic size={14} />} title="Italic (Ctrl/Cmd+I)"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleItalic().run())} />
+        <FmtBtn icon={<Underline size={14} />} title="Underline (Ctrl/Cmd+U)"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleUnderline().run())} />
+        <FmtBtn icon={<Strikethrough size={14} />} title="Strikethrough"
+          onAct={() => runOnFocused((e) => e.chain().focus().toggleStrike().run())} />
+        <FmtBtn icon={<Link2 size={14} />} title="Add / edit link"
+          onAct={() => runOnFocused((e) => {
+            const prev = e.getAttributes('link')?.href ?? '';
+            const url = window.prompt('Link URL (leave blank to remove)', prev);
+            if (url === null) return;
+            if (url === '') { e.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
+            const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+            e.chain().focus().extendMarkRange('link').setLink({ href }).run();
+          })} />
+        {/* Font family */}
+        <select
+          title="Font"
+          onMouseDown={(e) => e.preventDefault()}
+          onChange={(e) => {
+            const v = e.target.value;
+            runOnFocused((ed) =>
+              v ? ed.chain().focus().setFontFamily(v).run()
+                : ed.chain().focus().unsetFontFamily().run()
+            );
+            e.currentTarget.selectedIndex = 0;
+          }}
+          className="ml-1 bg-bg border border-border rounded text-xs px-1 py-1 text-muted hover:text-text focus:outline-none cursor-pointer"
+        >
+          <option value="">Font</option>
+          <option value="ui-sans-serif, system-ui, sans-serif">Sans</option>
+          <option value="ui-serif, Georgia, serif">Serif</option>
+          <option value="ui-monospace, Menlo, monospace">Mono</option>
+          <option value="Inter, sans-serif">Inter</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="'Times New Roman', serif">Times</option>
+          <option value="Courier, monospace">Courier</option>
+        </select>
+        {/* Font size */}
+        <FmtBtn icon={<Minus size={14} />} title="Decrease font size"
+          onAct={() => runOnFocused((e) => {
+            const cur = parseInt(e.getAttributes('textStyle')?.fontSize ?? '16', 10) || 16;
+            e.chain().focus().setFontSize(`${Math.max(10, cur - 2)}px`).run();
+          })} />
+        <FmtBtn icon={<Plus size={14} />} title="Increase font size"
+          onAct={() => runOnFocused((e) => {
+            const cur = parseInt(e.getAttributes('textStyle')?.fontSize ?? '16', 10) || 16;
+            e.chain().focus().setFontSize(`${Math.min(72, cur + 2)}px`).run();
+          })} />
+        <div className="w-px self-stretch bg-border mx-1" />
         <FmtBtn icon={<Heading1 size={14} />} title="Heading 1"
           onAct={() => runOnFocused((e) => e.chain().focus().toggleHeading({ level: 1 }).run())} />
         <FmtBtn icon={<Heading2 size={14} />} title="Heading 2"
