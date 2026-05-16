@@ -8,6 +8,14 @@ import {
   Eye, EyeOff, X, Settings, Columns, ExternalLink, Edit3, Link2, Search,
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
+import { RelationCell, RollupCell } from './RelationCell';
+
+// Parse a relation/rollup config out of the overloaded Property.formula JSON.
+function parseRelConfig(formula?: string): any {
+  if (!formula) return {};
+  try { const j = JSON.parse(formula); return j && typeof j === 'object' && !Array.isArray(j) ? j : {}; }
+  catch { return {}; }
+}
 
 import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
 type SplitPageData = { id: string; title: string; icon: string | null; cover: string | null; isFavorite: boolean; blocks: CanvasBlockData[] };
@@ -137,6 +145,19 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const [newPropType, setNewPropType] = useState('text');
   const [newPropOptions, setNewPropOptions] = useState('');
   const [newPropFormula, setNewPropFormula] = useState('');
+  // Relation/rollup config (shared by Add + Edit modals)
+  const [relTargetDb, setRelTargetDb] = useState('');
+  const [rollupRelProp, setRollupRelProp] = useState('');
+  const [rollupTargetProp, setRollupTargetProp] = useState('__title__');
+  const [rollupAgg, setRollupAgg] = useState('count');
+  // All databases the user owns (for the relation target picker)
+  const [allDbs, setAllDbs] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch('/api/workspaces')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((ws: any[]) => setAllDbs(ws.flatMap((w) => w.databases ?? [])))
+      .catch(() => {});
+  }, []);
   const [newViewName, setNewViewName] = useState('New View');
   const [newViewType, setNewViewType] = useState('table');
   const [calendarDate, setCalendarDate] = useState(new Date());
@@ -338,6 +359,16 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     } else if (newPropType === 'select') {
       const opts = newPropOptions.split('\n').map((s) => s.trim()).filter(Boolean);
       formula = JSON.stringify(opts);
+    } else if (newPropType === 'relation') {
+      if (!relTargetDb) return;
+      formula = JSON.stringify({ targetDatabaseId: relTargetDb });
+    } else if (newPropType === 'rollup') {
+      if (!rollupRelProp) return;
+      formula = JSON.stringify({
+        relationPropertyId: rollupRelProp,
+        targetProperty: rollupTargetProp,
+        agg: rollupAgg,
+      });
     }
     await fetch(`/api/databases/${database.id}/properties`, {
       method: 'POST',
@@ -346,6 +377,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     });
     setShowAddProperty(false);
     setNewPropName(''); setNewPropType('text'); setNewPropOptions(''); setNewPropFormula('');
+    setRelTargetDb(''); setRollupRelProp(''); setRollupTargetProp('__title__'); setRollupAgg('count');
     onUpdate();
   };
 
@@ -377,6 +409,16 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     } else if (prop.type === 'formula') {
       setEditPropFormula(prop.formula || '');
       setEditPropOptions('');
+    } else if (prop.type === 'relation') {
+      const c = parseRelConfig(prop.formula);
+      setRelTargetDb(c.targetDatabaseId ?? '');
+      setEditPropOptions(''); setEditPropFormula('');
+    } else if (prop.type === 'rollup') {
+      const c = parseRelConfig(prop.formula);
+      setRollupRelProp(c.relationPropertyId ?? '');
+      setRollupTargetProp(c.targetProperty ?? '__title__');
+      setRollupAgg(c.agg ?? 'count');
+      setEditPropOptions(''); setEditPropFormula('');
     } else {
       setEditPropOptions('');
       setEditPropFormula('');
@@ -407,6 +449,16 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       formula = JSON.stringify(opts);
     } else if (editPropType === 'formula') {
       formula = editPropFormula.trim() || null;
+    } else if (editPropType === 'relation') {
+      if (!relTargetDb) return;
+      formula = JSON.stringify({ targetDatabaseId: relTargetDb });
+    } else if (editPropType === 'rollup') {
+      if (!rollupRelProp) return;
+      formula = JSON.stringify({
+        relationPropertyId: rollupRelProp,
+        targetProperty: rollupTargetProp,
+        agg: rollupAgg,
+      });
     }
     await fetch(`/api/databases/${database.id}/properties/${editPropId}`, {
       method: 'PATCH',
@@ -625,6 +677,38 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   const renderPropertyInput = (page: Page, pv: PropertyValue) => {
     if (pv.property.type === 'formula') {
       return <span className="text-sm text-muted">{String(pv.value ?? '')}</span>;
+    }
+    if (pv.property.type === 'relation') {
+      const cfg = parseRelConfig(pv.property.formula);
+      const buf = localEdits[cellKey(page.id, pv.property.id)];
+      const ids: string[] = Array.isArray(buf)
+        ? buf
+        : Array.isArray(pv.value) ? pv.value : [];
+      return (
+        <RelationCell
+          value={ids}
+          targetDatabaseId={cfg.targetDatabaseId ?? ''}
+          onChange={(next) => updatePropertyValue(page.id, pv.property.id, next, 'relation')}
+        />
+      );
+    }
+    if (pv.property.type === 'rollup') {
+      const cfg = parseRelConfig(pv.property.formula);
+      // Resolve the linked ids from the relation property this rollup points at
+      const relProp = database.properties.find((p) => p.id === cfg.relationPropertyId);
+      const relVal = relProp
+        ? page.properties.find((v) => v.property.id === relProp.id)?.value
+        : null;
+      const linkedIds: string[] = Array.isArray(relVal) ? relVal : [];
+      const relCfg = parseRelConfig(relProp?.formula);
+      return (
+        <RollupCell
+          linkedIds={linkedIds}
+          targetDatabaseId={relCfg.targetDatabaseId ?? ''}
+          targetProp={cfg.targetProperty ?? '__title__'}
+          agg={cfg.agg ?? 'count'}
+        />
+      );
     }
     const base = 'bg-bg text-text border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent w-full';
     switch (pv.property.type) {
@@ -1702,6 +1786,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                   <option value="checkbox">Checkbox</option>
                   <option value="select">Select</option>
                   <option value="formula">Formula</option>
+                  <option value="relation">Relation (link another database)</option>
+                  <option value="rollup">Rollup (aggregate from a relation)</option>
                 </select>
               </div>
               {newPropType === 'select' && (
@@ -1726,6 +1812,66 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                     placeholder="e.g. Price * Quantity"
                     className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
                   />
+                </div>
+              )}
+              {newPropType === 'relation' && (
+                <div>
+                  <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Linked database</label>
+                  <select
+                    value={relTargetDb}
+                    onChange={(e) => setRelTargetDb(e.target.value)}
+                    className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="">Choose a database…</option>
+                    {allDbs.filter((d) => d.id !== database.id).map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {newPropType === 'rollup' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Through relation property</label>
+                    <select
+                      value={rollupRelProp}
+                      onChange={(e) => setRollupRelProp(e.target.value)}
+                      className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="">Choose a relation…</option>
+                      {database.properties.filter((p) => p.type === 'relation').map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    {database.properties.filter((p) => p.type === 'relation').length === 0 && (
+                      <p className="text-[11px] text-yellow-600 mt-1">Add a relation property first.</p>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Target field</label>
+                      <input
+                        value={rollupTargetProp}
+                        onChange={(e) => setRollupTargetProp(e.target.value)}
+                        placeholder="__title__ or property name"
+                        className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Aggregate</label>
+                      <select
+                        value={rollupAgg}
+                        onChange={(e) => setRollupAgg(e.target.value)}
+                        className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                      >
+                        <option value="count">Count</option>
+                        <option value="sum">Sum</option>
+                        <option value="avg">Average</option>
+                        <option value="min">Min</option>
+                        <option value="max">Max</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -1785,6 +1931,8 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                   <option value="checkbox">Checkbox</option>
                   <option value="select">Select</option>
                   <option value="formula">Formula</option>
+                  <option value="relation">Relation (link another database)</option>
+                  <option value="rollup">Rollup (aggregate from a relation)</option>
                 </select>
                 {editPropType !== editPropOriginalType && (
                   <p className="mt-1 text-[11px] text-yellow-600">
@@ -1813,6 +1961,57 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
                     placeholder="e.g. Price * Quantity"
                     className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
                   />
+                </div>
+              )}
+              {editPropType === 'relation' && (
+                <div>
+                  <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Linked database</label>
+                  <select
+                    value={relTargetDb}
+                    onChange={(e) => setRelTargetDb(e.target.value)}
+                    className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="">Choose a database…</option>
+                    {allDbs.filter((d) => d.id !== database.id).map((d) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {editPropType === 'rollup' && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Through relation property</label>
+                    <select
+                      value={rollupRelProp}
+                      onChange={(e) => setRollupRelProp(e.target.value)}
+                      className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="">Choose a relation…</option>
+                      {database.properties.filter((p) => p.type === 'relation').map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      value={rollupTargetProp}
+                      onChange={(e) => setRollupTargetProp(e.target.value)}
+                      placeholder="__title__ or field name"
+                      className="bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                    <select
+                      value={rollupAgg}
+                      onChange={(e) => setRollupAgg(e.target.value)}
+                      className="bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="count">Count</option>
+                      <option value="sum">Sum</option>
+                      <option value="avg">Average</option>
+                      <option value="min">Min</option>
+                      <option value="max">Max</option>
+                    </select>
+                  </div>
                 </div>
               )}
             </div>
