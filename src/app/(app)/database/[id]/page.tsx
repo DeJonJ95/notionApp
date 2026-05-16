@@ -59,6 +59,13 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [moveOpen, setMoveOpen] = useState(false);
   const moveRef = useRef<HTMLDivElement | null>(null);
+  // Databases are dense; on a phone the default 1:1 scale is too close.
+  // Back off to 0.75 there. CSS `zoom` (not transform) so layout/scroll
+  // still reflow correctly. iOS Safari + Android Chrome both support it.
+  const [dbZoom, setDbZoom] = useState(1);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) setDbZoom(0.75);
+  }, []);
 
   useEffect(() => {
     fetchDatabase();
@@ -191,7 +198,9 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      <DatabaseView database={database} onUpdate={fetchDatabase} />
+      <div style={dbZoom !== 1 ? ({ zoom: dbZoom } as React.CSSProperties) : undefined}>
+        <DatabaseView database={database} onUpdate={fetchDatabase} />
+      </div>
     </div>
   );
 }
