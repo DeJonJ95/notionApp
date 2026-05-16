@@ -9,6 +9,7 @@ import { AudioRecorder } from '@/components/editor/AudioRecorder';
 import { SummarizeModal } from '@/components/editor/SummarizeModal';
 import { YouTubeImportModal } from '@/components/editor/YouTubeImportModal';
 import { TikTokImportModal } from '@/components/editor/TikTokImportModal';
+import { promptDialog, toast } from '@/components/ui/feedback';
 
 // Break circular dep: CanvasPageEditor → DatabaseView → CanvasPageEditor
 const DatabaseViewDynamic = dynamic(
@@ -717,7 +718,10 @@ export function CanvasPageEditor({
   };
 
   const changeIcon = async () => {
-    const next = prompt('Enter an emoji', icon ?? '📄');
+    const next = await promptDialog({
+      title: 'Page icon', message: 'Enter an emoji (or leave blank to clear).',
+      defaultValue: icon ?? '📄', placeholder: '📄',
+    });
     if (next !== null) {
       setIcon(next || null);
       await saveMeta({ icon: next || null }, true);
@@ -725,8 +729,23 @@ export function CanvasPageEditor({
   };
 
   const deletePage = async () => {
-    if (!window.confirm(`Delete "${title || 'Untitled'}"? This cannot be undone.`)) return;
-    await fetch(`/api/pages/${page.id}`, { method: 'DELETE' });
+    // Soft-delete + undo toast rather than a no-going-back confirm.
+    const res = await fetch(`/api/pages/${page.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isArchived: true }),
+    });
+    if (!res.ok) { toast.error('Failed to delete page'); return; }
+    const restore = async () => {
+      await fetch(`/api/pages/${page.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isArchived: false }),
+      });
+      router.push(`/page/${page.id}`);
+      router.refresh();
+    };
+    toast.undo(`Deleted "${title || 'Untitled'}"`, restore);
     router.push('/');
     router.refresh();
   };
@@ -935,14 +954,20 @@ export function CanvasPageEditor({
         <FmtBtn icon={<Strikethrough size={14} />} title="Strikethrough"
           onAct={() => runOnFocused((e) => e.chain().focus().toggleStrike().run())} />
         <FmtBtn icon={<Link2 size={14} />} title="Add / edit link"
-          onAct={() => runOnFocused((e) => {
-            const prev = e.getAttributes('link')?.href ?? '';
-            const url = window.prompt('Link URL (leave blank to remove)', prev);
+          onAct={async () => {
+            const fid = focusedBlockRef.current;
+            const ed = fid ? editorRefs.current[fid] : null;
+            if (!ed) return;
+            const prev = ed.getAttributes('link')?.href ?? '';
+            const url = await promptDialog({
+              title: 'Link', message: 'Enter a URL (leave blank to remove the link).',
+              defaultValue: prev, placeholder: 'https://example.com',
+            });
             if (url === null) return;
-            if (url === '') { e.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
+            if (url.trim() === '') { ed.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
             const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-            e.chain().focus().extendMarkRange('link').setLink({ href }).run();
-          })} />
+            ed.chain().focus().extendMarkRange('link').setLink({ href }).run();
+          }} />
         {/* Font family */}
         <select
           title="Font"

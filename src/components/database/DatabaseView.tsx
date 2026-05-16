@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 import { RelationCell, RollupCell } from './RelationCell';
+import { confirmDialog, toast } from '@/components/ui/feedback';
 
 // Parse a relation/rollup config out of the overloaded Property.formula JSON.
 function parseRelConfig(formula?: string): any {
@@ -339,11 +340,14 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     // use a Relation property instead.)
     const p = allUserPages.find((x) => x.id === pageId);
     if (p?.databaseId && p.databaseId !== database.id) {
-      const ok = window.confirm(
-        `"${p.title || 'Untitled'}" currently belongs to another database. ` +
-        `Moving it here removes it from that database (a page can only live in one).\n\n` +
-        `Want it in both? Cancel and use a Relation property instead.`
-      );
+      const ok = await confirmDialog({
+        title: 'Move this page?',
+        message:
+          `"${p.title || 'Untitled'}" currently belongs to another database. ` +
+          `Moving it here removes it from that database — a page can only live in one.\n\n` +
+          `Want it in both instead? Cancel and add a Relation property.`,
+        confirmText: 'Move it here',
+      });
       if (!ok) return;
     }
     setLinkBusy(pageId);
@@ -359,7 +363,7 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
       setAllUserPages((prev) => prev.map((p) => p.id === pageId ? { ...p, databaseId: database.id } : p));
     } else {
       const j = await res.json().catch(() => ({}));
-      alert(j.error ?? 'Failed to move page');
+      toast.error(j.error ?? 'Failed to move page');
     }
   };
 
@@ -395,7 +399,11 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
   };
 
   const deleteProperty = async (propertyId: string) => {
-    if (!confirm('Delete this property and all its values?')) return;
+    if (!(await confirmDialog({
+      title: 'Delete property?',
+      message: 'This removes the property and all its values from every row. This cannot be undone.',
+      confirmText: 'Delete', danger: true,
+    }))) return;
     await fetch(`/api/databases/${database.id}/properties/${propertyId}`, { method: 'DELETE' });
     onUpdate();
   };
@@ -451,10 +459,11 @@ export function DatabaseView({ database, onUpdate }: DatabaseViewProps) {
     if (!editPropId || !editPropName.trim()) return;
     // If type changed, warn — existing values may become invalid.
     if (editPropType !== editPropOriginalType) {
-      if (!confirm(
-        `Change type from ${editPropOriginalType} to ${editPropType}? ` +
-        `Existing values may no longer display correctly.`
-      )) return;
+      if (!(await confirmDialog({
+        title: 'Change property type?',
+        message: `Switching ${editPropOriginalType} → ${editPropType}. Existing values may no longer display correctly.`,
+        confirmText: 'Change type',
+      }))) return;
     }
     let formula: string | null = null;
     if (editPropType === 'select') {

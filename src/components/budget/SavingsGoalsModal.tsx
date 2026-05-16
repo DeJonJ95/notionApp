@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { X, Plus, Trash2, Target, Loader2 } from 'lucide-react';
+import { confirmDialog, promptDialog } from '@/components/ui/feedback';
 
 type Goal = {
   id: string;
@@ -72,7 +73,10 @@ export function SavingsGoalsModal({ onClose, onChanged }: { onClose: () => void;
   };
 
   const del = async (id: string) => {
-    if (!confirm('Delete this savings goal?')) return;
+    if (!(await confirmDialog({
+      title: 'Delete goal?', message: 'This removes the savings goal. This cannot be undone.',
+      confirmText: 'Delete', danger: true,
+    }))) return;
     await fetch(`/api/budget/goals/${id}`, { method: 'DELETE' });
     load(); onChanged();
   };
@@ -142,7 +146,14 @@ export function SavingsGoalsModal({ onClose, onChanged }: { onClose: () => void;
                         </button>
                       ))}
                       <button
-                        onClick={() => { const v = prompt('Add/subtract amount (use - to subtract)', '0'); if (v) adjust(g, Number(v)); }}
+                        onClick={async () => {
+                          const v = await promptDialog({
+                            title: 'Adjust saved amount',
+                            message: 'Enter an amount to add (use a negative number to subtract).',
+                            defaultValue: '0',
+                          });
+                          if (v) adjust(g, Number(v));
+                        }}
                         className="text-[11px] px-1.5 py-0.5 rounded border border-border text-muted hover:text-text hover:bg-bg"
                       >
                         ±

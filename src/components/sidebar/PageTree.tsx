@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronRight, ChevronDown, Plus, Trash2, LayoutGrid, Edit3, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { confirmDialog, promptDialog, toast } from '@/components/ui/feedback';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
 type Database = { id: string; name: string };
@@ -64,7 +65,12 @@ export function PageTree({
   };
 
   const changeIcon = async () => {
-    const next = window.prompt('Workspace icon (emoji, or blank to clear)', workspace.icon ?? '');
+    const next = await promptDialog({
+      title: 'Workspace icon',
+      message: 'Enter an emoji (or leave blank to clear).',
+      defaultValue: workspace.icon ?? '',
+      placeholder: '📁',
+    });
     if (next === null) return;
     await fetch(`/api/workspaces/${workspace.id}`, {
       method: 'PATCH',
@@ -75,12 +81,15 @@ export function PageTree({
   };
 
   const deleteWorkspace = async () => {
-    const confirmText = `Delete workspace "${workspace.name}"?\n\nThis permanently removes ALL its pages, databases, and blocks. Cannot be undone.`;
-    if (!window.confirm(confirmText)) return;
+    if (!(await confirmDialog({
+      title: `Delete "${workspace.name}"?`,
+      message: 'This permanently removes ALL its pages, databases, and blocks. This cannot be undone.',
+      confirmText: 'Delete workspace', danger: true,
+    }))) return;
     const res = await fetch(`/api/workspaces/${workspace.id}`, { method: 'DELETE' });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      alert(j.error ?? 'Failed to delete workspace');
+      toast.error(j.error ?? 'Failed to delete workspace');
       return;
     }
     onChange();
@@ -242,15 +251,24 @@ function PageNode({
   const hasChildren = children.length > 0;
 
   const deletePage = async () => {
-    if (!window.confirm(`Delete "${page.title || 'Untitled'}"? This cannot be undone.`)) return;
-    const res = await fetch(`/api/pages/${page.id}`, { method: 'DELETE' });
-    if (res.ok) {
+    // Soft-delete (archive) so it can be undone — far better than a
+    // can't-undo confirm gauntlet.
+    const res = await fetch(`/api/pages/${page.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isArchived: true }),
+    });
+    if (!res.ok) { toast.error('Failed to delete page'); return; }
+    onChange();
+    if (pathname === `/page/${page.id}`) router.push('/');
+    toast.undo(`Deleted "${page.title || 'Untitled'}"`, async () => {
+      await fetch(`/api/pages/${page.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isArchived: false }),
+      });
       onChange();
-      // Navigate away if the deleted page is currently open
-      if (pathname === `/page/${page.id}`) {
-        router.push('/');
-      }
-    }
+    });
   };
 
   return (
