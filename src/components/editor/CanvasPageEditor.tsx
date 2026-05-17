@@ -768,10 +768,15 @@ export function CanvasPageEditor({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isArchived: false }),
       });
+      window.dispatchEvent(new Event('kove:refresh-tree'));
       router.push(`/page/${page.id}`);
       router.refresh();
     };
     toast.undo(`Deleted "${title || 'Untitled'}"`, restore);
+    // Tell the sidebar to refetch — router.refresh() alone doesn't re-run
+    // the Sidebar's client-side page fetch, so the deleted page would
+    // otherwise linger in the tree.
+    window.dispatchEvent(new Event('kove:refresh-tree'));
     router.push('/');
     router.refresh();
   };

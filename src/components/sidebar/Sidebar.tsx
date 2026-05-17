@@ -93,6 +93,14 @@ export function Sidebar() {
       .catch((err) => console.error('Failed to refresh workspaces:', err));
   };
 
+  // Let any component (e.g. deleting a page from inside the note editor)
+  // ask the sidebar tree to refetch without prop drilling.
+  useEffect(() => {
+    const onRefresh = () => refresh();
+    window.addEventListener('kove:refresh-tree', onRefresh);
+    return () => window.removeEventListener('kove:refresh-tree', onRefresh);
+  }, []);
+
   const favorites = pages.filter((p) => p.isFavorite);
 
   return (
