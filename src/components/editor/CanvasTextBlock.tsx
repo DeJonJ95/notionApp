@@ -129,8 +129,15 @@ export function CanvasTextBlock({
         const href = el?.getAttribute('href');
         if (!href) return false;
         const mod = event.metaKey || event.ctrlKey || event.altKey;
-        const isTouch = (event as PointerEvent).pointerType === 'touch';
-        if (mod || isTouch) {
+        // ProseMirror hands handleClick a MouseEvent, so event.pointerType
+        // is always undefined — that broke link taps on mobile. Detect a
+        // touch device by capability instead (coarse pointer / no hover).
+        const isTouchDevice =
+          typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          (window.matchMedia('(pointer: coarse)').matches ||
+            window.matchMedia('(hover: none)').matches);
+        if (mod || isTouchDevice) {
           window.open(href, '_blank', 'noopener,noreferrer');
           return true;
         }
