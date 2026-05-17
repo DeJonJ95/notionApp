@@ -5,6 +5,10 @@ import { logDeepSeek } from '@/lib/logUsage';
 
 export type PropertyInfo = { id: string; type: string };
 
+// A column the extraction wants but the database doesn't have yet. Surfaced
+// in the preview so the user can approve creating it (or skip it).
+export type ProposedColumn = { name: string; type: string };
+
 export type ResolvedUpdate = {
   action: 'update';
   database: string;
@@ -13,6 +17,7 @@ export type ResolvedUpdate = {
   pageTitle: string;
   changes: Record<string, unknown>;
   propertyMap: Record<string, PropertyInfo>;
+  proposedColumns?: ProposedColumn[];
 };
 
 export type ResolvedCreate = {
@@ -23,6 +28,7 @@ export type ResolvedCreate = {
   row: Record<string, unknown>;
   body?: string; // optional descriptive paragraph for the new page body
   propertyMap: Record<string, PropertyInfo>;
+  proposedColumns?: ProposedColumn[];
 };
 
 export type ResolvedChange = ResolvedUpdate | ResolvedCreate;
@@ -34,6 +40,7 @@ type AiChange = {
   changes?: Record<string, unknown>;
   row?: Record<string, unknown>;
   body?: string;
+  newColumns?: { name: string; type?: string }[];
 };
 
 // Walk a TipTap-style JSON tree (or any nested object) and concatenate all
@@ -156,9 +163,17 @@ Rules:
 - Never delete rows.
 - Return [] if nothing relevant.
 - Each element must be one of:
-  {"action":"update","database":"<name>","match":{"Name":"<row name>"},"changes":{"<col>":"<value>"}}
-  {"action":"create","database":"<name>","row":{"Name":"<title>","<col>":"<value>"},"body":"<optional 1-3 sentence summary of what the notes said about this item — context the property columns can't capture>"}
-- "body" is OPTIONAL. Include it on create when the notes give meaningful narrative context that should live on the new page. Skip it for simple records with no extra context. Keep it factual and short.
+  {"action":"update","database":"<name>","match":{"Name":"<row name>"},"changes":{"<col>":"<value>"},"newColumns":[{"name":"<col>","type":"text|number|date|select|checkbox"}],"body":"<optional>"}
+  {"action":"create","database":"<name>","row":{"Name":"<title>","<col>":"<value>"},"newColumns":[...],"body":"<optional 1-3 sentence summary of what the notes said about this item — context the property columns can't capture>"}
+- "body" is OPTIONAL. Include it on create when the notes give meaningful narrative context that should live on the new page. Keep it factual and short.
+
+ACTION ITEMS — when the notes contain a task / to-do / commitment / follow-up, capture it richly, not just a title:
+- Put WHO is responsible into an owner/assignee column if one exists; otherwise propose one.
+- Put any deadline into a date column (ISO YYYY-MM-DD); resolve relative dates ("next Friday") against today = ${new Date().toISOString().slice(0, 10)}.
+- Put status/priority into matching columns if present (e.g. "Not Started", "High").
+- Always include a "body" giving the full context of the action item: what exactly needs to happen, why, any dependencies or constraints mentioned — a few sentences, not a fragment.
+
+NEW COLUMNS — "newColumns" is OPTIONAL. If the notes contain a meaningful attribute that NO existing column captures (e.g. an owner, a due date, an amount, a status), you MAY propose a new column: add it to "newColumns" with a sensible type AND put the value in changes/row under that column name. Only propose columns that add real structured value — prefer existing columns; never propose a column just to restate the title or body.
 - Values must match the column type: numbers for number columns, strings for text/select, ISO dates for date columns, true/false for checkbox.`;
 
   const userPrompt = `Meeting notes:\n"""\n${notes.trim()}\n"""`;
@@ -203,6 +218,13 @@ Rules:
 
   const resolved: ResolvedChange[] = [];
 
+  const inferType = (v: unknown): string => {
+    if (typeof v === 'boolean') return 'checkbox';
+    if (typeof v === 'number') return 'number';
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return 'date';
+    return 'text';
+  };
+
   for (const change of proposed) {
     if (!change.action || !change.database) continue;
 
@@ -212,6 +234,22 @@ Rules:
     const propertyMap: Record<string, PropertyInfo> = {};
     for (const p of db.properties) {
       propertyMap[p.name] = { id: p.id, type: p.type };
+    }
+
+    // Detect columns referenced by this change that don't exist yet →
+    // surface them as proposals for the user to approve.
+    const dataObj = (change.action === 'update' ? change.changes : change.row) ?? {};
+    const aiCols = new Map(
+      (change.newColumns ?? []).map((c) => [c.name, c.type])
+    );
+    const proposedColumns: ProposedColumn[] = [];
+    const seen = new Set<string>();
+    for (const key of Object.keys(dataObj)) {
+      if (key === 'Name' || propertyMap[key] || seen.has(key)) continue;
+      const type = aiCols.get(key) ?? inferType((dataObj as any)[key]);
+      const validType = ['text', 'number', 'date', 'select', 'checkbox'].includes(type) ? type : 'text';
+      proposedColumns.push({ name: key, type: validType });
+      seen.add(key);
     }
 
     if (change.action === 'update' && change.match && change.changes) {
@@ -235,6 +273,7 @@ Rules:
         pageTitle: page.title,
         changes: change.changes,
         propertyMap,
+        proposedColumns: proposedColumns.length ? proposedColumns : undefined,
       });
     } else if (change.action === 'create' && change.row) {
       resolved.push({
@@ -245,6 +284,7 @@ Rules:
         row: change.row,
         body: typeof change.body === 'string' && change.body.trim() ? change.body.trim() : undefined,
         propertyMap,
+        proposedColumns: proposedColumns.length ? proposedColumns : undefined,
       });
     }
   }
