@@ -405,9 +405,26 @@ export function CanvasPageEditor({
   // Mirror in a ref so pointer/touch handlers always read the live value
   const zoomRef = useRef(zoom);
   zoomRef.current = zoom;
+  // Visible size of the scroll viewport — drives "canvas always fills the
+  // window" sizing so zooming out never leaves dead space.
+  const [viewport, setViewport] = useState({ w: 0, h: 0 });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+
+  // Track the scroll viewport's visible size so the canvas can always be
+  // at least as big as the window (see canvasW/canvasH below).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setViewport({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
   // Drag state: we store the canvas-coord offset between the finger and the
   // block's top-left, then on each move recompute the block position from the
   // current finger screen pos + current scroll + zoom. This naturally handles
@@ -796,9 +813,17 @@ export function CanvasPageEditor({
     createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null });
   };
 
-  // ── Canvas size — grows with content ──────────────────────────────────
-  const canvasW = Math.max(900, ...blocks.map((b) => b.canvasX + b.canvasWidth + 80));
-  const canvasH = Math.max(600, ...blocks.map((b) => b.canvasY + 400));
+  // ── Canvas size — grows with content AND always fills the viewport ────
+  // The canvas is rendered at scale(zoom). If we only sized it to the
+  // content, zooming out would leave the visible area larger than the
+  // usable canvas (dead, unclickable space). So the canvas is at least
+  // big enough that, at the current zoom, it covers the whole scroll
+  // viewport — the entire window is always usable.
+  const contentW = Math.max(900, ...blocks.map((b) => b.canvasX + b.canvasWidth + 80));
+  const contentH = Math.max(600, ...blocks.map((b) => b.canvasY + 400));
+  const z = zoom || 1;
+  const canvasW = Math.max(contentW, viewport.w > 0 ? Math.ceil(viewport.w / z) : contentW);
+  const canvasH = Math.max(contentH, viewport.h > 0 ? Math.ceil(viewport.h / z) : contentH);
 
   // ── Pinch-zoom on touch ───────────────────────────────────────────────
   const pinchRef = useRef<{ initialDist: number; initialZoom: number } | null>(null);
