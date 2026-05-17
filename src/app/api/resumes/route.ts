@@ -9,6 +9,9 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 const MAX_BYTES = 5 * 1024 * 1024;
+// Real resumes run a few thousand characters; well under this usually means a
+// scanned / image-based PDF that pdf-parse couldn't read (no OCR here).
+const MIN_GOOD_CHARS = 400;
 
 export async function GET() {
   const session = await auth();
@@ -65,6 +68,12 @@ export async function POST(req: NextRequest) {
     select: { id: true, label: true, r2Key: true, fileType: true, createdAt: true },
   });
 
+  // Soft warning: the file uploaded fine, but we got suspiciously little text.
+  const warning =
+    parsedText.length < MIN_GOOD_CHARS
+      ? `We extracted very little text from this ${fileType} (${parsedText.length} characters). If it's a scanned or image-based PDF, the AI may not read it well — try a text-based .docx or an exported (not scanned) PDF.`
+      : null;
+
   logCall('applykit', 'resume-upload', { userId });
-  return NextResponse.json({ resume });
+  return NextResponse.json({ resume, warning });
 }

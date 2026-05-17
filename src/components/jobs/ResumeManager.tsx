@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Upload, Trash2, FileText, Loader2, ArrowLeft, Download } from 'lucide-react';
+import { Upload, Trash2, FileText, Loader2, ArrowLeft, Download, AlertTriangle } from 'lucide-react';
 import type { Resume } from './types';
 
 export function ResumeManager() {
@@ -11,6 +11,7 @@ export function ResumeManager() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -24,16 +25,18 @@ export function ResumeManager() {
   useEffect(() => { load(); }, [load]);
 
   const upload = async () => {
-    if (!file) { setError('Choose a .docx file first'); return; }
+    if (!file) { setError('Choose a .docx or .pdf file first'); return; }
     setError('');
+    setWarning('');
     setUploading(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('label', label || file.name.replace(/\.docx$/i, ''));
+      fd.append('label', label || file.name.replace(/\.(docx|pdf)$/i, ''));
       const r = await fetch('/api/resumes', { method: 'POST', body: fd });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? 'Upload failed');
+      if (d.warning) setWarning(d.warning);
       setLabel('');
       setFile(null);
       load();
@@ -89,6 +92,11 @@ export function ResumeManager() {
           </button>
         </div>
         {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+        {warning && (
+          <p className="text-sm text-amber-600 mt-2 flex items-start gap-1.5">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" /> {warning}
+          </p>
+        )}
       </div>
 
       {loading ? (
