@@ -269,6 +269,16 @@ function CanvasCard({
       className={`group transition-shadow pointer-events-none ${isMoving ? 'ring-2 ring-accent rounded-lg shadow-xl' : ''}`}
       onPointerDown={handlePointerDown}
     >
+      {/* Hover bridge: always-present transparent strip filling the gutter
+          between the block and its left handles, so moving the cursor out
+          to the handles never crosses a non-hoverable gap (which would drop
+          group-hover and make the handles vanish before you reach them).
+          Desktop only. */}
+      <div
+        aria-hidden
+        className="pointer-events-auto absolute -left-9 top-0 h-full w-9 hidden md:block [@media(hover:none)]:!hidden"
+      />
+
       {/* Desktop hover handles — only on hover-capable devices */}
       <div className="pointer-events-auto absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10 [@media(hover:none)]:!hidden">
         <button
@@ -409,6 +419,9 @@ export function CanvasPageEditor({
   // Track which block is "active" for keyboard shortcuts (Alt+Delete)
   const hoveredBlockRef = useRef<string | null>(null);
   const focusedBlockRef = useRef<string | null>(null);
+  // Most-recently-focused block; survives blur so the shared toolbar still
+  // knows which editor to act on after focus flickers.
+  const lastFocusedId = useRef<string | null>(null);
   // Editor captured when the font <select> is opened (it blurs the editor)
   const fontTargetEditor = useRef<any>(null);
   // Track if we've already migrated this page so we don't re-migrate on re-render
@@ -636,6 +649,11 @@ export function CanvasPageEditor({
   }, []);
   const handleFocusChange = useCallback((id: string | null) => {
     focusedBlockRef.current = id;
+    // Sticky target for the shared formatting toolbar: only advances when a
+    // different block is focused, never cleared on blur. Without this the
+    // toolbar dies the instant focus flickers (e.g. clicking the toolbar,
+    // opening a dialog, mobile keyboard).
+    if (id) lastFocusedId.current = id;
   }, []);
 
   // ── Resize ────────────────────────────────────────────────────────────
@@ -680,7 +698,7 @@ export function CanvasPageEditor({
   // Run a TipTap command on whichever block currently has focus.
   // Uses onMouseDown + preventDefault on the calling button so focus stays put.
   const runOnFocused = useCallback((fn: (editor: any) => void) => {
-    const id = focusedBlockRef.current;
+    const id = focusedBlockRef.current ?? lastFocusedId.current;
     if (!id) return;
     const ed = editorRefs.current[id];
     if (ed) fn(ed);
@@ -963,7 +981,7 @@ export function CanvasPageEditor({
           onAct={() => runOnFocused((e) => e.chain().focus().toggleStrike().run())} />
         <FmtBtn icon={<Link2 size={14} />} title="Add / edit link"
           onAct={async () => {
-            const fid = focusedBlockRef.current;
+            const fid = focusedBlockRef.current ?? lastFocusedId.current;
             const ed = fid ? editorRefs.current[fid] : null;
             if (!ed) return;
             const prev = ed.getAttributes('link')?.href ?? '';
@@ -972,9 +990,25 @@ export function CanvasPageEditor({
               defaultValue: prev, placeholder: 'https://example.com',
             });
             if (url === null) return;
-            if (url.trim() === '') { ed.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
+            if (url.trim() === '') {
+              ed.chain().focus().extendMarkRange('link').unsetLink().run();
+              return;
+            }
             const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
-            ed.chain().focus().extendMarkRange('link').setLink({ href }).run();
+            const sel = ed.state.selection;
+            if (sel.empty) {
+              // No text selected — insert the URL as the (linked) text,
+              // otherwise setLink on a collapsed cursor is invisible.
+              ed.chain().focus()
+                .insertContent({
+                  type: 'text',
+                  text: url.trim(),
+                  marks: [{ type: 'link', attrs: { href } }],
+                })
+                .run();
+            } else {
+              ed.chain().focus().extendMarkRange('link').setLink({ href }).run();
+            }
           }} />
         {/* Font family — a <select> must receive the click to open its
             dropdown, so we can't preventDefault to keep editor focus like
