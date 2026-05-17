@@ -167,11 +167,12 @@ Rules:
   {"action":"create","database":"<name>","row":{"Name":"<title>","<col>":"<value>"},"newColumns":[...],"body":"<optional 1-3 sentence summary of what the notes said about this item — context the property columns can't capture>"}
 - "body" is OPTIONAL. Include it on create when the notes give meaningful narrative context that should live on the new page. Keep it factual and short.
 
-ACTION ITEMS — when the notes contain a task / to-do / commitment / follow-up, capture it richly, not just a title:
+ACTION ITEMS — when the notes contain a task / to-do / commitment / follow-up, capture each one richly, not just a title:
+- Emit a SEPARATE "create" operation for EVERY distinct action item. Never combine multiple action items into one row or one body — N action items means N create elements in the array.
 - Put WHO is responsible into an owner/assignee column if one exists; otherwise propose one.
 - Put any deadline into a date column (ISO YYYY-MM-DD); resolve relative dates ("next Friday") against today = ${new Date().toISOString().slice(0, 10)}.
 - Put status/priority into matching columns if present (e.g. "Not Started", "High").
-- Always include a "body" giving the full context of the action item: what exactly needs to happen, why, any dependencies or constraints mentioned — a few sentences, not a fragment.
+- On each action item's create, always include a "body" giving the full context of THAT item only: what exactly needs to happen, why, any dependencies or constraints mentioned — a few sentences, not a fragment. Do not roll several items' context into one body.
 
 NEW COLUMNS — "newColumns" is OPTIONAL. If the notes contain a meaningful attribute that NO existing column captures (e.g. an owner, a due date, an amount, a status), you MAY propose a new column: add it to "newColumns" with a sensible type AND put the value in changes/row under that column name. Only propose columns that add real structured value — prefer existing columns; never propose a column just to restate the title or body.
 - Values must match the column type: numbers for number columns, strings for text/select, ISO dates for date columns, true/false for checkbox.`;
