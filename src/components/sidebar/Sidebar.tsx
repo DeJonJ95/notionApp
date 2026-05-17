@@ -72,10 +72,15 @@ export function Sidebar() {
         if (!data?.pageId) return;
         setTodayJournalId(data.pageId);
         if (data.created) {
-          // Refresh page tree so the new journal page appears in the sidebar.
+          // Refresh pages AND workspaces — the "Daily Journals" workspace
+          // may have just been created on first run, so the tree needs it.
           fetch('/api/pages')
             .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
             .then(setPages)
+            .catch(() => {});
+          fetch('/api/workspaces')
+            .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+            .then(setWorkspaces)
             .catch(() => {});
         }
       })
