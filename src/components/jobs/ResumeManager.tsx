@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Upload, Trash2, FileText, Loader2, ArrowLeft, Download, AlertTriangle } from 'lucide-react';
+import { downloadFile } from '@/lib/jobs/download';
 import type { Resume } from './types';
 
 export function ResumeManager() {
@@ -12,6 +13,7 @@ export function ResumeManager() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -51,6 +53,18 @@ export function ResumeManager() {
     if (!confirm('Delete this resume?')) return;
     await fetch(`/api/resumes/${id}`, { method: 'DELETE' });
     setResumes((rs) => rs.filter((r) => r.id !== id));
+  };
+
+  const download = async (r: Resume) => {
+    setError('');
+    setDownloadingId(r.id);
+    try {
+      await downloadFile(`/api/files/download?key=${encodeURIComponent(r.r2Key)}`, `${r.label}.${r.fileType}`);
+    } catch {
+      setError('Could not download that resume. Please try again.');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   return (
@@ -118,13 +132,14 @@ export function ResumeManager() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={`/api/files/download?key=${encodeURIComponent(r.r2Key)}`}
-                  className="p-2 rounded hover:bg-bg text-muted"
+                <button
+                  onClick={() => download(r)}
+                  disabled={downloadingId === r.id}
+                  className="p-2 rounded hover:bg-bg text-muted disabled:opacity-50"
                   title="Download"
                 >
-                  <Download size={16} />
-                </a>
+                  {downloadingId === r.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                </button>
                 <button onClick={() => remove(r.id)} className="p-2 rounded hover:bg-bg text-red-500" title="Delete">
                   <Trash2 size={16} />
                 </button>

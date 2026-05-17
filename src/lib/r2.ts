@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export const r2 = new S3Client({
@@ -32,6 +32,14 @@ export async function putBytes(key: string, body: Buffer | Uint8Array, contentTy
     })
   );
   return { publicUrl: `${process.env.R2_PUBLIC_URL}/${key}` };
+}
+
+// Remove an object. Used when a resume or job listing is deleted so its
+// private file (original / tailored resume) doesn't linger in the bucket.
+export async function deleteObject(key: string) {
+  await r2.send(
+    new DeleteObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: key }),
+  );
 }
 
 // Fetch object bytes server-side. Used for private files (resumes) that must

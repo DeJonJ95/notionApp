@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { getBytes, putBytes } from '@/lib/r2';
+import { getBytes, putBytes, deleteObject } from '@/lib/r2';
 import { tailorDocx } from '@/lib/jobs/docx';
 import { logCall, logDeepSeek } from '@/lib/logUsage';
 import { callDeepSeek, RECRUITER_MSG_SYSTEM, buildRecruiterMsgUser } from '@/lib/jobs/deepseek';
@@ -44,6 +44,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     select: { r2Key: true, parsedText: true, fileType: true },
   });
   if (!resume) return NextResponse.json({ error: 'Resume not found' }, { status: 404 });
+
+  // The key of any tailored file already stored for this job. Re-tailoring
+  // writes a new timestamped object, so we delete this one afterwards to keep
+  // at most one tailored resume per application (no R2 bloat).
+  const prevTailoredKey = (
+    await prisma.jobApplication.findUnique({
+      where: { listingId: listing.id },
+      select: { tailoredR2Key: true },
+    })
+  )?.tailoredR2Key ?? null;
 
   // Surgical in-place editing only works for .docx. PDF resumes can't be edited
   // without reflowing, so for a PDF we skip the file and the user applies the
@@ -101,6 +111,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     update: { resumeId: parsed.data.resumeId, tailoredR2Key, recruiterMessage },
     select: { id: true, tailoredR2Key: true, status: true },
   });
+
+  // Drop the superseded tailored file once the new reference is committed.
+  if (prevTailoredKey && prevTailoredKey !== tailoredR2Key) {
+    await deleteObject(prevTailoredKey).catch(() => {});
+  }
 
   logCall('applykit', 'tailor', { userId });
   return NextResponse.json({
