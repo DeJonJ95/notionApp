@@ -1351,15 +1351,35 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                       {cell.day}
                     </div>
                     <div className="space-y-0.5">
-                      {cell.pages.map((page) => (
-                        <div
-                          key={page.id}
-                          className="text-[10px] sm:text-xs bg-accent/15 text-accent rounded px-1 sm:px-1.5 py-0.5 truncate font-medium leading-tight"
-                          title={page.title}
-                        >
-                          <span className="hidden sm:inline">{page.icon} </span>{page.title}
-                        </div>
-                      ))}
+                      {cell.pages.map((page) => {
+                        const calProps = visibleProperties.filter((p) => p.id !== calendarDateProperty!.id);
+                        return (
+                          <div
+                            key={page.id}
+                            className="bg-accent/15 rounded px-1 sm:px-1.5 py-0.5"
+                            title={page.title}
+                          >
+                            <div className="text-[10px] sm:text-xs text-accent font-medium leading-tight truncate">
+                              <span className="hidden sm:inline">{page.icon} </span>{page.title}
+                            </div>
+                            {calProps.length > 0 && (
+                              <div className="hidden sm:flex flex-col gap-px mt-0.5">
+                                {calProps.map((prop) => {
+                                  const pv = page.properties.find((v) => v.property.id === prop.id);
+                                  const val = pv?.value;
+                                  if (!val && val !== 0 && val !== false) return null;
+                                  return (
+                                    <div key={prop.id} className="text-[9px] text-muted leading-tight truncate">
+                                      <span className="font-medium">{prop.name}:</span>{' '}
+                                      {prop.type === 'checkbox' ? (val ? '✓' : '✗') : String(val)}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}
