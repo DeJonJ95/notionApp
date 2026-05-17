@@ -12,11 +12,18 @@ type TargetDb = {
 };
 const cache = new Map<string, Promise<TargetDb | null>>();
 
-export function fetchTargetDb(databaseId: string): Promise<TargetDb | null> {
-  if (!cache.has(databaseId)) {
+// Short TTL so a row added to the target DB shows up without a reload;
+// `force` bypasses it entirely (used when the picker opens).
+const TTL_MS = 12_000;
+const ts = new Map<string, number>();
+
+export function fetchTargetDb(databaseId: string, force = false): Promise<TargetDb | null> {
+  const fresh = !force && cache.has(databaseId) && Date.now() - (ts.get(databaseId) ?? 0) < TTL_MS;
+  if (!fresh) {
+    ts.set(databaseId, Date.now());
     cache.set(
       databaseId,
-      fetch(`/api/databases/${databaseId}`)
+      fetch(`/api/databases/${databaseId}`, { cache: 'no-store' })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null)
     );
@@ -25,6 +32,7 @@ export function fetchTargetDb(databaseId: string): Promise<TargetDb | null> {
 }
 export function invalidateTargetDb(databaseId: string) {
   cache.delete(databaseId);
+  ts.delete(databaseId);
 }
 
 // Aggregate a target property across the linked rows for a rollup.
