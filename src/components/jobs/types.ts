@@ -1,7 +1,7 @@
 // Client-side shapes mirroring the ApplyKit API responses. Kept loose (the
 // JSON columns come back as `any`) but typed enough for the UI.
 
-export type Resume = { id: string; label: string; r2Key: string; createdAt: string };
+export type Resume = { id: string; label: string; r2Key: string; fileType: 'docx' | 'pdf'; createdAt: string };
 
 export type Tweak = { resumeId?: string; original: string; rewrite: string; reason: string };
 

@@ -38,7 +38,7 @@ export function JobCard({
   const [resumeId, setResumeId] = useState<string>(
     analysis?.recommendedResumeId || app?.resumeId || resumes[0]?.id || '',
   );
-  const [tailorResult, setTailorResult] = useState<{ url: string; applied: number; unmatched: Tweak[]; recruiterMessage: string | null } | null>(null);
+  const [tailorResult, setTailorResult] = useState<{ url: string | null; applied: number; unmatched: Tweak[]; recruiterMessage: string | null; tailoredFile: boolean } | null>(null);
 
   const analyze = async () => {
     setErr(''); setAnalyzing(true);
@@ -68,7 +68,7 @@ export function JobCard({
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? 'Tailoring failed');
-      setTailorResult({ url: d.downloadUrl, applied: d.applied, unmatched: d.unmatched ?? [], recruiterMessage: d.recruiterMessage ?? null });
+      setTailorResult({ url: d.downloadUrl ?? null, applied: d.applied, unmatched: d.unmatched ?? [], recruiterMessage: d.recruiterMessage ?? null, tailoredFile: !!d.tailoredFile });
       onChanged();
     } catch (e: any) { setErr(e.message); }
     finally { setTailoring(false); }
@@ -227,17 +227,30 @@ export function JobCard({
 
               {tailorResult && (
                 <div className="text-sm border border-border rounded p-3 bg-bg space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-600">
-                    <CheckCircle2 size={14} /> Applied {tailorResult.applied} tweak{tailorResult.applied === 1 ? '' : 's'}.
-                  </div>
-                  {tailorResult.unmatched.length > 0 && (
-                    <div className="text-xs text-amber-600">
-                      {tailorResult.unmatched.length} tweak(s) couldn&apos;t be located in the .docx and were skipped.
+                  {tailorResult.tailoredFile ? (
+                    <>
+                      <div className="flex items-center gap-2 text-emerald-600">
+                        <CheckCircle2 size={14} /> Applied {tailorResult.applied} tweak{tailorResult.applied === 1 ? '' : 's'}.
+                      </div>
+                      {tailorResult.unmatched.length > 0 && (
+                        <div className="text-xs text-amber-600">
+                          {tailorResult.unmatched.length} tweak(s) couldn&apos;t be located in the .docx and were skipped.
+                        </div>
+                      )}
+                      {tailorResult.url && (
+                        <a href={tailorResult.url} className="inline-flex items-center gap-1 text-accent hover:underline">
+                          <Download size={14} /> Download tailored resume
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-start gap-2 text-amber-600">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      <span>
+                        This is a PDF resume, so it can&apos;t be auto-edited. Apply the approved tweaks above to your resume manually, or upload a <strong>.docx</strong> version to generate a tailored file automatically. Your recruiter message is ready below.
+                      </span>
                     </div>
                   )}
-                  <a href={tailorResult.url} className="inline-flex items-center gap-1 text-accent hover:underline">
-                    <Download size={14} /> Download tailored resume
-                  </a>
                 </div>
               )}
 

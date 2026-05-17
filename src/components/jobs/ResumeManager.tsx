@@ -57,7 +57,7 @@ export function ResumeManager() {
       </Link>
       <h1 className="text-2xl font-semibold mb-1">Base resumes</h1>
       <p className="text-sm text-muted mb-6">
-        Upload up to three .docx resumes. ApplyKit scores each against a job and tailors the best fit — truthfully, never inventing experience.
+        Upload up to three resumes (.docx or .pdf). ApplyKit scores each against a job and tailors the best fit — truthfully, never inventing experience. Auto-tailoring edits the file in place, which needs a <strong>.docx</strong>; PDFs are scored and get a recruiter message, but you apply tweaks manually.
       </p>
 
       <div className="border border-border rounded-lg p-4 mb-6 bg-surface">
@@ -71,10 +71,10 @@ export function ResumeManager() {
           />
           <label className="flex items-center gap-2 px-3 py-2 rounded border border-border bg-bg text-sm cursor-pointer hover:border-accent">
             <FileText size={14} />
-            <span className="truncate max-w-[160px]">{file ? file.name : 'Choose .docx'}</span>
+            <span className="truncate max-w-[160px]">{file ? file.name : 'Choose .docx or .pdf'}</span>
             <input
               type="file"
-              accept=".docx"
+              accept=".docx,.pdf"
               className="hidden"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             />
@@ -102,7 +102,10 @@ export function ResumeManager() {
               <div className="flex items-center gap-3 min-w-0">
                 <FileText size={18} className="text-muted shrink-0" />
                 <div className="min-w-0">
-                  <div className="font-medium truncate">{r.label}</div>
+                  <div className="font-medium truncate flex items-center gap-2">
+                    {r.label}
+                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-bg border border-border text-muted">{r.fileType}</span>
+                  </div>
                   <div className="text-xs text-muted">{new Date(r.createdAt).toLocaleDateString()}</div>
                 </div>
               </div>
