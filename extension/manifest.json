@@ -33,6 +33,12 @@
       "matches": ["https://hiring.cafe/*"],
       "js": ["hiringcafe.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "exclude_matches": ["https://hiring.cafe/*"],
+      "js": ["jobcapture.js"],
+      "run_at": "document_idle"
     }
   ]
 }
