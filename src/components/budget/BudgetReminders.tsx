@@ -111,9 +111,17 @@ type SectionProps = {
   accentClass: string;
 };
 
+// Show at most this many rows per section before collapsing the rest behind a
+// "Show more" toggle, so a busy week doesn't make the home page run long.
+const SECTION_LIMIT = 4;
+
 function Section({ title, icon, items, defaultOpen = true, onCleared, accentClass }: SectionProps) {
   const [open, setOpen] = useState(defaultOpen);
+  const [showAll, setShowAll] = useState(false);
   if (items.length === 0) return null;
+
+  const visible = showAll ? items : items.slice(0, SECTION_LIMIT);
+  const hiddenCount = items.length - visible.length;
 
   return (
     <div>
@@ -132,9 +140,17 @@ function Section({ title, icon, items, defaultOpen = true, onCleared, accentClas
       </button>
       {open && (
         <div className="pl-1">
-          {items.map((item) => (
+          {visible.map((item) => (
             <ReminderRow key={item.pageId} item={item} onCleared={onCleared} />
           ))}
+          {(hiddenCount > 0 || showAll) && items.length > SECTION_LIMIT && (
+            <button
+              onClick={() => setShowAll((v) => !v)}
+              className="text-xs text-accent hover:underline py-2"
+            >
+              {showAll ? 'Show less' : `Show ${hiddenCount} more`}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -179,7 +195,7 @@ export function BudgetReminders() {
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
         <Bell size={14} className={overdue.length > 0 ? 'text-red-500' : 'text-accent'} />
-        <span className="font-semibold text-sm">Budget Reminders</span>
+        <span className="font-semibold text-sm">Reminders</span>
         {overdue.length > 0 && (
           <span className="text-xs bg-red-500 text-white rounded-full px-1.5 py-px font-medium">
             {overdue.length}
