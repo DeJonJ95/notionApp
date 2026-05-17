@@ -196,6 +196,13 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
   const [budgetWindowDate, setBudgetWindowDate] = useState(() => new Date());
   // Which Budget Summary categories are expanded to show their transactions
   const [expandedBudgetCats, setExpandedBudgetCats] = useState<Set<string>>(new Set());
+  // Projected income/expense for the active budget window (from recurring
+  // rules) — drives the income-planning panel in the Budget Summary view.
+  const [projected, setProjected] = useState<{
+    income: number; expense: number;
+    byCategory: Record<string, number>;
+    items: { name: string; date: string; amount: number; type: string; category: string }[];
+  } | null>(null);
   const [inspectPageId, setInspectPageId] = useState<string | null>(null);
   const [splitPageData, setSplitPageData] = useState<SplitPageData | null>(null);
   const [splitWidth, setSplitWidth] = useState(440);
@@ -242,6 +249,21 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
       { id: 'default', name: 'Table', type: 'table' }
     );
   }, [database.views, selectedViewId]);
+
+  // Fetch projected income/expense for the active window whenever a
+  // Budget Summary view is shown or the period/window changes.
+  useEffect(() => {
+    if (selectedView.type !== 'budget-summary') return;
+    const win = getBudgetWindow(budgetPeriod, budgetWindowDate);
+    const iso = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let alive = true;
+    fetch(`/api/budget/projected?start=${iso(win.start)}&end=${iso(win.end)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d) setProjected(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [selectedView.type, budgetPeriod, budgetWindowDate]);
 
   const splitView = useMemo(() => {
     return database.views.find((v) => v.id === splitViewId) ?? database.views[1] ?? null;
@@ -1424,6 +1446,8 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     type TxLine = { id: string; title: string; date: string; amount: number };
     interface CatData { budgeted: number; spent: number; txns: TxLine[] }
     const map = new Map<string, CatData>();
+    // Actual income received in this window, broken down by category.
+    const incomeByCat = new Map<string, { amount: number; txns: TxLine[] }>();
 
     for (const page of renderedPages) {
       const cat = String(getVal(page, categoryProp.id) ?? '');
@@ -1431,13 +1455,28 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
       const type = typeProp ? String(getVal(page, typeProp.id) ?? '') : '';
       const amount = Math.abs(Number(getVal(page, amountProp.id) ?? 0));
       const budgetedRaw = budgetedProp ? Math.abs(Number(getVal(page, budgetedProp.id) ?? 0)) : 0;
+      if (type === 'Income') {
+        const dateVal = dateProp ? getVal(page, dateProp.id) : null;
+        if (inWindow(dateVal)) {
+          if (!incomeByCat.has(cat)) incomeByCat.set(cat, { amount: 0, txns: [] });
+          const ie = incomeByCat.get(cat)!;
+          ie.amount += amount;
+          ie.txns.push({
+            id: page.id,
+            title: page.title || 'Untitled',
+            date: dateVal ? String(dateVal).slice(0, 10) : '',
+            amount,
+          });
+        }
+        continue;
+      }
       if (!map.has(cat)) map.set(cat, { budgeted: 0, spent: 0, txns: [] });
       const entry = map.get(cat)!;
       if (type === 'Budget') {
         const rawBudget = budgetedRaw || amount;
         const fromPeriod = budgetPeriodProp ? String(getVal(page, budgetPeriodProp.id) ?? '') : '';
         entry.budgeted += fromPeriod ? normalizeBudgetAmount(rawBudget, fromPeriod, budgetPeriod) : rawBudget;
-      } else if (type !== 'Income') {
+      } else {
         const dateVal = dateProp ? getVal(page, dateProp.id) : null;
         if (inWindow(dateVal)) {
           entry.spent += amount;
@@ -1450,6 +1489,13 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
         }
       }
     }
+
+    const incomeCats = Array.from(incomeByCat.entries())
+      .map(([category, d]) => ({ category, amount: d.amount, txns: [...d.txns].sort((a, b) => b.date.localeCompare(a.date)) }))
+      .sort((a, b) => b.amount - a.amount);
+    const totalIncome = incomeCats.reduce((s, c) => s + c.amount, 0);
+    const projIncome = projected?.income ?? 0;
+    const projExpense = projected?.expense ?? 0;
 
     const categories = Array.from(map.entries())
       .map(([category, d]) => ({
@@ -1475,9 +1521,105 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     const totalSpent = categories.reduce((s, c) => s + c.spent, 0);
     const totalRemaining = totalBudgeted - totalSpent;
 
+    const projectedSurplus = projIncome - totalBudgeted;
+    const actualNet = totalIncome - totalSpent;
+
     return (
       <div className="space-y-4">
         {renderBudgetPeriodToolbar()}
+
+        {/* ── Income & projection panel ───────────────────────────── */}
+        <div className="rounded-xl border border-border bg-surface overflow-hidden">
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-border">
+            <div className="p-4 text-center">
+              <div className="text-xs text-muted uppercase tracking-wide mb-1">Income received</div>
+              <div className="text-xl font-bold text-green-600">{fmtCurrency(totalIncome)}</div>
+              <div className="text-[10px] text-muted mt-0.5">this period</div>
+            </div>
+            <div className="p-4 text-center">
+              <div className="text-xs text-muted uppercase tracking-wide mb-1">Projected income</div>
+              <div className="text-xl font-bold text-green-600/90">{fmtCurrency(projIncome)}</div>
+              <div className="text-[10px] text-muted mt-0.5">recurring rules</div>
+            </div>
+            <div className="p-4 text-center">
+              <div className="text-xs text-muted uppercase tracking-wide mb-1">Projected vs budget</div>
+              <div className={`text-xl font-bold ${projectedSurplus >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {projectedSurplus >= 0 ? '+' : ''}{fmtCurrency(projectedSurplus)}
+              </div>
+              <div className="text-[10px] text-muted mt-0.5">income − budgeted</div>
+            </div>
+            <div className="p-4 text-center">
+              <div className="text-xs text-muted uppercase tracking-wide mb-1">Actual net</div>
+              <div className={`text-xl font-bold ${actualNet >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {actualNet >= 0 ? '+' : ''}{fmtCurrency(actualNet)}
+              </div>
+              <div className="text-[10px] text-muted mt-0.5">received − spent</div>
+            </div>
+          </div>
+
+          {/* Income by category */}
+          {incomeCats.length > 0 && (
+            <div className="border-t border-border p-3 space-y-1.5">
+              <div className="text-[10px] uppercase tracking-wide text-muted font-semibold mb-1">
+                Income by category
+              </div>
+              {incomeCats.map((c) => {
+                const pct = totalIncome > 0 ? (c.amount / totalIncome) * 100 : 0;
+                const open = expandedBudgetCats.has('inc:' + c.category);
+                return (
+                  <div key={c.category}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCat('inc:' + c.category)}
+                      className="w-full flex items-center justify-between text-xs mb-0.5 hover:text-text"
+                    >
+                      <span className="font-medium flex items-center gap-1">
+                        <ChevronRight size={11} className={`text-muted transition-transform ${open ? 'rotate-90' : ''}`} />
+                        {c.category} <span className="text-muted/60">({c.txns.length})</span>
+                      </span>
+                      <span className="text-muted">{fmtCurrency(c.amount)} · {pct.toFixed(0)}%</span>
+                    </button>
+                    <div className="h-1.5 bg-bg rounded-full overflow-hidden border border-border/40">
+                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
+                    </div>
+                    {open && (
+                      <div className="mt-1 pl-4 space-y-0.5">
+                        {c.txns.map((t) => (
+                          <div key={t.id} className="flex items-center justify-between text-[11px] text-muted">
+                            <span className="truncate">{t.date} · {t.title}</span>
+                            <span className="text-green-600 font-mono">{fmtCurrency(t.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Upcoming projected income */}
+          {projected && projected.items.filter((i) => i.type === 'income').length > 0 && (
+            <div className="border-t border-border p-3 space-y-1">
+              <div className="text-[10px] uppercase tracking-wide text-muted font-semibold mb-1">
+                Scheduled income this period
+              </div>
+              {projected.items.filter((i) => i.type === 'income').map((i, idx) => (
+                <div key={idx} className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted">{i.date} · {i.name}</span>
+                  <span className="text-green-600 font-mono">{fmtCurrency(i.amount)}</span>
+                </div>
+              ))}
+              {projExpense > 0 && (
+                <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/40 mt-1">
+                  <span className="text-muted">Scheduled bills (recurring)</span>
+                  <span className="text-red-500 font-mono">−{fmtCurrency(projExpense)}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-surface p-4 text-center">
             <div className="text-xs text-muted uppercase tracking-wide mb-1">Budgeted</div>
