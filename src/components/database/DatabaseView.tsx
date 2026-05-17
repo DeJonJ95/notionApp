@@ -2392,6 +2392,13 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                 key={splitPageData.id}
                 page={splitPageData}
                 initialBlocks={splitPageData.blocks}
+                onDeleted={() => {
+                  // Stay in the database: just close the split panel and
+                  // refresh so the deleted row drops out of the view.
+                  setInspectPageId(null);
+                  setSplitPageData(null);
+                  reconcile();
+                }}
               />
             ) : (
               <div className="flex items-center justify-center h-32 text-sm text-muted">Loading…</div>
