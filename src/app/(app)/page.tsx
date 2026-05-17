@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { BudgetReminders } from '@/components/budget/BudgetReminders';
 import { WelcomeCard } from '@/components/onboarding/WelcomeCard';
+import { EntityIcon } from '@/components/icons/registry';
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -69,7 +70,7 @@ export default async function DashboardPage() {
                   href={`/page/${p.id}`}
                   className="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-surface"
                 >
-                  <span>{p.icon ?? '📄'}</span>
+                  <EntityIcon icon={p.icon} size={16} className="shrink-0 text-muted" />
                   <span className="flex-1 truncate">{p.title}</span>
                   <span className="text-xs text-muted">{p.workspace.name}</span>
                 </Link>

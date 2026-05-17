@@ -83,9 +83,9 @@ export const authOptions: NextAuthOptions = {
     // Auto-create default workspaces on first sign-in
     async createUser({ user }) {
       const defaults = [
-        { name: 'Work', slug: 'work', icon: '💼', color: '#3B82F6' },
-        { name: 'Personal Projects', slug: 'personal-projects', icon: '🚀', color: '#F59E0B' },
-        { name: 'Home', slug: 'home', icon: '🏡', color: '#10B981' },
+        { name: 'Work', slug: 'work', icon: 'briefcase', color: '#3B82F6' },
+        { name: 'Personal Projects', slug: 'personal-projects', icon: 'rocket', color: '#F59E0B' },
+        { name: 'Home', slug: 'home', icon: 'home', color: '#10B981' },
       ];
       for (const w of defaults) {
         await prisma.workspace.create({

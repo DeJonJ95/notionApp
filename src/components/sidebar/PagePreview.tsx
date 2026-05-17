@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { EntityIcon } from '@/components/icons/registry';
 
 type PreviewData = {
   title: string;
@@ -99,7 +100,7 @@ export function PagePreview({ pageId, anchor }: Props) {
           )}
           <div className="p-3">
             <div className="flex items-center gap-1.5 text-xs font-semibold text-text mb-1.5">
-              <span>{data.icon ?? '📄'}</span>
+              <EntityIcon icon={data.icon} size={14} className="shrink-0" />
               <span className="truncate">{data.title}</span>
             </div>
             {data.snippet ? (

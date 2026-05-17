@@ -10,6 +10,7 @@ import {
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 import { RelationCell, RollupCell } from './RelationCell';
 import { confirmDialog, toast } from '@/components/ui/feedback';
+import { EntityIcon } from '@/components/icons/registry';
 
 // Parse a relation/rollup config out of the overloaded Property.formula JSON.
 function parseRelConfig(formula?: string): any {
@@ -1060,7 +1061,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                             onClick={() => setInspectPageId(page.id)}
                             className="flex items-center gap-2 text-text font-medium hover:text-accent text-left w-full truncate"
                           >
-                            <span>{page.icon ?? '📄'}</span>
+                            <EntityIcon icon={page.icon} size={16} className="shrink-0 text-muted" />
                             <span className="truncate">{page.title}</span>
                           </button>
                         ) : (
@@ -1130,7 +1131,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
           className="border border-border rounded-lg p-4 bg-surface hover:shadow-md transition-shadow"
         >
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xl">{page.icon ?? '📄'}</span>
+            <EntityIcon icon={page.icon} size={20} className="shrink-0 text-muted" />
             <span className="font-semibold text-text truncate">{page.title}</span>
           </div>
           <div className="space-y-2">
@@ -1163,7 +1164,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
           <GripHorizontal size={18} className="text-muted mt-0.5 shrink-0 cursor-grab" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
-              <span>{page.icon ?? '📄'}</span>
+              <EntityIcon icon={page.icon} size={16} className="shrink-0 text-muted" />
               <span className="font-semibold text-text">{page.title}</span>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -1240,7 +1241,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                       className="bg-surface border border-border rounded-lg p-3 cursor-grab hover:shadow-md transition-shadow"
                     >
                       <div className="flex items-center gap-2 mb-2">
-                        <span>{page.icon ?? '📄'}</span>
+                        <EntityIcon icon={page.icon} size={16} className="shrink-0 text-muted" />
                         <span className="font-medium text-sm text-text truncate">{page.title}</span>
                       </div>
                       {visibleProperties
@@ -2457,7 +2458,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                     disabled={linkBusy === p.id}
                     className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-sm hover:bg-surface text-text disabled:opacity-50 text-left"
                   >
-                    <span className="w-4 text-center">{p.icon ?? '📄'}</span>
+                    <EntityIcon icon={p.icon} size={15} className="shrink-0 text-muted" />
                     <span className="truncate flex-1">{p.title || 'Untitled'}</span>
                     <span className="text-xs text-muted shrink-0">
                       {linkBusy === p.id ? 'Linking…' : new Date(p.updatedAt).toLocaleDateString()}

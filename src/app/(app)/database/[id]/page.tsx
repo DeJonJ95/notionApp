@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Trash2, ChevronRight, FolderOutput } from 'lucide-react';
 import { DatabaseView } from '@/components/database/DatabaseView';
 import { confirmDialog, toast } from '@/components/ui/feedback';
+import { EntityIcon } from '@/components/icons/registry';
 
 interface Workspace {
   id: string;
@@ -180,7 +181,7 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
                           isCurrent ? 'text-muted/60 cursor-default' : 'text-text hover:bg-bg'
                         }`}
                       >
-                        <span>{w.icon ?? '📁'}</span>
+                        <EntityIcon icon={w.icon} kind="workspace" size={15} className="shrink-0 text-muted" />
                         <span className="truncate flex-1">{w.name}</span>
                         {isCurrent && <span className="text-[10px] text-muted">current</span>}
                       </button>
