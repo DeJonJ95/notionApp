@@ -1,9 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { ExternalLink, Zap, Mail, Database, AlertCircle, Cloud, Server, Youtube } from 'lucide-react';
+import { ExternalLink, Zap, Mail, Database, AlertCircle, Cloud, Server, Youtube, Image as ImageIcon } from 'lucide-react';
 
 type DayBucket = { day: string; inputTokens: number; outputTokens: number; costUsd: number };
 type OpBucket = { operation: string; count: number; inputTokens: number; outputTokens: number; costUsd: number };
+type ProviderBucket = { provider: string; count: number; costUsd: number };
+type MoodboardDay = { day: string; count: number; costUsd: number; googleCount: number };
 
 type UsageData = {
   period: string;
@@ -15,6 +17,19 @@ type UsageData = {
     callCount: number;
     byOperation: OpBucket[];
     byDay: DayBucket[];
+  };
+  moodboard: {
+    totalCalls: number;
+    rawCostUsd: number;
+    billedCostUsd: number;
+    byProvider: ProviderBucket[];
+    byDay: MoodboardDay[];
+    googleFreeDailyLimit: number;
+  };
+  youtube: {
+    totalCalls: number;
+    supadataCalls: number;
+    freeCalls: number;
   };
   resend: { emailsSent: number; error: string | null };
 };
@@ -69,7 +84,7 @@ const EXTERNAL = [
   { name: 'Neon', desc: 'Postgres compute & storage', href: 'https://console.neon.tech', color: 'bg-green-500/10 border-green-500/20', icon: Database },
   { name: 'Cloudflare R2', desc: 'Image / file storage (uploads bucket)', href: 'https://dash.cloudflare.com', color: 'bg-orange-600/10 border-orange-600/20', icon: Cloud },
   { name: 'Groq', desc: 'Whisper audio transcription', href: 'https://console.groq.com/usage', color: 'bg-orange-500/10 border-orange-500/20', icon: Zap },
-  { name: 'Supadata', desc: 'YouTube transcript fallback', href: 'https://supadata.ai/dashboard', color: 'bg-red-500/10 border-red-500/20', icon: Youtube },
+  { name: 'Google Cloud', desc: 'Custom Search API billing & quota', href: 'https://console.cloud.google.com/apis/api/customsearch.googleapis.com/metrics', color: 'bg-blue-500/10 border-blue-500/20', icon: ImageIcon },
 ];
 
 // Friendly labels for the raw operation values logged in usageLog.
@@ -81,6 +96,17 @@ const OPERATION_LABELS: Record<string, string> = {
   'cancel-email': 'Cancel-subscription email',
 };
 const opLabel = (op: string) => OPERATION_LABELS[op] ?? op;
+
+const PROVIDER_LABELS: Record<string, string> = {
+  unsplash: 'Unsplash',
+  pexels: 'Pexels',
+  openverse: 'OpenVerse',
+  europeana: 'Europeana',
+  tumblr: 'Tumblr',
+  google: 'Google CSE',
+  met: 'The Met',
+};
+const providerLabel = (id: string) => PROVIDER_LABELS[id] ?? id;
 
 export function AdminDashboard() {
   const [period, setPeriod] = useState<Period>('month');
@@ -201,6 +227,131 @@ export function AdminDashboard() {
                 <p className="text-sm text-muted text-center py-2">No DeepSeek calls in this period.</p>
               )}
             </div>
+          </div>
+
+          {/* Mood board card — counts per provider + Google CSE cost vs. free tier */}
+          {(() => {
+            const mb = data.moodboard;
+            // Today's Google count vs the 100/day free limit.
+            const today = new Date().toISOString().slice(0, 10);
+            const todayBucket = mb.byDay.find((d) => d.day === today);
+            const googleToday = todayBucket?.googleCount ?? 0;
+            const googlePct = Math.min(googleToday / Math.max(mb.googleFreeDailyLimit, 1), 1) * 100;
+            const overCap = Math.max(0, googleToday - mb.googleFreeDailyLimit);
+            return (
+              <div className="rounded-xl border border-border bg-surface overflow-hidden">
+                <div className="px-5 py-4 border-b border-border flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-pink-500/10 flex items-center justify-center">
+                    <ImageIcon size={14} className="text-pink-500" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">Mood board</p>
+                    <p className="text-xs text-muted">All image providers · {mb.totalCalls} call{mb.totalCalls !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <p className="text-xl font-bold text-accent">{fmtCost(mb.billedCostUsd)}</p>
+                    <p className="text-xs text-muted">billed (paid tier)</p>
+                  </div>
+                </div>
+                <div className="p-5 space-y-5">
+                  {/* Google CSE free-tier meter for TODAY */}
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="text-muted">Google CSE — today</span>
+                      <span className={overCap > 0 ? 'text-red-500 font-semibold' : 'text-muted'}>
+                        {googleToday} / {mb.googleFreeDailyLimit} free
+                        {overCap > 0 && ` · +${overCap} paid (${fmtCost(overCap * 0.005)})`}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-bg rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${overCap > 0 ? 'bg-red-500' : 'bg-accent/60'}`}
+                        style={{ width: `${googlePct}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* By provider */}
+                  {mb.byProvider.length > 0 ? (
+                    <div>
+                      <p className="text-xs text-muted uppercase tracking-wide font-medium mb-2">By provider</p>
+                      <div className="space-y-1">
+                        {mb.byProvider.map((p) => {
+                          const max = mb.byProvider[0]?.count ?? 1;
+                          return (
+                            <div key={p.provider} className="flex items-center gap-3 text-sm">
+                              <span className="w-28 text-muted shrink-0 truncate">{providerLabel(p.provider)}</span>
+                              <div className="flex-1 h-1.5 bg-bg rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-pink-500/60 rounded-full"
+                                  style={{ width: `${(p.count / max) * 100}%` }}
+                                />
+                              </div>
+                              <span className="text-muted text-xs w-24 text-right shrink-0">
+                                {p.count}×
+                                {p.costUsd > 0 && <> · {fmtCost(p.costUsd)}</>}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted text-center py-2">No mood board searches in this period.</p>
+                  )}
+
+                  {/* Daily call-volume chart */}
+                  {mb.byDay.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted uppercase tracking-wide font-medium mb-3">Searches per day</p>
+                      <div className="flex items-end gap-1 h-20">
+                        {mb.byDay.map((d) => {
+                          const max = Math.max(...mb.byDay.map((x) => x.count), 1);
+                          const pct = Math.max((d.count / max) * 100, 2);
+                          return (
+                            <div key={d.day} className="flex-1 flex flex-col items-center gap-1 group relative" title={`${d.day}: ${d.count} (Google: ${d.googleCount})`}>
+                              <div className="w-full bg-pink-500/60 rounded-t group-hover:bg-pink-500 transition-colors" style={{ height: `${pct}%` }} />
+                              <span className="text-[8px] text-muted rotate-45 origin-left hidden sm:block whitespace-nowrap">{d.day.slice(5)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* YouTube card */}
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="px-5 py-4 flex items-center gap-3">
+              <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center">
+                <Youtube size={14} className="text-red-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">YouTube transcripts</p>
+                <p className="text-xs text-muted">
+                  {data.youtube.supadataCalls} via Supadata · {data.youtube.freeCalls} via free fallback
+                </p>
+              </div>
+              <div className="ml-auto text-right">
+                <p className="text-xl font-bold">{data.youtube.totalCalls}</p>
+                <p className="text-xs text-muted">transcripts</p>
+              </div>
+              <a
+                href="https://supadata.ai/dashboard"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-2 p-1.5 rounded hover:bg-bg text-muted hover:text-text transition-colors"
+                title="Open Supadata dashboard for actual billing"
+              >
+                <ExternalLink size={13} />
+              </a>
+            </div>
+            {data.youtube.totalCalls === 0 && (
+              <p className="text-sm text-muted text-center pb-4">No transcripts fetched in this period.</p>
+            )}
           </div>
 
           {/* Resend card */}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { isOwner } from '@/lib/owner';
+import { logCall } from '@/lib/logUsage';
 
 // Fetches a YouTube video's caption track without an API key.
 // Strategy: try several InnerTube client contexts in order, then fall back
@@ -417,11 +418,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Could not parse YouTube URL or video ID' }, { status: 400 });
   }
 
+  const userId = (session.user as any).id as string | undefined;
+
   // Primary: Supadata (paid, configured via SUPADATA_API_KEY).
   // Returns the full transcript text directly — no caption-fetch step needed.
   const sup = await fetchViaSupadata(videoId);
   if (sup) {
     const title = await fetchYouTubeTitle(videoId);
+    // Operation tag lets the dashboard separate paid (supadata) from
+    // free (InnerTube/HTML/Piped) transcript fetches.
+    logCall('youtube-transcript', 'supadata', { userId });
     return NextResponse.json({ title, text: sup.text, videoId });
   }
 
@@ -456,5 +462,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Caption track was empty' }, { status: 404 });
   }
 
+  logCall('youtube-transcript', 'free', { userId });
   return NextResponse.json({ title: info.title, text: transcript, videoId });
 }
