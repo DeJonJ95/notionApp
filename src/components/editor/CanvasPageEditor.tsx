@@ -2,13 +2,14 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
 import { SummarizeModal } from '@/components/editor/SummarizeModal';
 import { YouTubeImportModal } from '@/components/editor/YouTubeImportModal';
 import { TikTokImportModal } from '@/components/editor/TikTokImportModal';
+import { MoodBoardModal } from '@/components/moodboard/MoodBoardModal';
 import { promptDialog, toast } from '@/components/ui/feedback';
 
 // Break circular dep: CanvasPageEditor → DatabaseView → CanvasPageEditor
@@ -392,6 +393,7 @@ export function CanvasPageEditor({
   const [summarizeOpen, setSummarizeOpen] = useState(false);
   const [youtubeOpen, setYoutubeOpen] = useState(false);
   const [tiktokOpen, setTiktokOpen] = useState(false);
+  const [moodboardOpen, setMoodboardOpen] = useState(false);
   const [newBlockId, setNewBlockId] = useState<string | null>(null);
   const [movingBlockId, setMovingBlockId] = useState<string | null>(null);
   // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom).
@@ -1026,6 +1028,13 @@ export function CanvasPageEditor({
           >
             <Sparkles size={12} /> Organize
           </button>
+          <button
+            onClick={() => setMoodboardOpen(true)}
+            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
+            title="Search Unsplash and drop curated images onto this canvas"
+          >
+            <Palette size={12} /> Mood board
+          </button>
           <div className="w-px bg-border self-stretch mx-0.5" />
           <button onClick={toggleFavorite} className="p-1.5 rounded hover:bg-bg" title="Favorite">
             <Star size={15} className={favorite ? 'fill-yellow-400 stroke-yellow-500' : ''} />
@@ -1274,6 +1283,22 @@ export function CanvasPageEditor({
         <TikTokImportModal
           onClose={() => setTiktokOpen(false)}
           onImport={handleTikTokImport}
+        />
+      )}
+      {moodboardOpen && (
+        <MoodBoardModal
+          onClose={() => setMoodboardOpen(false)}
+          onInsert={(images) => {
+            // Drop each picked image onto the canvas as its own block.
+            // We stack them in the standard doc column so they're easy to
+            // find — the user can drag them anywhere from there.
+            images.forEach((img) => {
+              createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
+                type: 'doc',
+                content: [{ type: 'image', attrs: { src: img.url, width: null, alt: img.alt } }],
+              });
+            });
+          }}
         />
       )}
 
