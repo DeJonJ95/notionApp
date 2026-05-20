@@ -1,6 +1,6 @@
-# My Workspace — Personal Notion-Style App
+# My Workspace
 
-A self-hosted Notion alternative for your work, side gig, and personal affairs. Designed to run on Vercel + Neon for **$0/month** for personal use, accessible from your phone, iPad, and laptop as an installable PWA.
+Self-hosted Notion-style workspace app with a block editor, PWA support, and cost-effective hosting on Vercel + Neon.
 
 ## Features
 
