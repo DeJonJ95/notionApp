@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Search, Download, Plus, Loader2, AlertCircle, Sparkles, Check } from 'lucide-react';
 import type { MoodBoardPhoto } from '@/app/api/moodboard/search/route';
@@ -17,6 +17,7 @@ function providerLabel(id: string): string {
   if (id === 'pexels') return 'Pexels';
   if (id === 'openverse') return 'OpenVerse';
   if (id === 'europeana') return 'Europeana';
+  if (id === 'tumblr') return 'Tumblr';
   if (id === 'met') return 'The Met Museum';
   return id;
 }
@@ -25,22 +26,31 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState('');
   const [photos, setPhotos] = useState<MoodBoardPhoto[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Photos currently being saved (download to phone OR insert to note),
   // keyed by `${photoId}:${action}` so two actions on the same photo don't collide.
   const [working, setWorking] = useState<Set<string>>(new Set());
-  // Which provider answered the most recent successful query (for attribution).
-  const [lastProvider, setLastProvider] = useState<string | null>(null);
+  // Pagination state — we stick to one provider until it runs out of
+  // relevant content for this query, then hop to a new one. This stops
+  // results from drifting off-topic after a few Load Mores.
+  const [currentProvider, setCurrentProvider] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [exhausted, setExhausted] = useState<Set<string>>(new Set());
+  const [availableProviders, setAvailableProviders] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // The "smooth transition": before the first successful search, the search
   // input is centered with a hero label above it. Once results land,
   // `hasSearched` flips to true and the layout collapses to a compact header.
-  const hasSearched = photos.length > 0 || (status === 'idle' && page > 1);
+  const hasSearched = photos.length > 0 || currentPage > 0;
+
+  // Show Load More until every available provider has been exhausted for
+  // this query. Each provider exhausts independently as we page through it.
+  const allProvidersExhausted =
+    availableProviders.length > 0 && availableProviders.every((p) => exhausted.has(p));
+  const canLoadMore = !allProvidersExhausted && currentProvider != null;
 
   useEffect(() => { setMounted(true); setTimeout(() => inputRef.current?.focus(), 80); }, []);
 
@@ -50,38 +60,101 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
     return () => document.removeEventListener('keydown', onEsc);
   }, [onClose]);
 
-  const runSearch = useCallback(async (q: string, p: number, append: boolean) => {
-    if (!q.trim()) return;
+  // Single fetch helper. Caller decides the params; this just executes
+  // and updates the result-side state (photos + provider + exhausted).
+  async function fetchPage(opts: {
+    q: string;
+    page: number;
+    provider?: string;     // sticky provider for Load More
+    exclude?: string[];    // providers to skip on fallthrough
+    append: boolean;       // append to grid (Load More) vs replace (new search)
+  }): Promise<{ provider: string | null; exhausted: boolean } | null> {
     setStatus('loading');
     setError('');
     try {
       const url = new URL('/api/moodboard/search', window.location.origin);
-      url.searchParams.set('q', q.trim());
-      url.searchParams.set('page', String(p));
+      url.searchParams.set('q', opts.q.trim());
+      url.searchParams.set('page', String(opts.page));
+      if (opts.provider) url.searchParams.set('provider', opts.provider);
+      if (opts.exclude?.length) url.searchParams.set('exclude', opts.exclude.join(','));
       const res = await fetch(url);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Search failed');
-      setPhotos((prev) => (append ? [...prev, ...data.results] : data.results));
-      setTotalPages(data.totalPages ?? 0);
-      if (data.provider) setLastProvider(data.provider);
+      setPhotos((prev) => (opts.append ? [...prev, ...data.results] : data.results));
+      if (data.availableProviders) setAvailableProviders(data.availableProviders);
       setStatus('idle');
+      return { provider: data.provider ?? null, exhausted: !!data.exhausted };
     } catch (e: any) {
       setError(e.message);
       setStatus('error');
+      return null;
     }
-  }, []);
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setPage(1);
-    setSelected(new Set());
-    runSearch(query, 1, false);
   }
 
-  function loadMore() {
-    const next = page + 1;
-    setPage(next);
-    runSearch(query, next, true);
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!query.trim()) return;
+    // Reset everything — new query = fresh round-robin pick, fresh exhausted set
+    setSelected(new Set());
+    setExhausted(new Set());
+    setCurrentProvider(null);
+    setCurrentPage(0);
+    setPhotos([]);
+    const result = await fetchPage({ q: query, page: 1, append: false });
+    if (!result?.provider) return;
+    setCurrentProvider(result.provider);
+    setCurrentPage(1);
+    if (result.exhausted) setExhausted(new Set([result.provider]));
+  }
+
+  async function loadMore() {
+    if (!currentProvider) return;
+    const currentExhausted = exhausted.has(currentProvider);
+
+    if (!currentExhausted) {
+      // Stay on the current provider — fetch its next page directly.
+      const nextPage = currentPage + 1;
+      const result = await fetchPage({
+        q: query,
+        page: nextPage,
+        provider: currentProvider,
+        append: true,
+      });
+      if (!result?.provider) return;
+      // The server might have fallen through to another provider if the
+      // requested page came back too thin. Detect and switch state.
+      if (result.provider !== currentProvider) {
+        setExhausted((prev) => new Set([...prev, currentProvider]));
+        setCurrentProvider(result.provider);
+        setCurrentPage(1);
+      } else {
+        setCurrentPage(nextPage);
+      }
+      if (result.exhausted) {
+        setExhausted((prev) => new Set([...prev, result.provider!]));
+      }
+    } else {
+      // Current provider is done. Ask the server for a fresh one,
+      // excluding everything we've already burned.
+      const excludeList = [...exhausted, currentProvider];
+      const result = await fetchPage({
+        q: query,
+        page: 1,
+        exclude: excludeList,
+        append: true,
+      });
+      if (!result?.provider) {
+        // No provider could satisfy — mark every available one exhausted
+        // so the Load More button hides and we don't loop.
+        setExhausted(new Set(availableProviders));
+        return;
+      }
+      setCurrentProvider(result.provider);
+      setCurrentPage(1);
+      if (result.exhausted) {
+        setExhausted((prev) => new Set([...prev, result.provider!]));
+      }
+    }
   }
 
   function toggleSelected(id: string) {
@@ -304,8 +377,8 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
             })}
           </div>
 
-          {/* Load more */}
-          {photos.length > 0 && page < totalPages && (
+          {/* Load more — visible until every provider has been exhausted */}
+          {photos.length > 0 && canLoadMore && (
             <div className="flex justify-center py-4">
               <button
                 onClick={loadMore}
@@ -313,7 +386,7 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
                 className="flex items-center gap-2 px-4 py-1.5 rounded-lg border border-border text-sm text-text hover:bg-bg disabled:opacity-50 transition-colors"
               >
                 {status === 'loading' ? <Loader2 size={13} className="animate-spin" /> : null}
-                Load more
+                {currentProvider && exhausted.has(currentProvider) ? 'Load more from another source' : 'Load more'}
               </button>
             </div>
           )}
@@ -326,8 +399,8 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
               {selected.size > 0
                 ? `${selected.size} selected`
                 : 'Click an image to select it'}
-              {lastProvider && (
-                <span className="ml-2 opacity-70">· via {providerLabel(lastProvider)}</span>
+              {currentProvider && (
+                <span className="ml-2 opacity-70">· via {providerLabel(currentProvider)}</span>
               )}
             </p>
             <div className="flex gap-2">
