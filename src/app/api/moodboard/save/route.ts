@@ -3,37 +3,37 @@ import { auth } from '@/lib/auth';
 import { isOwner } from '@/lib/owner';
 import { putBytes } from '@/lib/r2';
 
-// Copy a single Unsplash photo into the user's R2 bucket and return the
-// permanent URL. Also pings Unsplash's `download_location` so the photographer
-// gets credit (required by their API guidelines — they don't care if we save
-// the bytes, but they DO care that we report the download).
+// Copy a single mood-board photo into the user's R2 bucket and return the
+// permanent URL. Works for any provider — the only provider-specific work
+// is pinging Unsplash's download_location (a required credit hop), which
+// is gated behind the presence of the downloadEndpoint field.
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  // Same gate as /search — non-owners can't reach the save endpoint either,
-  // so they can't bypass the UI hide by hand-crafting requests.
   if (!isOwner(session)) {
     return NextResponse.json({ error: 'Mood board is not available on this account yet.' }, { status: 403 });
   }
   const userId = (session.user as any).id;
-
-  const key = process.env.UNSPLASH_ACCESS_KEY;
-  if (!key) return NextResponse.json({ error: 'Mood board not configured' }, { status: 503 });
 
   const { photoId, sourceUrl, downloadEndpoint, alt } = await req.json().catch(() => ({}));
   if (!sourceUrl || !photoId) {
     return NextResponse.json({ error: 'photoId and sourceUrl are required' }, { status: 400 });
   }
 
-  // Fire-and-forget the download tracking ping — never block the user on it.
+  // Fire-and-forget Unsplash download credit. Only Unsplash photos have
+  // this; Pexels recommends credit (which we show in the UI) but doesn't
+  // require an API ping, and The Met has no tracking.
   if (downloadEndpoint) {
-    fetch(downloadEndpoint, {
-      headers: { Authorization: `Client-ID ${key}`, 'Accept-Version': 'v1' },
-    }).catch(() => {});
+    const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
+    if (unsplashKey) {
+      fetch(downloadEndpoint, {
+        headers: { Authorization: `Client-ID ${unsplashKey}`, 'Accept-Version': 'v1' },
+      }).catch(() => {});
+    }
   }
 
-  // Pull the bytes. We use the Unsplash CDN URL the client already saw,
-  // so the dimensions/quality matches the user's selection.
+  // Pull the bytes from whichever CDN the photo lives on. All three
+  // providers serve public URLs with permissive CORS, so this just works.
   const imgRes = await fetch(sourceUrl);
   if (!imgRes.ok) {
     return NextResponse.json({ error: 'Failed to fetch image' }, { status: 502 });
@@ -41,14 +41,18 @@ export async function POST(req: NextRequest) {
   const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg';
   const buffer = Buffer.from(await imgRes.arrayBuffer());
 
-  // Cap at 8 MB to keep R2 bills sane — Unsplash full-size photos
-  // are usually 2–5 MB so this is generous, but a hard ceiling protects us.
+  // Cap at 8 MB so a single Met image (some are huge originals) doesn't
+  // blow up the R2 bill on one save.
   if (buffer.byteLength > 8 * 1024 * 1024) {
     return NextResponse.json({ error: 'Image too large' }, { status: 413 });
   }
 
   const ext = contentType.includes('png') ? 'png' : 'jpg';
-  const objectKey = `${userId}/moodboard/${Date.now()}-${photoId}.${ext}`;
+  // photoId arrives provider-prefixed (e.g. "unsplash:abc", "met:12345").
+  // Replace the colon for a clean filename; the prefix still tags the
+  // source in case we ever need to audit R2 keys.
+  const safeId = String(photoId).replace(/[^a-zA-Z0-9._-]/g, '-');
+  const objectKey = `${userId}/moodboard/${Date.now()}-${safeId}.${ext}`;
   const { publicUrl } = await putBytes(objectKey, buffer, contentType);
 
   return NextResponse.json({ url: publicUrl, alt: alt ?? '' });
