@@ -53,13 +53,13 @@ export async function POST(req: NextRequest) {
   });
   if (!ws) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  // Get max position among siblings
-  const last = await prisma.page.findFirst({
+  // Get min position among siblings (new pages go to the top)
+  const first = await prisma.page.findFirst({
     where: {
       workspaceId: parsed.data.workspaceId,
       parentId: parsed.data.parentId ?? null,
     },
-    orderBy: { position: 'desc' },
+    orderBy: { position: 'asc' },
     select: { position: true },
   });
 
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       icon: parsed.data.icon,
       databaseId: parsed.data.databaseId ?? null,
       authorId: userId,
-      position: (last?.position ?? 0) + 1024,
+      position: (first?.position ?? 1024) - 1024,
     },
   });
   return NextResponse.json(page);

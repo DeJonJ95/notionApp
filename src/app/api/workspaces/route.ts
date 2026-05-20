@@ -13,7 +13,7 @@ export async function GET() {
     include: {
       databases: {
         select: { id: true, name: true },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
       },
     },
   });
