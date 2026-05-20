@@ -352,22 +352,160 @@ async function tumblrSearch(query: string, page: number): Promise<MoodBoardPhoto
   return mapped.slice(0, 20);
 }
 
+// ── The Met Museum ─────────────────────────────────────────────────────────
+// Specialist provider — only included in the chain when the query matches
+// the `art` category. Without that gating it returns false positives for
+// modern queries ("interior design" → 18th-century cabinet records); WITH
+// that gating, its narrow fine-art vocabulary becomes a feature.
+// Free, no key.
+async function metSearch(query: string, page: number): Promise<MoodBoardPhoto[]> {
+  const searchUrl = new URL('https://collectionapi.metmuseum.org/public/collection/v1/search');
+  searchUrl.searchParams.set('q', query);
+  searchUrl.searchParams.set('hasImages', 'true');
+
+  const searchRes = await fetch(searchUrl, { next: { revalidate: 600 } });
+  if (!searchRes.ok) throw new Error(`Met ${searchRes.status}`);
+  const searchData = await searchRes.json();
+  const allIds: number[] = searchData.objectIDs ?? [];
+  if (allIds.length === 0) return [];
+
+  const start = (page - 1) * 20;
+  const ids = allIds.slice(start, start + 20);
+
+  const objects = await Promise.all(
+    ids.map(async (id) => {
+      const r = await fetch(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`, {
+        next: { revalidate: 86400 },
+      });
+      if (!r.ok) return null;
+      return r.json();
+    })
+  );
+
+  return objects
+    .filter((o): o is any => !!o && !!o.primaryImageSmall)
+    .map((o): MoodBoardPhoto => ({
+      id: `met:${o.objectID}`,
+      provider: 'met',
+      width: 0,
+      height: 0,
+      alt: o.title ?? '',
+      thumb: o.primaryImageSmall,
+      regular: o.primaryImage || o.primaryImageSmall,
+      full: o.primaryImage || o.primaryImageSmall,
+      attribution: {
+        name: o.artistDisplayName?.trim() || o.culture || 'The Met',
+        profileUrl: o.objectURL || 'https://www.metmuseum.org',
+      },
+    }));
+}
+
+// ── Category routing ───────────────────────────────────────────────────────
+
+// Keyword → category lookup. A query that contains any keyword for a
+// category counts as a match for that category. Keep keywords lowercase;
+// the input is normalized before lookup.
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  fashion: [
+    'fashion', 'outfit', 'style', 'streetwear', 'menswear', 'womenswear',
+    'clothing', 'apparel', 'runway', 'editorial', 'lookbook', 'ootd',
+    'wardrobe', 'denim', 'sneaker', 'shoes', 'jacket', 'suit',
+  ],
+  art: [
+    'art ', 'painting', 'sculpture', 'masterpiece', 'museum', 'gallery',
+    'classical', 'baroque', 'renaissance', 'impressionism', 'expressionism',
+    'abstract', 'still life', 'fine art', 'portrait painting',
+  ],
+  architecture: [
+    'architecture', 'building', 'brutalism', 'brutalist', 'bauhaus',
+    'modernism', 'modernist', 'gothic', 'art deco', 'art nouveau',
+    'cathedral', 'skyscraper', 'pavilion', 'facade',
+  ],
+  interiors: [
+    'interior', 'living room', 'bedroom', 'kitchen', 'home decor', 'decor',
+    'furniture', 'mid century modern', 'mid-century', 'scandinavian',
+    'minimalism', 'minimalist',
+  ],
+  design: [
+    'design', 'typography', 'poster', 'branding', 'graphic', 'layout',
+    'logo', 'editorial design', 'print design',
+  ],
+  vintage: [
+    'vintage', 'retro', 'antique', 'classic', '60s', '70s', '80s', '90s',
+    'mid century', 'mid-century', 'art deco', 'victorian', 'edwardian',
+  ],
+  nature: [
+    'nature', 'landscape', 'mountain', 'forest', 'ocean', 'beach', 'sunset',
+    'sunrise', 'flowers', 'plants', 'wildlife', 'animal',
+  ],
+  photography: [
+    'photography', 'photograph', 'portrait', 'street photography',
+    'film photography', 'analog', 'polaroid',
+  ],
+};
+
+function detectCategories(query: string): Set<string> {
+  const q = query.toLowerCase();
+  const matched = new Set<string>();
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (keywords.some((kw) => q.includes(kw))) matched.add(category);
+  }
+  return matched;
+}
+
 // ── Public registry ────────────────────────────────────────────────────────
 
-// Provider order is the rotation order — round-robin picks the next one
-// in this array per request. Unconfigured providers (no API key) drop
-// out automatically so the rotation collapses to whatever's available.
-//
-// The Met is intentionally OFF by default: its narrow fine-art vocabulary
-// returns false positives for modern queries like "interior design"
-// (it'll match "interior" in an 18th-century cabinet record). Re-add it
-// here if a future toggle lets the user opt in for fine-art queries.
-const ALL_PROVIDERS: Array<{ id: ProviderId; configured: () => boolean; fn: ProviderFn }> = [
-  { id: 'unsplash',  configured: () => !!process.env.UNSPLASH_ACCESS_KEY, fn: unsplashSearch },
-  { id: 'pexels',    configured: () => !!process.env.PEXELS_API_KEY,      fn: pexelsSearch },
-  { id: 'openverse', configured: () => true,                              fn: openverseSearch },
-  { id: 'europeana', configured: () => !!process.env.EUROPEANA_API_KEY,   fn: europeanaSearch },
-  { id: 'tumblr',    configured: () => !!process.env.TUMBLR_API_KEY,      fn: tumblrSearch },
+// Each provider carries the list of categories it's strong in plus an
+// optional `specialist` flag. Specialist providers (e.g. The Met) only
+// enter the chain when the query matches one of their categories; the
+// rest are generalists and always available, just deprioritized when
+// other providers score higher for the current query.
+type ProviderConfig = {
+  id: ProviderId;
+  configured: () => boolean;
+  fn: ProviderFn;
+  categories: string[];
+  specialist?: boolean;
+};
+
+const ALL_PROVIDERS: ProviderConfig[] = [
+  {
+    id: 'unsplash',
+    configured: () => !!process.env.UNSPLASH_ACCESS_KEY,
+    fn: unsplashSearch,
+    categories: ['photography', 'nature', 'design', 'interiors'],
+  },
+  {
+    id: 'pexels',
+    configured: () => !!process.env.PEXELS_API_KEY,
+    fn: pexelsSearch,
+    categories: ['photography', 'nature'],
+  },
+  {
+    id: 'openverse',
+    configured: () => true,
+    fn: openverseSearch,
+    categories: ['photography', 'art', 'architecture', 'historical', 'design'],
+  },
+  {
+    id: 'europeana',
+    configured: () => !!process.env.EUROPEANA_API_KEY,
+    fn: europeanaSearch,
+    categories: ['art', 'historical', 'vintage', 'fashion', 'design'],
+  },
+  {
+    id: 'tumblr',
+    configured: () => !!process.env.TUMBLR_API_KEY,
+    fn: tumblrSearch,
+    categories: ['fashion', 'design', 'photography', 'interiors', 'vintage'],
+  },
+  {
+    id: 'met',
+    configured: () => true,
+    fn: metSearch,
+    categories: ['art', 'vintage', 'historical'],
+    specialist: true, // only joins the chain when an `art` query is detected
+  },
 ];
 
 export function configuredProviders() {
@@ -379,35 +517,89 @@ export function getProviderById(id: string): { id: ProviderId; fn: ProviderFn } 
   return found ? { id: found.id, fn: found.fn } : null;
 }
 
-// Round-robin state — module-level counter. Survives within a single
-// serverless invocation worker; cold starts reset it. That's fine because
-// the rotation is for variety, not exact fairness.
+// Round-robin state — only consumed when there's no category signal in
+// the query (generic searches like "sunset"). Category-routed searches
+// pick deterministically by score, so they don't touch this counter.
 let cursor = 0;
 
+function scoreProvider(p: ProviderConfig, categories: Set<string>): number {
+  if (categories.size === 0) return 0;
+  let score = 0;
+  for (const cat of p.categories) {
+    if (categories.has(cat)) score++;
+  }
+  return score;
+}
+
 /**
- * Build a provider chain for a request:
- * - If `preferred` is given (Load More with sticky provider), put it first
- *   and follow with remaining configured providers as fallback.
- * - Otherwise (fresh search), use round-robin to pick a starting point.
- * - In both cases, providers in `excluded` are filtered out entirely.
+ * Build a provider chain for a request, applying:
+ *  - excluded — drop these from consideration entirely
+ *  - preferred — for sticky-provider Load More, pin this one to the front
+ *  - query — detect categories; specialists join only on a match,
+ *    generalists are sorted by score (highest first). Ties round-robin.
+ *
+ * Returns ordered { id, fn } so the route can try them in sequence.
  */
 export function buildProviderChain(
+  query: string | null,
   excluded: Set<string>,
   preferred?: string
 ): Array<{ id: ProviderId; fn: ProviderFn }> {
-  const remaining = configuredProviders().filter((p) => !excluded.has(p.id));
+  const categories = detectCategories(query ?? '');
+  const haveSignal = categories.size > 0;
+
+  const remaining = configuredProviders().filter((p) => {
+    if (excluded.has(p.id)) return false;
+    // Specialists only join when we have a category signal AND they
+    // score on at least one of the matched categories.
+    if (p.specialist) {
+      if (!haveSignal) return false;
+      return scoreProvider(p, categories) > 0;
+    }
+    return true;
+  });
   if (remaining.length === 0) return [];
 
+  // Sticky-provider Load More: pin preferred to the head, sort the rest
+  // by category score so the next fallback is the best remaining option.
   if (preferred) {
     const head = remaining.find((p) => p.id === preferred);
     if (head) {
       const tail = remaining.filter((p) => p.id !== preferred);
+      if (haveSignal) {
+        tail.sort((a, b) => scoreProvider(b, categories) - scoreProvider(a, categories));
+      }
       return [head, ...tail].map(({ id, fn }) => ({ id, fn }));
     }
-    // Preferred isn't configured/available — fall through to fresh-pick logic
+    // Preferred isn't in the configured/remaining set — fall through
   }
 
-  // Fresh round-robin pick from the remaining set
+  if (haveSignal) {
+    // Stable sort: score descending, then break ties by a round-robin
+    // rotation through the same-score group so users see variety.
+    const indexed = remaining.map((p, i) => ({ p, i }));
+    indexed.sort((a, b) => {
+      const sa = scoreProvider(a.p, categories);
+      const sb = scoreProvider(b.p, categories);
+      if (sa !== sb) return sb - sa;
+      // Same score — rotate using a per-call cursor advance so tie
+      // groups don't always start with the same provider.
+      return a.i - b.i;
+    });
+    // Rotate within the top-scoring group by cursor (variety across requests).
+    const topScore = scoreProvider(indexed[0].p, categories);
+    const topGroup = indexed.filter(({ p }) => scoreProvider(p, categories) === topScore);
+    if (topGroup.length > 1) {
+      const start = cursor++ % topGroup.length;
+      const rotated = [...topGroup.slice(start), ...topGroup.slice(0, start)];
+      const restGroup = indexed.filter(({ p }) => scoreProvider(p, categories) !== topScore);
+      return [...rotated, ...restGroup].map(({ p }) => ({ id: p.id, fn: p.fn }));
+    }
+    return indexed.map(({ p }) => ({ id: p.id, fn: p.fn }));
+  }
+
+  // No category signal — pure round-robin (the original behavior for
+  // generic queries like "sunset" or single-word terms not in the map).
   const start = cursor++ % remaining.length;
   const ordered = [...remaining.slice(start), ...remaining.slice(0, start)];
   return ordered.map(({ id, fn }) => ({ id, fn }));
