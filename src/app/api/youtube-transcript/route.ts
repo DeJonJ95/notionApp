@@ -418,7 +418,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Could not parse YouTube URL or video ID' }, { status: 400 });
   }
 
-  const userId = (session.user as any).id as string | undefined;
+  // Optional chain: the guard above uses `as any` which strips TS's
+  // narrowing, so `session` is still typed as nullable here.
+  const userId = (session?.user as any)?.id as string | undefined;
 
   // Primary: Supadata (paid, configured via SUPADATA_API_KEY).
   // Returns the full transcript text directly — no caption-fetch step needed.
