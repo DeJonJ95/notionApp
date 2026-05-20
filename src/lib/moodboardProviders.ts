@@ -26,6 +26,40 @@ export type MoodBoardPhoto = {
 
 export type ProviderFn = (query: string, page: number) => Promise<MoodBoardPhoto[]>;
 
+// ── Relevance helpers ──────────────────────────────────────────────────────
+
+const STOPWORDS = new Set([
+  'a','an','the','of','to','for','with','and','or','in','on','at','by','from',
+  'is','it','as','be','this','that','these','those','my','your','our',
+]);
+
+/** Extract meaningful tokens from a query: lowercase, length >= 3, not a stopword. */
+function queryTokens(q: string): string[] {
+  return q.toLowerCase().split(/[\s\-_/]+/).filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+/**
+ * Drop items whose haystack text shares zero meaningful tokens with the query.
+ * Used for OpenVerse / Europeana which match aggressively on tags and return
+ * tangentially-related material. Safety: if the filter would leave fewer
+ * than `minKeep` items, return the original list — better some loosely-related
+ * results than an empty grid.
+ */
+function relevanceFilter<T>(
+  items: T[],
+  query: string,
+  getHaystack: (item: T) => string,
+  minKeep = 8
+): T[] {
+  const tokens = queryTokens(query);
+  if (tokens.length === 0) return items;
+  const matched = items.filter((it) => {
+    const hay = getHaystack(it).toLowerCase();
+    return tokens.some((t) => hay.includes(t));
+  });
+  return matched.length >= minKeep ? matched : items;
+}
+
 // ── Unsplash ───────────────────────────────────────────────────────────────
 // Curated photography, designerly vibe. Demo tier 50 req/hr.
 async function unsplashSearch(query: string, page: number): Promise<MoodBoardPhoto[]> {
@@ -74,6 +108,8 @@ async function pexelsSearch(query: string, page: number): Promise<MoodBoardPhoto
   url.searchParams.set('page', String(page));
   url.searchParams.set('per_page', '20');
   url.searchParams.set('orientation', 'square');
+  url.searchParams.set('size', 'large'); // drop tiny thumbnail-grade originals
+  url.searchParams.set('locale', 'en-US');
 
   const res = await fetch(url, {
     headers: { Authorization: key },
@@ -108,14 +144,24 @@ async function openverseSearch(query: string, page: number): Promise<MoodBoardPh
   const url = new URL('https://api.openverse.org/v1/images/');
   url.searchParams.set('q', query);
   url.searchParams.set('page', String(page));
-  url.searchParams.set('page_size', '20');
+  // Over-fetch so the post-filter still leaves us a healthy grid.
+  url.searchParams.set('page_size', '40');
   url.searchParams.set('mature', 'false');
+  // Drop diagrams, vector clipart, and digitized text. Photographs +
+  // digitized artwork is the sweet spot for mood boards.
+  url.searchParams.set('category', 'photograph,digitized_artwork');
+  // Skip pinterest-tall and panoramic crops that look bad in a square grid.
+  url.searchParams.set('aspect_ratio', 'square,wide,tall');
+  // Skip thumbnail-only entries (some Commons items have 100px scans).
+  url.searchParams.set('size', 'medium,large');
+  // JPG/PNG only — SVG is almost always a diagram or icon, not a mood image.
+  url.searchParams.set('extension', 'jpg,jpeg,png');
 
   const res = await fetch(url, { next: { revalidate: 300 } });
   if (!res.ok) throw new Error(`OpenVerse ${res.status}`);
   const data = await res.json();
 
-  return (data.results ?? [])
+  const mapped: MoodBoardPhoto[] = (data.results ?? [])
     .filter((p: any) => p.thumbnail && p.url)
     .map((p: any): MoodBoardPhoto => ({
       id: `openverse:${p.id}`,
@@ -128,11 +174,14 @@ async function openverseSearch(query: string, page: number): Promise<MoodBoardPh
       full: p.url,
       attribution: {
         name: p.creator || p.source || 'Unknown',
-        // foreign_landing_url points back to the original host (Flickr,
-        // Wikimedia, museum site) which is the correct credit destination.
         profileUrl: p.foreign_landing_url || p.creator_url || 'https://openverse.org',
       },
     }));
+
+  // Post-filter: drop items whose title shares no meaningful tokens with the
+  // query. OpenVerse matches aggressively on Flickr/Wikimedia tags so
+  // results can drift far off-topic; the title is the most reliable signal.
+  return relevanceFilter(mapped, query, (p) => p.alt).slice(0, 20);
 }
 
 // ── Europeana ──────────────────────────────────────────────────────────────
@@ -147,11 +196,20 @@ async function europeanaSearch(query: string, page: number): Promise<MoodBoardPh
   const url = new URL('https://api.europeana.eu/record/v2/search.json');
   url.searchParams.set('wskey', key);
   url.searchParams.set('query', query);
-  url.searchParams.set('rows', '20');
+  // Over-fetch so the post-filter still leaves a healthy grid.
+  url.searchParams.set('rows', '40');
   url.searchParams.set('start', String((page - 1) * 20 + 1));
   url.searchParams.set('media', 'true');
-  url.searchParams.set('qf', 'TYPE:IMAGE');
   url.searchParams.set('reusability', 'open'); // CC0/CC-BY only — safe for embed
+  url.searchParams.set('sort', 'score+desc'); // explicit relevance sort
+  url.searchParams.set('profile', 'rich');    // fuller metadata for filtering
+  // Multiple qf filters: image type, color (drops B&W document scans),
+  // JPEG mime (drops PDFs/TIFFs), and large-enough size (drops postage-stamp
+  // thumbnails). Europeana joins repeated qf params with AND.
+  url.searchParams.append('qf', 'TYPE:IMAGE');
+  url.searchParams.append('qf', 'IMAGE_COLOUR:true');
+  url.searchParams.append('qf', 'MIME_TYPE:image/jpeg');
+  url.searchParams.append('qf', 'IMAGE_SIZE:(large OR extra_large)');
 
   const res = await fetch(url, { next: { revalidate: 300 } });
   if (!res.ok) throw new Error(`Europeana ${res.status}`);
@@ -159,24 +217,35 @@ async function europeanaSearch(query: string, page: number): Promise<MoodBoardPh
 
   const firstString = (v: any): string => Array.isArray(v) ? String(v[0] ?? '') : String(v ?? '');
 
-  return (data.items ?? [])
+  const mapped: MoodBoardPhoto[] = (data.items ?? [])
     .filter((it: any) => it.edmPreview?.[0])
-    .map((it: any): MoodBoardPhoto => ({
-      id: `europeana:${String(it.id).replace(/\//g, '-')}`,
-      provider: 'europeana',
-      width: 0,
-      height: 0,
-      alt: firstString(it.title),
-      thumb: it.edmPreview[0],
-      // edmIsShownBy is the direct image URL at the source institution;
-      // fall back to the preview if missing (some records only ship thumbs).
-      regular: firstString(it.edmIsShownBy) || it.edmPreview[0],
-      full: firstString(it.edmIsShownBy) || it.edmPreview[0],
-      attribution: {
-        name: firstString(it.dcCreator) || firstString(it.dataProvider) || 'Europeana',
-        profileUrl: it.guid || 'https://www.europeana.eu',
-      },
-    }));
+    .map((it: any): MoodBoardPhoto => {
+      // Combine title + description for the haystack so we catch records
+      // where the title is just a date/accession number (common in archives).
+      const title = firstString(it.title);
+      const desc = firstString(it.dcDescription);
+      return {
+        id: `europeana:${String(it.id).replace(/\//g, '-')}`,
+        provider: 'europeana',
+        width: 0,
+        height: 0,
+        alt: title || desc,
+        thumb: it.edmPreview[0],
+        regular: firstString(it.edmIsShownBy) || it.edmPreview[0],
+        full: firstString(it.edmIsShownBy) || it.edmPreview[0],
+        attribution: {
+          name: firstString(it.dcCreator) || firstString(it.dataProvider) || 'Europeana',
+          profileUrl: it.guid || 'https://www.europeana.eu',
+        },
+        // Stash the description for the relevance filter without polluting
+        // the public type — cast and read it back below.
+        _haystack: `${title} ${desc}`,
+      } as any;
+    });
+
+  return relevanceFilter(mapped, query, (p) => (p as any)._haystack ?? p.alt)
+    .map((p) => { delete (p as any)._haystack; return p; })
+    .slice(0, 20);
 }
 
 // ── Public registry ────────────────────────────────────────────────────────
