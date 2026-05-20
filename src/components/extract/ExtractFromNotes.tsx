@@ -76,7 +76,6 @@ export function ExtractFromNotes({ onClose }: Props) {
       .then((r) => (r.ok ? r.json() : []))
       .then((data: Workspace[]) => {
         setWorkspaces(data);
-        setSelectedDbIds(new Set(data.flatMap((w: Workspace) => w.databases.map((d) => d.id))));
       })
       .catch(() => {});
     fetch('/api/pages')
