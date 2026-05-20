@@ -1,0 +1,42 @@
+name: CI
+
+# Catch type errors + lint issues before Vercel deploys. The MoodBoard
+# build error that triggered this workflow (a stale `page` identifier)
+# was a TypeScript-only issue — `tsc --noEmit` catches it in seconds
+# instead of after a full Vercel build cycle.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs when a newer commit lands so we don't waste
+# minutes on stale code.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Type check + lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # `npm ci` triggers postinstall → prisma generate, so the generated
+      # Prisma client types are available before tsc runs.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
