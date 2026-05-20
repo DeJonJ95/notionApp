@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Check, AlertCircle, ChevronRight, FileText, Layers, ClipboardPaste } from 'lucide-react';
+import { X, Sparkles, Check, AlertCircle, ChevronRight, FileText, Layers, ClipboardPaste, Pencil } from 'lucide-react';
 import type { ResolvedChange } from '@/app/api/extract/route';
 
 type Database = { id: string; name: string };
@@ -37,6 +37,33 @@ export function ExtractFromNotes({ onClose }: Props) {
       next.has(k) ? next.delete(k) : next.add(k);
       return next;
     });
+  // Per-change inline editing of property values before apply.
+  const [editingIdx, setEditingIdx] = useState<Set<number>>(new Set());
+  const toggleEditing = (i: number) =>
+    setEditingIdx((prev) => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  // The "bag" of editable property values lives on `row` (create) or
+  // `changes` (update). Resolve the type so renderers know which input to use.
+  const bagKey = (c: ResolvedChange) => (c.action === 'create' ? 'row' : 'changes') as 'row' | 'changes';
+  const propTypeFor = (c: ResolvedChange, key: string): string => {
+    const fromMap = c.propertyMap?.[key]?.type;
+    if (fromMap) return fromMap;
+    const proposed = (c as any).proposedColumns as { name: string; type: string }[] | undefined;
+    return proposed?.find((p) => p.name === key)?.type ?? 'text';
+  };
+  const updateValue = (idx: number, key: string, value: unknown) => {
+    setChanges((prev) => {
+      const next = [...prev];
+      const c = { ...next[idx] } as any;
+      const bag = bagKey(next[idx]);
+      c[bag] = { ...c[bag], [key]: value };
+      next[idx] = c;
+      return next;
+    });
+  };
   const [results, setResults] = useState<ApplyResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -458,28 +485,99 @@ export function ExtractFromNotes({ onClose }: Props) {
                         </span>
                         <span className="font-medium text-text">{c.database}</span>
                         <ChevronRight size={12} className="text-muted" />
-                        <span className="text-muted truncate">
+                        <span className="text-muted truncate flex-1">
                           {c.action === 'update' ? `"${c.pageTitle}"` : 'new row'}
                         </span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleEditing(i); }}
+                          className={`text-[10px] flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors shrink-0 ${
+                            editingIdx.has(i)
+                              ? 'bg-accent text-white border-accent'
+                              : 'border-border text-muted hover:text-text hover:bg-surface'
+                          }`}
+                          title={editingIdx.has(i) ? 'Done editing' : 'Edit values'}
+                        >
+                          <Pencil size={10} />
+                          {editingIdx.has(i) ? 'Done' : 'Edit'}
+                        </button>
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {c.action === 'create' && Boolean(c.row['Name']) && (
-                          <span className="text-xs bg-surface border border-border rounded px-2 py-0.5 text-text">
-                            <span className="text-muted">Name:</span> {String(c.row['Name'])}
-                          </span>
-                        )}
-                        {Object.entries(c.action === 'update' ? c.changes : c.row)
-                          .filter(([k]) => !(c.action === 'create' && k === 'Name'))
-                          .map(([k, v]) => (
-                            <span
-                              key={k}
-                              className="text-xs bg-surface border border-border rounded px-2 py-0.5 text-text"
-                            >
-                              <span className="text-muted">{k}:</span>{' '}
-                              {v === null || v === undefined ? '—' : String(v)}
+                      {editingIdx.has(i) ? (
+                        // Edit mode — typed inputs for each value
+                        <div className="space-y-1.5 mt-1">
+                          {Object.entries(c.action === 'update' ? c.changes : c.row).map(([k, v]) => {
+                            const type = propTypeFor(c, k);
+                            const inputBase = 'w-full px-2 py-1 rounded border border-border bg-surface text-text text-xs focus:outline-none focus:ring-1 focus:ring-accent';
+                            return (
+                              <div
+                                key={k}
+                                className="flex items-center gap-2"
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <span className="text-[10px] uppercase tracking-wide text-muted w-24 shrink-0 truncate" title={k}>
+                                  {k}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  {type === 'checkbox' ? (
+                                    <input
+                                      type="checkbox"
+                                      checked={!!v}
+                                      onChange={(e) => updateValue(i, k, e.target.checked)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="accent-accent w-4 h-4"
+                                    />
+                                  ) : type === 'date' ? (
+                                    <input
+                                      type="date"
+                                      value={v == null ? '' : String(v)}
+                                      onChange={(e) => updateValue(i, k, e.target.value || null)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className={inputBase}
+                                    />
+                                  ) : type === 'number' ? (
+                                    <input
+                                      type="number"
+                                      value={v == null ? '' : String(v)}
+                                      onChange={(e) => updateValue(i, k, e.target.value === '' ? null : Number(e.target.value))}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className={inputBase}
+                                    />
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      value={v == null ? '' : String(v)}
+                                      onChange={(e) => updateValue(i, k, e.target.value)}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className={inputBase}
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        // Read mode — pills
+                        <div className="flex flex-wrap gap-1.5">
+                          {c.action === 'create' && Boolean(c.row['Name']) && (
+                            <span className="text-xs bg-surface border border-border rounded px-2 py-0.5 text-text">
+                              <span className="text-muted">Name:</span> {String(c.row['Name'])}
                             </span>
-                          ))}
-                      </div>
+                          )}
+                          {Object.entries(c.action === 'update' ? c.changes : c.row)
+                            .filter(([k]) => !(c.action === 'create' && k === 'Name'))
+                            .map(([k, v]) => (
+                              <span
+                                key={k}
+                                className="text-xs bg-surface border border-border rounded px-2 py-0.5 text-text"
+                              >
+                                <span className="text-muted">{k}:</span>{' '}
+                                {v === null || v === undefined ? '—' : String(v)}
+                              </span>
+                            ))}
+                        </div>
+                      )}
                       {c.action === 'create' && c.body && (
                         <p className="text-xs text-muted/90 italic mt-1.5 pl-1 border-l-2 border-accent/30 leading-relaxed">
                           {c.body}
