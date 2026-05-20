@@ -4,7 +4,7 @@
 // rest of the app picks it up automatically via the round-robin in
 // the search route.
 
-export type ProviderId = 'unsplash' | 'pexels' | 'openverse' | 'europeana' | 'tumblr' | 'met';
+export type ProviderId = 'unsplash' | 'pexels' | 'openverse' | 'europeana' | 'tumblr' | 'google' | 'met';
 
 export type MoodBoardPhoto = {
   id: string;
@@ -352,6 +352,78 @@ async function tumblrSearch(query: string, page: number): Promise<MoodBoardPhoto
   return mapped.slice(0, 20);
 }
 
+// ── Google Programmable Search (Custom Search Engine) ─────────────────────
+// Google CSE image search. The strongest free-ish answer for niche
+// fashion / aesthetic queries because Google indexes Pinterest itself,
+// so a "japanese baggy denim" query surfaces actual Pinterest pins +
+// Tumblr posts + fashion blogs that no museum API can match.
+//
+// Free tier: 100 queries/day, then $5 per 1000. We never copy bytes
+// to R2 from Google results — the underlying images come from arbitrary
+// third-party hosts with unknown licenses. Instead the save route returns
+// the source URL as-is and we hotlink into the note. Trade-off: the
+// note breaks if the source ever removes the image, but copyright stays
+// clean.
+async function googleSearch(query: string, page: number): Promise<MoodBoardPhoto[]> {
+  const key = process.env.GOOGLE_CSE_API_KEY;
+  const cx = process.env.GOOGLE_CSE_ENGINE_ID;
+  if (!key || !cx) throw new Error('Google CSE not configured');
+
+  // Google caps `num` at 10 per call. To match the other providers'
+  // 20-per-page UX we'd fan out two calls, but that doubles quota use.
+  // We keep it at 10 and let the sticky-provider machinery hand off to
+  // the next provider after one page — saves the daily quota for queries
+  // where Google actually wins.
+  const url = new URL('https://www.googleapis.com/customsearch/v1');
+  url.searchParams.set('key', key);
+  url.searchParams.set('cx', cx);
+  url.searchParams.set('q', query);
+  url.searchParams.set('searchType', 'image');
+  url.searchParams.set('num', '10');
+  url.searchParams.set('safe', 'active');
+  url.searchParams.set('imgSize', 'large');
+  // 1-indexed offset: page 1 → start=1, page 2 → start=11, etc.
+  url.searchParams.set('start', String((page - 1) * 10 + 1));
+
+  const res = await fetch(url, { next: { revalidate: 600 } });
+  if (!res.ok) {
+    // 429 (quota) and 403 are common — let the chain fall through.
+    throw new Error(`Google CSE ${res.status}`);
+  }
+  const data = await res.json();
+
+  const items: any[] = Array.isArray(data.items) ? data.items : [];
+  return items
+    .filter((it) => it.link && it.image?.thumbnailLink)
+    .map((it, idx): MoodBoardPhoto => ({
+      // Use the underlying host + index for the ID so duplicates across
+      // pages don't collide (Google can re-rank between calls).
+      id: `google:${page}-${idx}-${hash32(it.link)}`,
+      provider: 'google',
+      width: it.image.width ?? 0,
+      height: it.image.height ?? 0,
+      alt: it.title ?? it.snippet ?? '',
+      thumb: it.image.thumbnailLink,
+      regular: it.link,
+      full: it.link,
+      attribution: {
+        // displayLink is the bare host (e.g. "www.pinterest.com" or
+        // "fashionweekdaily.com") — useful credit signal in the overlay.
+        name: it.displayLink || 'web',
+        // contextLink points to the page where the image lives, which
+        // is the right destination for clicks on the photographer name.
+        profileUrl: it.image.contextLink || it.link,
+      },
+    }));
+}
+
+// Tiny non-crypto hash so we get a short stable ID per image URL.
+function hash32(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  return (h >>> 0).toString(36);
+}
+
 // ── The Met Museum ─────────────────────────────────────────────────────────
 // Specialist provider — only included in the chain when the query matches
 // the `art` category. Without that gating it returns false positives for
@@ -498,6 +570,17 @@ const ALL_PROVIDERS: ProviderConfig[] = [
     configured: () => !!process.env.TUMBLR_API_KEY,
     fn: tumblrSearch,
     categories: ['fashion', 'design', 'photography', 'interiors', 'vintage'],
+  },
+  {
+    id: 'google',
+    configured: () => !!process.env.GOOGLE_CSE_API_KEY && !!process.env.GOOGLE_CSE_ENGINE_ID,
+    fn: googleSearch,
+    // Google CSE indexes Pinterest, fashion blogs, editorial sites, etc.
+    // Strong on the categories where Pinterest itself dominates and our
+    // other providers struggle (niche fashion subcultures, room styling,
+    // product photography). Stays a generalist — for art queries the
+    // dedicated museum APIs still rank higher.
+    categories: ['fashion', 'interiors', 'design', 'photography'],
   },
   {
     id: 'met',

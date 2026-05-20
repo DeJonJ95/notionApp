@@ -18,6 +18,7 @@ function providerLabel(id: string): string {
   if (id === 'openverse') return 'OpenVerse';
   if (id === 'europeana') return 'Europeana';
   if (id === 'tumblr') return 'Tumblr';
+  if (id === 'google') return 'Google';
   if (id === 'met') return 'The Met Museum';
   return id;
 }
