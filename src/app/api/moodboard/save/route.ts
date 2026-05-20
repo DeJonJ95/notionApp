@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { isOwner } from '@/lib/owner';
 import { putBytes } from '@/lib/r2';
 
 // Copy a single Unsplash photo into the user's R2 bucket and return the
@@ -9,6 +10,11 @@ import { putBytes } from '@/lib/r2';
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Same gate as /search — non-owners can't reach the save endpoint either,
+  // so they can't bypass the UI hide by hand-crafting requests.
+  if (!isOwner(session)) {
+    return NextResponse.json({ error: 'Mood board is not available on this account yet.' }, { status: 403 });
+  }
   const userId = (session.user as any).id;
 
   const key = process.env.UNSPLASH_ACCESS_KEY;
