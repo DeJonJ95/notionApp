@@ -11,9 +11,10 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Maximize2, Minimize2, Mic, ClipboardList } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Maximize2, Minimize2, Mic, ClipboardList, Palette } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
+import { MoodBoardModal } from '@/components/moodboard/MoodBoardModal';
 import { DatabaseEmbed } from '@/components/editor/extensions/DatabaseEmbed';
 import { DragHandleOverlay } from '@/components/editor/extensions/DragHandle';
 import { HeadingCollapseExtension, CollapsibleHeadingOverlay } from '@/components/editor/extensions/CollapsibleHeading';
@@ -52,6 +53,7 @@ export function PageEditor({
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
   const [summarizeOpen, setSummarizeOpen] = useState(false);
+  const [moodboardOpen, setMoodboardOpen] = useState(false);
   const [selectedCommand, setSelectedCommand] = useState(0);
   const [slashRange, setSlashRange] = useState<{ from: number; to: number } | null>(null);
   // Shadow ref keeps slash state accessible inside the editor's stable (stale-closure) keydown handler.
@@ -127,6 +129,11 @@ export function PageEditor({
         title: 'Embed database',
         description: 'Embed a live database view inside this note.',
         action: (editor) => editor.chain().focus().insertContent({ type: 'databaseEmbed', attrs: { databaseId: null } }).run(),
+      },
+      {
+        title: 'Mood board',
+        description: 'Search Unsplash and add curated images to this note.',
+        action: () => setMoodboardOpen(true),
       },
     ],
     []
@@ -440,6 +447,14 @@ export function PageEditor({
           <Sparkles size={13} />
           Organize
         </button>
+        <button
+          type="button"
+          onClick={() => setMoodboardOpen(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 hover:bg-surface text-accent"
+        >
+          <Palette size={13} />
+          Mood board
+        </button>
       </div>
 
       {/* Audio recorder panel — inline below toolbar */}
@@ -478,6 +493,23 @@ export function PageEditor({
           onClose={() => setSummarizeOpen(false)}
           onInsert={(html) => {
             editor.chain().focus().setTextSelection(0).insertContentAt(0, html).run();
+            scheduleSave();
+          }}
+        />
+      )}
+
+      {moodboardOpen && (
+        <MoodBoardModal
+          onClose={() => setMoodboardOpen(false)}
+          onInsert={(images) => {
+            if (!editor) return;
+            // Chain a setImage per picked photo so they land in order, each on its
+            // own block. Focus the editor first so the cursor is in a sane place.
+            let chain = editor.chain().focus();
+            for (const img of images) {
+              chain = chain.setImage({ src: img.url, alt: img.alt });
+            }
+            chain.run();
             scheduleSave();
           }}
         />
