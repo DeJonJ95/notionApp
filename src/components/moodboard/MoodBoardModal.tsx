@@ -292,7 +292,7 @@ export function MoodBoardModal({ onClose, onInsert }: Props) {
                 disabled={!query.trim() || status === 'loading'}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-md bg-accent text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
-                {status === 'loading' && page === 1 ? 'Searching…' : 'Search'}
+                {status === 'loading' && currentPage <= 1 ? 'Searching…' : 'Search'}
               </button>
             </form>
           </div>
