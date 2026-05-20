@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { isOwner } from '@/lib/owner';
 
 // Trimmed shape we hand to the client — the full Unsplash payload is much larger.
 // `download_location` is the URL we must hit to satisfy Unsplash's API guidelines
@@ -22,6 +23,11 @@ export type MoodBoardPhoto = {
 export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  // Owner-only while we're on Unsplash's 50-req/hr demo tier. Once we get
+  // production approval + a per-user rate cap, this gate comes off.
+  if (!isOwner(session)) {
+    return NextResponse.json({ error: 'Mood board is not available on this account yet.' }, { status: 403 });
+  }
 
   const key = process.env.UNSPLASH_ACCESS_KEY;
   if (!key) {

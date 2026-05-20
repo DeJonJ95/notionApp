@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { isOwner } from '@/lib/owner';
 
 // Fetches a YouTube video's caption track without an API key.
 // Strategy: try several InnerTube client contexts in order, then fall back
@@ -401,6 +402,11 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   if (!(session?.user as any)?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  // YouTube import calls expensive transcript services (Supadata + fallbacks)
+  // — gate to the owner until per-user usage caps are in place.
+  if (!isOwner(session)) {
+    return NextResponse.json({ error: 'YouTube import is not available on this account yet.' }, { status: 403 });
   }
 
   const { url } = (await req.json()) as { url?: string };

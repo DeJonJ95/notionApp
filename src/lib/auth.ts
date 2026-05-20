@@ -3,6 +3,7 @@ import { PrismaAdapter } from '@auth/prisma-adapter';
 import EmailProvider from 'next-auth/providers/email';
 import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from './prisma';
+import { isOwner } from './owner';
 
 const emailServerPort = process.env.EMAIL_SERVER_PORT ? Number(process.env.EMAIL_SERVER_PORT) : undefined;
 
@@ -69,7 +70,12 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async session({ session, user }) {
-      if (session.user) (session.user as any).id = user.id;
+      if (session.user) {
+        (session.user as any).id = user.id;
+        // Surface owner status to the client (UI shows/hides expensive features
+        // based on this). The owner email itself never leaves the server.
+        (session.user as any).isOwner = isOwner(session);
+      }
       return session;
     },
   },
