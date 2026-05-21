@@ -1,12 +1,13 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
 import { TemplateModal } from '@/components/templates/TemplateModal';
 import { ExtractFromNotes } from '@/components/extract/ExtractFromNotes';
+import { ShortcutsHelp } from '@/components/sidebar/ShortcutsHelp';
 import { cn } from '@/lib/utils';
 import { promptDialog } from '@/components/ui/feedback';
 
@@ -31,17 +32,49 @@ export function Sidebar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [extractOpen, setExtractOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
   const [todayJournalId, setTodayJournalId] = useState<string | null>(null);
+  // Desktop-only collapse — persists across reloads. The mobile drawer
+  // (`open`) is independent; on small screens this state is ignored.
+  const [collapsed, setCollapsed] = useState(false);
 
-  // Global Cmd+K / Ctrl+K shortcut
+  // Restore the saved collapse state on first render. Done in an effect
+  // (not in useState's initializer) because localStorage isn't available
+  // during SSR.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('kove:sidebar-collapsed') === '1') setCollapsed(true);
+    } catch { /* private mode / SSR — ignore */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem('kove:sidebar-collapsed', collapsed ? '1' : '0'); } catch { /* */ }
+  }, [collapsed]);
+
+  // Global keyboard shortcuts. Cmd/Ctrl+K opens search; Cmd/Ctrl+\
+  // toggles the desktop sidebar collapse; `?` (with no modifier and no
+  // input focused) opens the shortcuts help.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setSearchOpen((v) => !v);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        setCollapsed((v) => !v);
+        return;
+      }
+      // `?` opens the shortcuts help — but only if the user isn't typing
+      // somewhere. Inputs/contenteditables get the keystroke as input.
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
       }
     };
     document.addEventListener('keydown', handler);
@@ -118,6 +151,7 @@ export function Sidebar() {
         />
       )}
       {extractOpen && <ExtractFromNotes onClose={() => setExtractOpen(false)} />}
+      {shortcutsOpen && <ShortcutsHelp onClose={() => setShortcutsOpen(false)} />}
 
       {/* Mobile toggle — floating bottom-left so it never sits on top of
           page titles / breadcrumbs (which are top-left). Hidden while the
@@ -140,10 +174,28 @@ export function Sidebar() {
         />
       )}
 
+      {/* Floating "open sidebar" button — only when collapsed on desktop.
+          Sits in the top-left of the viewport so it's predictable and
+          always findable. Hidden on mobile (the bottom-left Menu button
+          handles that case). */}
+      {collapsed && (
+        <button
+          onClick={() => setCollapsed(false)}
+          className="hidden md:flex fixed top-3 left-3 z-40 p-2 rounded-lg bg-surface border border-border shadow-sm hover:bg-bg transition-colors items-center gap-1.5"
+          aria-label="Open sidebar (⌘\\)"
+          title="Open sidebar (⌘\\)"
+        >
+          <PanelLeftOpen size={15} />
+        </button>
+      )}
+
       <aside
         className={cn(
-          'fixed md:relative z-40 inset-y-0 left-0 w-72 bg-surface border-r border-border flex flex-col transition-transform',
-          open ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          'fixed md:relative z-40 inset-y-0 left-0 w-72 bg-surface border-r border-border flex flex-col transition-all duration-200',
+          open ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
+          // Desktop collapse: slide off-screen + zero out width so the
+          // main content reflows to fill the freed space.
+          collapsed && 'md:-translate-x-full md:w-0 md:border-r-0 md:overflow-hidden'
         )}
       >
         <div className="flex items-center justify-between p-3 border-b border-border">
@@ -164,6 +216,14 @@ export function Sidebar() {
               title="Extract from notes"
             >
               <Sparkles size={15} />
+            </button>
+            <button
+              onClick={() => setCollapsed(true)}
+              className="hidden md:block p-1.5 rounded hover:bg-bg text-muted hover:text-text transition-colors"
+              aria-label="Collapse sidebar (⌘\\)"
+              title="Collapse sidebar (⌘\\)"
+            >
+              <PanelLeftClose size={15} />
             </button>
             <button
               onClick={() => setOpen(false)}
