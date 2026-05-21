@@ -30,6 +30,14 @@ async function refresh() {
   }
 }
 
+// Early guard: the default placeholder in config.js sends requests to
+// a domain we don't own, which returns Vercel's HTML 404 page. Show a
+// clear error instead of letting the user think they're "Connected"
+// when the URL is wrong.
+function looksLikePlaceholder(url) {
+  return /your-notes-app|example\.com|localhost:3000/.test(url) && !url.includes(location.host);
+}
+
 $('connect').addEventListener('click', async () => {
   const token = $('token').value.trim();
   if (!token) {
@@ -38,18 +46,37 @@ $('connect').addEventListener('click', async () => {
   }
   $('connect').disabled = true;
   setStatus('Verifying…');
-  // Validate by hitting /pages — if it 200s the token is good.
   try {
+    if (!API || /your-notes-app\.vercel\.app/.test(API)) {
+      throw new Error('Edit extension/config.js first — apiBase still has the placeholder URL.');
+    }
+
     const res = await fetch(`${API}/api/clipper/pages`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+
+    // Reading content-type catches the "wrong URL returning HTML" case
+    // where status is 200 but the body is a 404 page or parking screen.
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      throw new Error(
+        `Server returned ${ct || 'unknown'} (status ${res.status}) — apiBase in config.js probably points to the wrong URL.`
+      );
+    }
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
       throw new Error(
         res.status === 401
           ? 'Token rejected. Double-check the value you copied.'
-          : `Server returned ${res.status}`
+          : data.error || `Server returned ${res.status}`
       );
     }
+    // Final sanity check on shape.
+    const data = await res.json();
+    if (!Array.isArray(data.pages)) {
+      throw new Error('Unexpected response shape — make sure apiBase points to your notes app.');
+    }
+
     await chrome.storage.local.set({ token });
     setStatus('Connected ✓', 'ok');
     setTimeout(() => { setStatus(''); showConnected(true); }, 500);
