@@ -1459,6 +1459,22 @@ export function CanvasPageEditor({
           onPointerDown={handleCanvasPointerDown}
           onClick={handleCanvasClick}
         >
+          {/* Empty-canvas hint — shown for fresh notes so users discover
+              the "tap to add a block" interaction. pointer-events-none so
+              the hint itself never absorbs the very tap it's prompting. */}
+          {blocks.length === 0 && (
+            <div
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+              aria-hidden="true"
+            >
+              <div className="text-center text-muted/60 px-4">
+                <p className="text-sm">Tap anywhere to add a block</p>
+                <p className="text-xs mt-1">
+                  Then type <kbd className="font-mono bg-bg/50 border border-border/50 rounded px-1 py-0.5 text-[10px]">/</kbd> inside it for the slash menu
+                </p>
+              </div>
+            </div>
+          )}
           {blocks.map((b) => (
             <CanvasCard
               key={b.id}
