@@ -21,6 +21,26 @@ model User {
   recurringRules RecurringRule[]
   categorizationRules CategorizationRule[]
   savingsGoals SavingsGoal[]
+  clipperTokens ClipperToken[]
+}
+
+// Bearer tokens issued to the browser extension. Stored as a SHA-256
+// hash so a database leak doesn't compromise live tokens. The plaintext
+// value is only ever returned to the user once at generation time.
+model ClipperToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // First 8 chars of the raw token, shown in the settings UI so users
+  // can identify which token they're looking at without exposing the
+  // full secret. Indexed for the auth lookup happy path.
+  prefix     String
+  tokenHash  String   @unique
+  label      String?  // optional user-supplied name ("My laptop")
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
 }
 
 model CategorizationRule {
