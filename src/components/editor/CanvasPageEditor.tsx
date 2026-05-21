@@ -682,12 +682,43 @@ export function CanvasPageEditor({
   );
 
   // ── Click empty canvas to create block ────────────────────────────────
+  //
+  // Tracks the pointer-down state so the click handler can distinguish
+  // a real "tap to add a block" from:
+  //   - a long press (user just resting their finger / cursor)
+  //   - a drag (user trying to pan, or aborted move)
+  // Without this, holding the canvas for half a second OR clicking-and-
+  // dragging both end up creating an unwanted text block.
+  const clickGuardRef = useRef<{ t: number; x: number; y: number } | null>(null);
+  const CLICK_MAX_MS = 400;   // anything held longer is a press, not a tap
+  const CLICK_MAX_DELTA = 6;  // pixels — wobble allowance; more = a drag
+
+  const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.target !== innerRef.current) return;
+    clickGuardRef.current = { t: Date.now(), x: e.clientX, y: e.clientY };
+  }, []);
+
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (dragState.current) return;
       if (e.target !== innerRef.current) return; // only on blank canvas
+
+      // Apply tap-vs-press/drag gating. The guard is set on pointerdown
+      // by handleCanvasPointerDown; if it's missing the click came from
+      // a synthetic source (keyboard, accessibility tools) — fall back
+      // to the simple "create block" behavior in that case.
+      const guard = clickGuardRef.current;
+      clickGuardRef.current = null;
+      if (guard) {
+        const elapsed = Date.now() - guard.t;
+        const dx = e.clientX - guard.x;
+        const dy = e.clientY - guard.y;
+        if (elapsed > CLICK_MAX_MS || dx * dx + dy * dy > CLICK_MAX_DELTA * CLICK_MAX_DELTA) {
+          return; // long press or drag — user didn't ask for a block
+        }
+      }
+
       const rect = innerRef.current!.getBoundingClientRect();
-      // rect is the transformed (visual) box; divide by zoom to recover canvas coords
       const z = zoomRef.current;
       const x = (e.clientX - rect.left) / z;
       const y = (e.clientY - rect.top) / z;
@@ -894,8 +925,28 @@ export function CanvasPageEditor({
     const onWheel = (e: WheelEvent) => {
       if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
+      const sc = scrollRef.current;
+      if (!sc) return;
+
       const factor = e.deltaY > 0 ? 0.92 : 1.08;
-      setZoom((z) => +CLAMP(z * factor).toFixed(3));
+      const oldZoom = zoomRef.current;
+      const newZoom = +CLAMP(oldZoom * factor).toFixed(3);
+      if (newZoom === oldZoom) return;
+
+      // Focal-point zoom — keep the canvas point under the cursor put
+      // under the cursor after the zoom changes. Same math as the touch
+      // pinch handler below: compute the canvas point at the cursor at
+      // the OLD zoom, commit the new zoom synchronously, then set scroll
+      // so the same canvas point lands back at the cursor's screen
+      // position. Without this the content anchors at top-left because
+      // transform-origin is top-left.
+      const rect = sc.getBoundingClientRect();
+      const canvasX = (e.clientX - rect.left + sc.scrollLeft) / oldZoom;
+      const canvasY = (e.clientY - rect.top + sc.scrollTop) / oldZoom;
+
+      flushSync(() => setZoom(newZoom));
+      sc.scrollLeft = canvasX * newZoom - (e.clientX - rect.left);
+      sc.scrollTop = canvasY * newZoom - (e.clientY - rect.top);
     };
 
     const onTouchStart = (e: TouchEvent) => {
@@ -1361,6 +1412,7 @@ export function CanvasPageEditor({
             transform: `scale(${zoom})`,
             transformOrigin: 'top left',
           }}
+          onPointerDown={handleCanvasPointerDown}
           onClick={handleCanvasClick}
         >
           {blocks.map((b) => (
