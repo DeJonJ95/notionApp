@@ -17,17 +17,36 @@ async function setToken(token) {
 }
 
 // ── API client ────────────────────────────────────────────────────
+
+// Parses a response as JSON but produces a USEFUL error when the server
+// returns HTML (the common misconfiguration: apiBase points at the wrong
+// domain → Vercel/Netlify 404 HTML → `<!doctype` parse explosion). Used
+// by both fetchPages and saveImage.
+async function readJson(res, opName) {
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    // Don't even try res.json() — the error from the parser is opaque.
+    // Give the user something actionable instead.
+    throw new Error(
+      `${opName}: server returned ${ct || 'no content-type'} (status ${res.status}). ` +
+      `Check apiBase in extension/config.js and reload the extension.`
+    );
+  }
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || `${opName} failed (${res.status})`);
+  }
+  return data;
+}
+
 async function fetchPages() {
   const token = await getToken();
   if (!token) throw new Error('Not connected — open the extension popup to paste your token.');
   const res = await fetch(`${API}/api/clipper/pages`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Failed to load pages (${res.status})`);
-  }
-  return (await res.json()).pages || [];
+  const data = await readJson(res, 'Load pages');
+  return data.pages || [];
 }
 
 async function saveImage({ pageId, sourceUrl, alt }) {
@@ -38,11 +57,7 @@ async function saveImage({ pageId, sourceUrl, alt }) {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ pageId, sourceUrl, alt }),
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `Save failed (${res.status})`);
-  }
-  return res.json();
+  return readJson(res, 'Save image');
 }
 
 // ── Message router ─────────────────────────────────────────────────
