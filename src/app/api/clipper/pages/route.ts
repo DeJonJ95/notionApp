@@ -3,14 +3,14 @@
 
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyClipperToken, corsPreflight, jsonWithCors } from '@/lib/clipperAuth';
+import { verifyClipperAuth, corsPreflight, jsonWithCors } from '@/lib/clipperAuth';
 
 export async function OPTIONS(req: NextRequest) {
   return corsPreflight(req);
 }
 
 export async function GET(req: NextRequest) {
-  const ctx = await verifyClipperToken(req);
+  const ctx = await verifyClipperAuth(req);
   if (!ctx) return jsonWithCors(req, { error: 'Unauthorized' }, { status: 401 });
 
   const pages = await prisma.page.findMany({
