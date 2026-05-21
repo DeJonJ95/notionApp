@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Notes Clipper</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      width: 320px;
+      margin: 0;
+      padding: 16px;
+      background: #fafafa;
+      color: #111;
+    }
+    h1 { font-size: 14px; margin: 0 0 4px; font-weight: 600; }
+    .sub { color: #6b7280; font-size: 12px; margin-bottom: 12px; }
+    label { display: block; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; font-weight: 500; }
+    input[type=text], input[type=password] {
+      width: 100%;
+      padding: 7px 9px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 13px;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    input:focus { outline: 2px solid #2563eb; outline-offset: -1px; border-color: #2563eb; }
+    button.primary {
+      width: 100%;
+      padding: 8px 12px;
+      border: 0;
+      background: #2563eb;
+      color: #fff;
+      border-radius: 6px;
+      font-weight: 500;
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.link {
+      background: none;
+      border: 0;
+      color: #2563eb;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+      text-decoration: underline;
+      margin-top: 8px;
+    }
+    .status {
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    .status.ok { background: #d1fae5; color: #065f46; }
+    .status.err { background: #fee2e2; color: #991b1b; }
+    .help {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+    code { background: #f3f4f6; padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>Notes Clipper</h1>
+  <p class="sub">Save images from any site into your notes.</p>
+
+  <div id="status" class="status" style="display:none"></div>
+
+  <div id="connectForm">
+    <label for="token">Paste your token</label>
+    <input id="token" type="password" placeholder="ABc123..." autocomplete="off" />
+    <button id="connect" class="primary">Connect</button>
+    <p class="help">
+      Generate a token at <code>your-notes-app.com/clipper</code> and paste it above.
+    </p>
+  </div>
+
+  <div id="connected" style="display:none">
+    <div class="status ok" style="display:block">Connected ✓</div>
+    <p class="help">
+      Hover any image on a page to see a <strong>Save to notes</strong> button,
+      or right-click → <strong>Save image to notes</strong>.
+    </p>
+    <button id="disconnect" class="link">Disconnect / change token</button>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
