@@ -14,6 +14,7 @@
 import { createHash, randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from './prisma';
+import { auth } from './auth';
 
 const TOKEN_BYTES = 32; // 256 bits, base64url-encoded → 43 chars
 const TOKEN_HASH_ALG = 'sha256';
@@ -63,6 +64,28 @@ export async function verifyClipperToken(req: NextRequest): Promise<ClipperConte
     .catch(() => {});
 
   return { userId: row.userId, tokenId: row.id };
+}
+
+/**
+ * Verify EITHER a clipper bearer token (extension flow) OR a NextAuth
+ * session cookie (PWA share-target flow). Returns the user context from
+ * whichever path succeeded.
+ *
+ * Bearer is tried first because:
+ *  - It's faster (single indexed lookup, no session table join)
+ *  - The extension is the dominant caller for these endpoints
+ *  - Falling through to session is only needed by the share-target flow
+ *    which runs in a small subset of requests
+ */
+export async function verifyClipperAuth(req: NextRequest): Promise<ClipperContext | null> {
+  const tokenCtx = await verifyClipperToken(req);
+  if (tokenCtx) return tokenCtx;
+
+  const session = await auth();
+  const userId = (session?.user as any)?.id;
+  if (userId) return { userId, tokenId: 'session' };
+
+  return null;
 }
 
 // Standard CORS preamble for clipper endpoints. The extension's origin
