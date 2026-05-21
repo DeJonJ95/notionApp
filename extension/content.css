@@ -1,0 +1,149 @@
+/* Everything is prefixed `nclip-` to avoid colliding with the host page.
+   We use position:fixed + max z-index so we float above any site UI. */
+
+.nclip-save-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2147483647;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  border: 0;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font: 500 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.nclip-save-btn.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.nclip-save-btn:hover {
+  background: #2563eb;
+}
+
+/* Picker overlay — full-screen dim + centered panel */
+.nclip-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2147483647;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 8vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.nclip-picker {
+  background: #fff;
+  color: #111;
+  width: 100%;
+  max-width: 460px;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  overflow: hidden;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.nclip-picker-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.nclip-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #f3f4f6;
+  flex-shrink: 0;
+}
+.nclip-picker-title { font-weight: 600; font-size: 13px; margin: 0; }
+.nclip-picker-sub { color: #6b7280; font-size: 12px; margin: 2px 0 0; }
+.nclip-close {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 18px;
+  padding: 4px;
+  line-height: 1;
+}
+.nclip-search {
+  padding: 10px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.nclip-search input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+.nclip-search input:focus { outline: 2px solid #2563eb; outline-offset: -1px; border-color: #2563eb; }
+.nclip-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+}
+.nclip-page-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: inherit;
+}
+.nclip-page-item:hover, .nclip-page-item.active {
+  background: #f3f4f6;
+}
+.nclip-page-icon { font-size: 16px; flex-shrink: 0; width: 18px; text-align: center; }
+.nclip-page-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nclip-page-ws { font-size: 11px; color: #6b7280; flex-shrink: 0; }
+.nclip-picker-footer {
+  padding: 8px 16px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 11px;
+  color: #6b7280;
+}
+.nclip-status {
+  padding: 12px 16px;
+  font-size: 12px;
+  text-align: center;
+  color: #6b7280;
+}
+.nclip-status.err { color: #991b1b; }
+.nclip-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font: 500 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  z-index: 2147483647;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  pointer-events: none;
+  animation: nclipToastIn 0.18s ease;
+}
+.nclip-toast.err { background: #b91c1c; }
+@keyframes nclipToastIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}

@@ -1,0 +1,99 @@
+// Service worker — central message broker between content script,
+// popup, and the notes app API. Holds no DOM; runs in a stripped-down
+// MV3 worker context.
+
+importScripts('config.js');
+
+const API = self.NOTES_CLIPPER_CONFIG.apiBase;
+
+// ── Token storage helpers ─────────────────────────────────────────
+async function getToken() {
+  const { token } = await chrome.storage.local.get('token');
+  return token || '';
+}
+
+async function setToken(token) {
+  await chrome.storage.local.set({ token });
+}
+
+// ── API client ────────────────────────────────────────────────────
+async function fetchPages() {
+  const token = await getToken();
+  if (!token) throw new Error('Not connected — open the extension popup to paste your token.');
+  const res = await fetch(`${API}/api/clipper/pages`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to load pages (${res.status})`);
+  }
+  return (await res.json()).pages || [];
+}
+
+async function saveImage({ pageId, sourceUrl, alt }) {
+  const token = await getToken();
+  if (!token) throw new Error('Not connected');
+  const res = await fetch(`${API}/api/clipper/save-image`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pageId, sourceUrl, alt }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Save failed (${res.status})`);
+  }
+  return res.json();
+}
+
+// ── Message router ─────────────────────────────────────────────────
+// All cross-frame communication goes through this; both content script
+// and popup post messages here and await responses.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === 'getPages') {
+    fetchPages()
+      .then((pages) => sendResponse({ ok: true, pages }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true; // async
+  }
+  if (msg?.type === 'saveImage') {
+    saveImage(msg.payload)
+      .then((data) => sendResponse({ ok: true, ...data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+  if (msg?.type === 'setToken') {
+    setToken(msg.token)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+  if (msg?.type === 'getToken') {
+    getToken().then((token) => sendResponse({ token }));
+    return true;
+  }
+  return false;
+});
+
+// ── Context menu integration ──────────────────────────────────────
+// Right-click any image on any page → "Save image to notes". Sends a
+// message to the page's content script to open the picker overlay
+// near the clicked image.
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'clipper-save-image',
+    title: 'Save image to notes',
+    contexts: ['image'],
+  });
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId !== 'clipper-save-image') return;
+  if (!info.srcUrl || !tab?.id) return;
+  // Ask the content script to surface the picker with this image
+  // pre-loaded. The content script knows the page DOM and can position
+  // the overlay correctly.
+  chrome.tabs.sendMessage(tab.id, {
+    type: 'openPicker',
+    sourceUrl: info.srcUrl,
+  });
+});
