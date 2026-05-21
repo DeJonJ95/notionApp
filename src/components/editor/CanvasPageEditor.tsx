@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -1036,6 +1036,71 @@ export function CanvasPageEditor({
     });
   }, [createBlock, nextStackY]);
 
+  // ── Pinterest popup ───────────────────────────────────────────────────
+  // Opens pinterest.com/search/pins/?q=<term> in a sized popup so the user
+  // can browse Pinterest with its actual UI side-by-side with their note.
+  // Pinterest blocks iframe embedding via X-Frame-Options:DENY so a real
+  // popup window is the only legitimate way to do this. The user then
+  // right-clicks any pin → Copy Image and pastes back into the note,
+  // which our paste handler below catches and uploads to R2.
+  const openPinterest = useCallback(async () => {
+    const term = await promptDialog({
+      title: 'Browse Pinterest',
+      message:
+        'Pinterest opens in a popup window. In the popup, right-click any pin → "Copy Image", then come back here and press Cmd+V (or Ctrl+V) to drop it into your note.',
+      defaultValue: '',
+      placeholder: 'e.g. mid-century modern living room',
+    });
+    if (term === null) return;
+    const q = term.trim();
+    if (!q) return;
+    const url = `https://www.pinterest.com/search/pins/?q=${encodeURIComponent(q)}`;
+    const popup = window.open(
+      url,
+      'pinterest-browse',
+      'width=1000,height=720,resizable=yes,scrollbars=yes'
+    );
+    if (!popup) {
+      toast.error('Popup blocked. Allow popups for this site to browse Pinterest.');
+      return;
+    }
+    toast.success('Pinterest opened. Right-click a pin → Copy Image, then paste here.');
+  }, []);
+
+  // ── Clipboard image paste ─────────────────────────────────────────────
+  // When the user pastes (Cmd/Ctrl+V) and the clipboard contains an image
+  // (from Pinterest's "Copy Image", a screenshot, anywhere), drop a new
+  // image block on the canvas instead of letting the text-block default
+  // paste mangle the binary data into junk text.
+  //
+  // Capture phase + stopPropagation ensures we win over TipTap's
+  // contenteditable paste handler that would otherwise run first.
+  useEffect(() => {
+    const onPaste = async (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+      const items = Array.from(e.clipboardData.items);
+      const imageItem = items.find(
+        (it) => it.kind === 'file' && it.type.startsWith('image/')
+      );
+      if (!imageItem) return; // not an image — let normal text paste run
+
+      const file = imageItem.getAsFile();
+      if (!file) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        await uploadImage(file);
+        toast.success('Image added to your note.');
+      } catch {
+        toast.error('Could not save the pasted image.');
+      }
+    };
+    // Capture phase so we beat TipTap's editor-level paste handler.
+    document.addEventListener('paste', onPaste, true);
+    return () => document.removeEventListener('paste', onPaste, true);
+  }, [uploadImage]);
+
   // ── Handle summarize insert ────────────────────────────────────────────
   const handleSummarizeInsert = async (html: string) => {
     // Insert a new text block at top of the doc column
@@ -1129,6 +1194,13 @@ export function CanvasPageEditor({
               <Palette size={12} /> Mood board
             </button>
           )}
+          <button
+            onClick={openPinterest}
+            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
+            title="Browse Pinterest in a popup. Right-click a pin → Copy Image, then paste here."
+          >
+            <Pin size={12} className="text-red-500" /> Pinterest
+          </button>
           <div className="w-px bg-border self-stretch mx-0.5" />
           <button onClick={toggleFavorite} className="p-1.5 rounded hover:bg-bg" title="Favorite">
             <Star size={15} className={favorite ? 'fill-yellow-400 stroke-yellow-500' : ''} />
