@@ -282,8 +282,26 @@ function CanvasCard({
         className="pointer-events-auto absolute -left-9 top-0 h-full w-9 hidden md:block [@media(hover:none)]:!hidden"
       />
 
+      {/* Counter-scale factor for handles: at zoom 1.0 they stay normal
+          size; as the user zooms OUT, the handles need to render larger in
+          canvas-px so they remain a constant size in viewport-px. Capped at
+          4x so handles don't become absurd at extreme zoom-out. At zoom > 1
+          the original size is fine (handles already feel large enough). */}
+      {/* invScale captures the multiplier we apply to canvas-px sizes. */}
+      {(() => null)()}
       {/* Desktop hover handles — only on hover-capable devices */}
-      <div className="pointer-events-auto absolute -left-9 top-1 hidden group-hover:flex flex-col gap-0.5 z-10 [@media(hover:none)]:!hidden">
+      <div
+        className="pointer-events-auto absolute hidden group-hover:flex flex-col gap-0.5 z-10 [@media(hover:none)]:!hidden"
+        style={{
+          // Scale the whole desktop handle column up when zoomed out.
+          // transform-origin top-right so it grows into the left gutter
+          // away from block content.
+          transform: `scale(${Math.min(4, Math.max(1, 1 / zoom))})`,
+          transformOrigin: 'top right',
+          top: 4,
+          left: -36,
+        }}
+      >
         <button
           data-drag-handle
           style={{ touchAction: 'none' }}
@@ -303,29 +321,48 @@ function CanvasCard({
       </div>
 
       {/* Mobile drag bar — always visible on touch devices (hover:none).
-          Tap it to immediately start dragging; the border + shadow shows you're in move mode. */}
-      <div
-        data-drag-handle
-        style={{ touchAction: 'none' }}
-        className={`pointer-events-auto hidden [@media(hover:none)]:flex absolute -top-6 left-0 right-0 h-6 items-center justify-center z-10 rounded-t-lg transition-colors ${
-          isMoving ? 'bg-accent/20' : 'bg-transparent'
-        }`}
-      >
-        <div className={`w-10 h-1 rounded-full transition-colors ${isMoving ? 'bg-accent/70' : 'bg-muted/40'}`} />
-        {isMoving && (
-          <span className="absolute left-2 text-[10px] text-accent font-medium select-none">
-            moving — lift to drop
-          </span>
-        )}
-        <button
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => onDelete(block.id)}
-          className="absolute right-1 top-0.5 p-0.5 rounded text-muted hover:text-red-500 hover:bg-surface"
-          title="Delete block"
-        >
-          <X size={14} />
-        </button>
-      </div>
+          Tap it to immediately start dragging; the border + shadow shows
+          you're in move mode. Sized in canvas-px so the visible height
+          stays constant regardless of zoom. */}
+      {(() => {
+        const invScale = Math.min(4, Math.max(1, 1 / zoom));
+        const barH = 24 * invScale;
+        return (
+          <div
+            data-drag-handle
+            style={{
+              touchAction: 'none',
+              height: barH,
+              top: -barH,
+            }}
+            className={`pointer-events-auto hidden [@media(hover:none)]:flex absolute left-0 right-0 items-center justify-center z-10 rounded-t-lg transition-colors ${
+              isMoving ? 'bg-accent/20' : 'bg-transparent'
+            }`}
+          >
+            <div
+              className={`rounded-full transition-colors ${isMoving ? 'bg-accent/70' : 'bg-muted/40'}`}
+              style={{ width: 40 * invScale, height: 4 * invScale }}
+            />
+            {isMoving && (
+              <span
+                className="absolute text-accent font-medium select-none"
+                style={{ left: 8 * invScale, fontSize: 10 * invScale }}
+              >
+                moving — lift to drop
+              </span>
+            )}
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onDelete(block.id)}
+              className="absolute rounded text-muted hover:text-red-500 hover:bg-surface"
+              style={{ right: 4 * invScale, top: 2 * invScale, padding: 2 * invScale }}
+              title="Delete block"
+            >
+              <X size={14 * invScale} />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Content wrapper opts back into pointer events and carries hover
           tracking. inline-block so it shrink-wraps content width and the
@@ -355,15 +392,21 @@ function CanvasCard({
         )}
       </div>
 
-      {/* Right-edge resize handle — invisible until hover, blue on grab */}
+      {/* Right-edge resize handle — invisible until hover, blue on grab.
+          Width grows with zoom-out so it stays a hittable target. */}
       <div
         data-resize-handle
         onPointerDown={onResizeDown}
         onPointerMove={onResizeMove}
         onPointerUp={onResizeUp}
         onPointerCancel={onResizeUp}
-        className="pointer-events-auto absolute top-1 -right-0.5 w-2 h-[calc(100%-8px)] cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-accent/60 transition-colors z-10 rounded"
-        style={{ touchAction: 'none' }}
+        className="pointer-events-auto absolute top-1 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-accent/60 transition-colors z-10 rounded"
+        style={{
+          touchAction: 'none',
+          height: 'calc(100% - 8px)',
+          width: 8 * Math.min(4, Math.max(1, 1 / zoom)),
+          right: -2,
+        }}
         title="Drag to resize"
       />
     </div>
@@ -942,7 +985,12 @@ export function CanvasPageEditor({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const CLAMP = (z: number) => Math.max(0.25, Math.min(2, z));
+    // Effectively-infinite zoom. We clamp to extremely wide bounds rather
+    // than truly unbounded so a runaway gesture can't park the canvas at
+    // zoom=0 (invisible, hard to recover from) or zoom=1000 (single block
+    // takes 100k pixels of scroll). 0.05 = 1/20th, 20x = 20× — past these
+    // the canvas is no longer usable in any practical way.
+    const CLAMP = (z: number) => Math.max(0.05, Math.min(20, z));
 
     const FOCAL_RESET_MS = 200;
     const onWheel = (e: WheelEvent) => {
@@ -1067,11 +1115,11 @@ export function CanvasPageEditor({
     if (!el) return;
     const fitX = el.clientWidth / canvasW;
     const fitY = el.clientHeight / canvasH;
-    setZoom(Math.max(0.25, Math.min(1, Math.min(fitX, fitY))));
+    setZoom(Math.max(0.05, Math.min(1, Math.min(fitX, fitY))));
   }, [canvasW, canvasH]);
 
   const stepZoom = useCallback((delta: number) => {
-    setZoom((z) => Math.max(0.25, Math.min(2, +(z + delta).toFixed(2))));
+    setZoom((z) => Math.max(0.05, Math.min(20, +(z + delta).toFixed(2))));
   }, []);
 
   // ── Handle "organize" result: replace all text blocks ─────────────────
@@ -1567,14 +1615,24 @@ export function CanvasPageEditor({
         <MoodBoardModal
           onClose={() => setMoodboardOpen(false)}
           onInsert={(images) => {
-            // Drop each picked image onto the canvas as its own block.
-            // We stack them in the standard doc column so they're easy to
-            // find — the user can drag them anywhere from there.
+            // Drop each picked image onto the canvas as its own block,
+            // stacked vertically. Compute the starting Y ONCE — calling
+            // nextStackY() per iteration reads the still-stale blocks
+            // state (React batches state updates inside a single tick)
+            // so every image would land at the exact same coordinate
+            // and overlap. Manually walk Y forward instead.
+            //
+            // 280px = our rough "image card" height + gap; the canvas
+            // already auto-sizes when image dimensions settle so this
+            // is just a placement hint, not a hard layout commitment.
+            let y = nextStackY();
+            const STACK_STEP = 280;
             images.forEach((img) => {
-              createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
+              createBlock(DOC_X, y, DOC_W_TEXT, 'text', {
                 type: 'doc',
                 content: [{ type: 'image', attrs: { src: img.url, width: null, alt: img.alt } }],
               });
+              y += STACK_STEP;
             });
           }}
         />
