@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock } from 'lucide-react';
+import { useRecentPages } from '@/lib/recentPages';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
 import { SearchModal } from '@/components/search/SearchModal';
@@ -58,7 +59,11 @@ export function Sidebar() {
   // input focused) opens the shortcuts help.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'p')) {
+        // Cmd+P is "Print" by default — preventDefault stops the print
+        // dialog so we can repurpose the chord as a quick switcher
+        // alias for Cmd+K. Both open the same SearchModal, which
+        // already shows recent pages when the query is empty.
         e.preventDefault();
         setSearchOpen((v) => !v);
         return;
@@ -140,6 +145,13 @@ export function Sidebar() {
   }, []);
 
   const favorites = pages.filter((p) => p.isFavorite);
+  // Recent pages — read from localStorage via a live hook. Filter to
+  // pages that still exist in the user's tree so a deleted page
+  // doesn't linger in the recent list with a broken link.
+  const recents = useRecentPages();
+  const visibleRecents = recents
+    .filter((r) => pages.some((p) => p.id === r.id))
+    .slice(0, 3);
 
   return (
     <>
@@ -324,6 +336,25 @@ export function Sidebar() {
             >
               <span>📔</span> Today&apos;s Journal
             </Link>
+          )}
+
+          {visibleRecents.length > 0 && (
+            <div className="mt-4">
+              <div className="px-2 py-1 text-xs uppercase tracking-wide text-muted flex items-center gap-1">
+                <Clock size={12} /> Recent
+              </div>
+              {visibleRecents.map((r) => (
+                <Link
+                  key={r.id}
+                  href={`/page/${r.id}`}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg truncate"
+                >
+                  <span>{r.icon ?? '📄'}</span>
+                  <span className="truncate">{r.title}</span>
+                </Link>
+              ))}
+            </div>
           )}
 
           {favorites.length > 0 && (
