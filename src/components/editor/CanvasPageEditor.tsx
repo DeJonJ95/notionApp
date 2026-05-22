@@ -199,6 +199,17 @@ function CanvasCard({
   onResizeEnd: (id: string) => void;
 }) {
   const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  // True while the user is intentionally moving this block on touch —
+  // either because the parent says so (drag committed) or because the
+  // long-press timer just fired. Drives mobile drag-bar visibility so
+  // the bar stays invisible until the user actually wants to move.
+  const [longPressActive, setLongPressActive] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep longPressActive in sync with the parent's isMoving — when the
+  // drag ends (isMoving flips false) we clear our local flag too.
+  useEffect(() => {
+    if (!isMoving) setLongPressActive(false);
+  }, [isMoving]);
 
   // When an image inside this block resizes, follow it with the block width
   // so the block doesn't extend past the visible content.
@@ -226,7 +237,73 @@ function CanvasCard({
       beginDrag(e.clientX, e.clientY, e.pointerId);
       return;
     }
+
+    // Touch only — desktop already has the hover handle + Alt-drag.
+    // Long-press anywhere on the block (excluding image content; see
+    // ResizableImage's own pointerdown which stopsPropagation) initiates
+    // a drag. Cancels on early movement (interpreted as a scroll attempt)
+    // or on pointerup before the 400ms timer fires.
+    if (e.pointerType !== 'touch') return;
+    // Skip if the touch landed on an image — the image has its own gesture
+    // (tap to enter resize mode).
+    if ((e.target as HTMLElement).closest('img')) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    const LONG_PRESS_MS = 400;
+    const CANCEL_DELTA_SQ = 5 * 5; // ~5px wobble allowance before we treat as scroll
+
+    const cleanup = () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onEnd);
+      document.removeEventListener('pointercancel', onEnd);
+      document.removeEventListener('pointerdown', onSecondPointer);
+    };
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (dx * dx + dy * dy > CANCEL_DELTA_SQ) cleanup();
+    };
+    const onEnd = () => {
+      cleanup();
+      // If the timer hasn't fired yet, the press was just a tap — nothing
+      // to undo. If it HAS fired, longPressActive will reset via the
+      // isMoving effect when the parent's drag wraps up.
+      if (!isMoving) setLongPressActive(false);
+    };
+    // A second finger landing means the user is starting a pinch.
+    // Cancel the long-press so we don't pop the drag bar mid-zoom.
+    const onSecondPointer = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) {
+        cleanup();
+        setLongPressActive(false);
+      }
+    };
+
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
+      setLongPressActive(true);
+      beginDrag(startX, startY, pointerId);
+    }, LONG_PRESS_MS);
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onEnd);
+    document.addEventListener('pointercancel', onEnd);
+    document.addEventListener('pointerdown', onSecondPointer);
   };
+
+  // Clean up the timer if the component unmounts mid-press.
+  useEffect(() => () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+  }, []);
+
+  const showMobileBar = isMoving || longPressActive;
 
   // ── Resize handlers ────────────────────────────────────────────────────
   const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -320,10 +397,11 @@ function CanvasCard({
         </button>
       </div>
 
-      {/* Mobile drag bar — always visible on touch devices (hover:none).
-          Tap it to immediately start dragging; the border + shadow shows
-          you're in move mode. Sized in canvas-px so the visible height
-          stays constant regardless of zoom. */}
+      {/* Mobile drag bar — hidden by default so it doesn't intercept
+          pinch gestures or clutter every block. Long-press anywhere on
+          the block body triggers `showMobileBar`, which fades the bar
+          in and starts the drag in the same gesture. Sized in canvas-px
+          so the visible height stays constant regardless of zoom. */}
       {(() => {
         const invScale = Math.min(4, Math.max(1, 1 / zoom));
         const barH = 24 * invScale;
@@ -335,8 +413,10 @@ function CanvasCard({
               height: barH,
               top: -barH,
             }}
-            className={`pointer-events-auto hidden [@media(hover:none)]:flex absolute left-0 right-0 items-center justify-center z-10 rounded-t-lg transition-colors ${
-              isMoving ? 'bg-accent/20' : 'bg-transparent'
+            className={`hidden [@media(hover:none)]:flex absolute left-0 right-0 items-center justify-center z-10 rounded-t-lg transition-opacity duration-150 ${
+              showMobileBar
+                ? 'opacity-100 pointer-events-auto bg-accent/20'
+                : 'opacity-0 pointer-events-none bg-transparent'
             }`}
           >
             <div
