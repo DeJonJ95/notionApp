@@ -119,11 +119,6 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
         style={{ width: currentWidth ? `${currentWidth}px` : 'auto', maxWidth: '100%' }}
         contentEditable={false}
         onPointerDown={handleImagePointerDown}
-        // Block the underlying touchstart from reaching the editor's
-        // contenteditable surface — that's what triggers the iOS soft
-        // keyboard. pointerdown above also stops propagation but iOS
-        // delivers touch events first.
-        onTouchStart={(e) => e.stopPropagation()}
       >
         {/* The image */}
         <img
