@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { CanvasPageEditor } from '@/components/editor/CanvasPageEditor';
 import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
+import { RecentPageTracker } from '@/components/RecentPageTracker';
 
 export default async function PageRoute({ params }: { params: { id: string } }) {
   const session = await auth();
@@ -29,6 +30,7 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      <RecentPageTracker id={page.id} title={page.title} icon={page.icon} />
       <CanvasPageEditor
         page={{
           id: page.id,
