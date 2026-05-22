@@ -211,6 +211,15 @@ function CanvasCard({
     if (!isMoving) setLongPressActive(false);
   }, [isMoving]);
 
+  // Tracks whether any image inside this block's editor is currently
+  // selected. When true, we want a single-finger drag on the image to
+  // move the block IMMEDIATELY (no 400ms long-press wait) — Canva style.
+  // Set via a callback that ResizableImage fires through editor.storage.
+  const imageSelectedRef = useRef(false);
+  const handleImageSelectedChange = useCallback((selected: boolean) => {
+    imageSelectedRef.current = selected;
+  }, []);
+
   // When an image inside this block resizes, follow it with the block width
   // so the block doesn't extend past the visible content.
   const handleImageResize = useCallback(
@@ -239,11 +248,39 @@ function CanvasCard({
     }
 
     // Touch only — desktop already has the hover handle + Alt-drag.
-    // Long-press anywhere on the block (excluding image content; see
-    // ResizableImage's own pointerdown which stopsPropagation) initiates
-    // a drag. Cancels on early movement (interpreted as a scroll attempt)
-    // or on pointerup before the 400ms timer fires.
     if (e.pointerType !== 'touch') return;
+
+    // CANVA-STYLE FAST PATH: an image inside this block is already selected,
+    // so a single-finger drag should move the block IMMEDIATELY without
+    // the 400ms long-press wait. To not also hijack two-finger pinch (which
+    // resizes the image), wait ~80ms before committing the drag — if a
+    // second pointer arrives in that window, the user was starting a pinch
+    // and we cancel.
+    if (imageSelectedRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const pointerId = e.pointerId;
+      let cancelled = false;
+      const onSecondTouch = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) { cancelled = true; cleanup(); }
+      };
+      const cleanup = () => {
+        document.removeEventListener('pointerdown', onSecondTouch);
+      };
+      document.addEventListener('pointerdown', onSecondTouch);
+      setTimeout(() => {
+        cleanup();
+        if (!cancelled) beginDrag(startX, startY, pointerId);
+      }, 80);
+      return;
+    }
+
+    // SLOW PATH: long-press anywhere on the block (excluding image content;
+    // ResizableImage's own pointerdown stopsPropagation while not selected)
+    // initiates a drag. Cancels on early movement (scroll attempt) or
+    // pointerup before the 400ms timer fires.
     // Skip if the touch landed on an image — the image has its own gesture
     // (tap to enter resize mode).
     if ((e.target as HTMLElement).closest('img')) return;
@@ -468,6 +505,7 @@ function CanvasCard({
             getEditorRef={registerEditor}
             onFocusChange={onFocusChange}
             onImageResize={handleImageResize}
+            onImageSelectedChange={handleImageSelectedChange}
           />
         )}
       </div>
