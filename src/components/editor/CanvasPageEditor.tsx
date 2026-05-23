@@ -198,7 +198,12 @@ function CanvasCard({
   onResize: (id: string, width: number) => void;
   onResizeEnd: (id: string) => void;
 }) {
-  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
+  const resizeRef = useRef<{
+    startX: number;
+    startW: number;
+    editableEl: HTMLElement | null;
+    prevInputmode: string | null;
+  } | null>(null);
   // True while the user is intentionally moving this block on touch —
   // either because the parent says so (drag committed) or because the
   // long-press timer just fired. Drives mobile drag-bar visibility so
@@ -347,7 +352,32 @@ function CanvasCard({
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    resizeRef.current = { startX: e.clientX, startW: block.canvasWidth };
+
+    // Suppress the iOS soft keyboard during the resize gesture. Touching
+    // the right-edge handle lands inside the block's contenteditable hit
+    // area, which iOS focuses on touchend → keyboard pops. Setting
+    // inputmode="none" on the editor's DOM keeps the keyboard down
+    // without breaking text editing once the user finishes resizing.
+    let editableEl: HTMLElement | null = null;
+    let prevInputmode: string | null = null;
+    const blockRoot = (e.currentTarget as HTMLElement).parentElement;
+    if (blockRoot) {
+      editableEl = blockRoot.querySelector('[contenteditable="true"]') as HTMLElement | null;
+      if (editableEl) {
+        prevInputmode = editableEl.getAttribute('inputmode');
+        editableEl.setAttribute('inputmode', 'none');
+      }
+    }
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+
+    resizeRef.current = {
+      startX: e.clientX,
+      startW: block.canvasWidth,
+      editableEl,
+      prevInputmode,
+    };
   };
   const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!resizeRef.current) return;
@@ -358,6 +388,12 @@ function CanvasCard({
   };
   const onResizeUp = () => {
     if (!resizeRef.current) return;
+    // Restore the editor's prior inputmode so text editing works again.
+    const { editableEl, prevInputmode } = resizeRef.current;
+    if (editableEl) {
+      if (prevInputmode === null) editableEl.removeAttribute('inputmode');
+      else editableEl.setAttribute('inputmode', prevInputmode);
+    }
     resizeRef.current = null;
     onResizeEnd(block.id);
   };
