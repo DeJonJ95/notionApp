@@ -16,42 +16,66 @@ function ResizableImageView({ node, updateAttributes, editor }: any) {
   const storedWidth: number | null = node.attrs.width;
   const currentWidth = displayWidth ?? storedWidth;
 
-  // Tap/click image body → enter resize mode.
-  // EXCEPTION: if Alt is held (desktop) or the touch landed on the block's
-  // drag handle, let the event bubble up so the canvas block can be dragged.
-  // IMPORTANT: when the image is ALREADY selected, we intentionally DON'T
-  // stop propagation. That lets the surrounding canvas block see the
-  // touch and start a "move the block" drag immediately — same as Canva's
-  // "tap to select, drag to move" pattern.
+  // Tap/click image body — selects + lets the parent block decide
+  // whether the same gesture is a drag.
+  //
+  // Critical: we NEVER stopPropagation from this handler anymore. That
+  // way a single tap-and-drag gesture (Canva-style) works on the first
+  // try — the bubbling pointerdown reaches the surrounding block's
+  // handlePointerDown and the block's fast-path takes over.
+  //
+  // For the block's fast-path to know "an image is selected" within
+  // the SAME event, we synchronously call onSelectedChange(true) here
+  // before the event finishes bubbling. React's setIsSelected is
+  // async, but the storage callback is a normal function — it runs
+  // now, so the parent block's imageSelectedRef is updated by the time
+  // its handler fires.
   const handleImagePointerDown = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-resize-handle]')) return;
     if ((e.target as HTMLElement).closest('[data-drag-handle]')) return;
-    if (e.altKey) return; // allow Alt+drag to move the whole block
+    if (e.altKey) return; // Alt+drag is for moving the block at the block level
 
-    if (isSelected) {
-      // Already selected — bubble so the block can decide to drag.
-      // Don't deselect; selection persists during/after the move.
-      return;
+    if (!isSelected) {
+      setIsSelected(true);
+      // Sync the parent's imageSelectedRef NOW so the bubbling
+      // pointerdown sees us as "already selected" in the same tick.
+      editor?.storage?.image?.onSelectedChange?.(true);
+      // Blur the editor so iOS doesn't pop the keyboard.
+      editor?.commands?.blur?.();
+      if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
-
-    setIsSelected(true);
-    e.stopPropagation();
-    // iOS Safari fires a touchstart that focuses the surrounding
-    // contenteditable BEFORE our pointerdown stopPropagation runs,
-    // which pops the soft keyboard. Blur both the TipTap editor and
-    // whatever the browser thinks is focused right now to dismiss it.
-    // No-op on desktop where blur doesn't hide a keyboard.
-    editor?.commands?.blur?.();
-    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
+    // Do NOT stopPropagation in either branch — the block needs this
+    // event to decide whether the user is tapping (no movement) or
+    // dragging (movement).
   };
 
   // Notify the host (canvas block) whenever selection state flips so it
-  // can switch between "long-press to move" and "drag-immediately-to-move"
-  // modes for touch input.
+  // can toggle drag-immediately-to-move mode. (handleImagePointerDown
+  // does this synchronously on the up-transition too — this effect
+  // handles the down-transition and is a safety net for any path that
+  // changes isSelected without going through that handler.)
   useEffect(() => {
     editor?.storage?.image?.onSelectedChange?.(isSelected);
+  }, [isSelected, editor]);
+
+  // Suppress the iOS soft keyboard while an image is selected. iOS
+  // focuses the surrounding contenteditable on touchend regardless of
+  // how fast we call blur(); inputmode="none" is the documented way to
+  // keep the keyboard from popping up at all. We restore the attribute
+  // when the image is deselected so text editing works again.
+  useEffect(() => {
+    const dom = editor?.view?.dom as HTMLElement | undefined;
+    if (!dom) return;
+    if (isSelected) {
+      const prev = dom.getAttribute('inputmode');
+      dom.setAttribute('inputmode', 'none');
+      return () => {
+        if (prev === null) dom.removeAttribute('inputmode');
+        else dom.setAttribute('inputmode', prev);
+      };
+    }
   }, [isSelected, editor]);
 
   // First-load auto-size: when an image is added without an explicit width,
