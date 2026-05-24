@@ -200,12 +200,6 @@ function CanvasCard({
   onResizeEnd: (id: string) => void;
   onDoubleTap?: (block: CanvasBlockData) => void;
 }) {
-  const resizeRef = useRef<{
-    startX: number;
-    startW: number;
-    editableEl: HTMLElement | null;
-    prevInputmode: string | null;
-  } | null>(null);
   // True while the user is intentionally moving this block on touch —
   // either because the parent says so (drag committed) or because the
   // long-press timer just fired. Drives mobile drag-bar visibility so
@@ -367,57 +361,6 @@ function CanvasCard({
 
   const showMobileBar = isMoving || longPressActive;
 
-  // ── Resize handlers ────────────────────────────────────────────────────
-  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-
-    // Suppress the iOS soft keyboard during the resize gesture. Touching
-    // the right-edge handle lands inside the block's contenteditable hit
-    // area, which iOS focuses on touchend → keyboard pops. Setting
-    // inputmode="none" on the editor's DOM keeps the keyboard down
-    // without breaking text editing once the user finishes resizing.
-    let editableEl: HTMLElement | null = null;
-    let prevInputmode: string | null = null;
-    const blockRoot = (e.currentTarget as HTMLElement).parentElement;
-    if (blockRoot) {
-      editableEl = blockRoot.querySelector('[contenteditable="true"]') as HTMLElement | null;
-      if (editableEl) {
-        prevInputmode = editableEl.getAttribute('inputmode');
-        editableEl.setAttribute('inputmode', 'none');
-      }
-    }
-    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
-    resizeRef.current = {
-      startX: e.clientX,
-      startW: block.canvasWidth,
-      editableEl,
-      prevInputmode,
-    };
-  };
-  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!resizeRef.current) return;
-    // Screen-space delta → canvas-space delta when scaled
-    const dx = (e.clientX - resizeRef.current.startX) / (zoom || 1);
-    const w = Math.max(MIN_BLOCK_W, Math.min(MAX_BLOCK_W, resizeRef.current.startW + dx));
-    onResize(block.id, w);
-  };
-  const onResizeUp = () => {
-    if (!resizeRef.current) return;
-    // Restore the editor's prior inputmode so text editing works again.
-    const { editableEl, prevInputmode } = resizeRef.current;
-    if (editableEl) {
-      if (prevInputmode === null) editableEl.removeAttribute('inputmode');
-      else editableEl.setAttribute('inputmode', prevInputmode);
-    }
-    resizeRef.current = null;
-    onResizeEnd(block.id);
-  };
-
   // Text blocks shrink-wrap to their content (max-content) but wrap at
   // canvasWidth — so a short line is a small block and the resize handle
   // sits at the real content edge. Databases keep an explicit width.
@@ -566,23 +509,6 @@ function CanvasCard({
         )}
       </div>
 
-      {/* Right-edge resize handle — invisible until hover, blue on grab.
-          Width grows with zoom-out so it stays a hittable target. */}
-      <div
-        data-resize-handle
-        onPointerDown={onResizeDown}
-        onPointerMove={onResizeMove}
-        onPointerUp={onResizeUp}
-        onPointerCancel={onResizeUp}
-        className="pointer-events-auto absolute top-1 cursor-ew-resize opacity-0 group-hover:opacity-100 hover:bg-accent/60 transition-colors z-10 rounded"
-        style={{
-          touchAction: 'none',
-          height: 'calc(100% - 8px)',
-          width: 8 * Math.min(4, Math.max(1, 1 / zoom)),
-          right: -2,
-        }}
-        title="Drag to resize"
-      />
     </div>
   );
 }
