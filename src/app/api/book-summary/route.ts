@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     const { content, usage } = await callDeepSeek(apiKey, systemPrompt, userMessage);
 
     if (usage) {
-      logDeepSeek({ ...usage, userId: (session.user as any).id, feature: 'book-summary' }).catch(() => {});
+      logDeepSeek('book-summary', usage, (session.user as any).id).catch(() => {});
     }
 
     // Google search for the book PDF
