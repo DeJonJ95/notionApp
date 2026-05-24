@@ -1563,16 +1563,20 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
               <div className="text-[10px] text-muted mt-0.5">this period</div>
             </div>
             <div className="p-4 text-center">
-              <div className="text-xs text-muted uppercase tracking-wide mb-1">Projected income</div>
+              <div className="text-xs text-muted uppercase tracking-wide mb-1">Expected income</div>
               <div className="text-xl font-bold text-green-600/90">{fmtCurrency(projIncome)}</div>
-              <div className="text-[10px] text-muted mt-0.5">recurring rules</div>
+              <div className="text-[10px] text-muted mt-0.5">
+                {projIncome > 0 ? 'recurring rules' : 'no recurring rules set'}
+              </div>
             </div>
             <div className="p-4 text-center">
-              <div className="text-xs text-muted uppercase tracking-wide mb-1">Projected vs budget</div>
+              <div className="text-xs text-muted uppercase tracking-wide mb-1">Expected vs budgeted</div>
               <div className={`text-xl font-bold ${projectedSurplus >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                {projectedSurplus >= 0 ? '+' : ''}{fmtCurrency(projectedSurplus)}
+                {autoBudgetActive ? '—' : projectedSurplus >= 0 ? '+' : ''}{autoBudgetActive ? '' : fmtCurrency(projectedSurplus)}
               </div>
-              <div className="text-[10px] text-muted mt-0.5">income − budgeted</div>
+              <div className="text-[10px] text-muted mt-0.5">
+                {autoBudgetActive ? 'set budget rows to track' : 'expected − budgeted'}
+              </div>
             </div>
             <div className="p-4 text-center">
               <div className="text-xs text-muted uppercase tracking-wide mb-1">Actual net</div>
