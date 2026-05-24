@@ -1745,7 +1745,15 @@ export function CanvasPageEditor({
       <div
         ref={scrollRef}
         className="flex-1 overflow-auto relative"
-        style={{ touchAction: movingBlockId ? 'none' : 'manipulation' }}
+        // `pan-x pan-y` keeps single-finger scroll/pan behavior from the
+        // browser while reserving two-finger gestures (pinch) for our
+        // own handler. Important — `manipulation` does NOT do this; it
+        // disables only double-tap zoom and still lets the browser
+        // claim pinch as page-zoom (which made the page scale before
+        // our touchmove handler could preventDefault). When a block is
+        // actively being moved we lock down to `none` so the browser
+        // doesn't try to scroll mid-drag.
+        style={{ touchAction: movingBlockId ? 'none' : 'pan-x pan-y' }}
       >
         {/* Wrapper sized to the scaled content so scrollbars stay correct */}
         <div style={{ width: canvasW * zoom, height: canvasH * zoom }}>
