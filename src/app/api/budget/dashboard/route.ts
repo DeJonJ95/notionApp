@@ -296,7 +296,7 @@ export async function GET() {
   }
 
   // ── Rule variance (Feature 4) ────────────────────────────────────────────
-  let ruleVariance: { ruleId: string; name: string; type: string; amount: number; variance: RuleVariance }[] = [];
+  let ruleVariance: { ruleId: string; name: string; type: string; amount: number; category: string; variance: RuleVariance }[] = [];
   try {
     const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
     ruleVariance = rules.map((r) => {
