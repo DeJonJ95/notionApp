@@ -432,8 +432,6 @@ export function BudgetDashboard() {
           </div>
         </div>
       </div>
-        </div>
-      </div>
 
       {empty && (
         <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
