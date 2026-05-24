@@ -47,6 +47,13 @@ export type DashboardPayload = {
   expenses: number;
   net: number;
   prevMonth: { income: number; expenses: number; net: number };
+  expectedVsActual: {
+    incomeExpected: number;
+    incomeActual: number;
+    expenseExpected: number;
+    expenseActual: number;
+    rules: { ruleId: string; name: string; type: string; expectedAmt: number; expectedCount: number; matchedCount: number; matchedTotal: number }[];
+  };
   byCategory: { category: string; spent: number; pct: number }[];
   excesses: { category: string; spent: number; vsPrior: number; pctChange: number }[];
   subscriptions: Subscription[];
@@ -62,6 +69,14 @@ export type DashboardPayload = {
   patternSuggestions: PatternSuggestion[];
   // Feature 4: Variance tracking per rule
   ruleVariance: { ruleId: string; name: string; type: string; amount: number; category: string; variance: RuleVariance }[];
+  // Auto-budget: projected income minus savings goals (when no manual budgets set)
+  autoBudget: {
+    hasManualBudget: boolean;
+    monthlyProjectedIncome: number;
+    monthlyProjectedExpenses: number;
+    monthlySavingsTotal: number;
+    availableToBudget: number;
+  };
 };
 
 function ymd(d: Date) {
@@ -119,6 +134,8 @@ export async function GET() {
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  let displayMonthStart = thisMonthStart;
+  let displayMonthEnd = nextMonthStart;
 
   const inRange = (s: string, lo: Date, hi: Date) => {
     const d = new Date(s + 'T00:00:00');
@@ -145,6 +162,8 @@ export async function GET() {
     usedThis = all.filter((t) => inRange(t.date, start, end));
     usedPrev = all.filter((t) => inRange(t.date, prevStart, start));
     monthLabel = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    displayMonthStart = start;
+    displayMonthEnd = end;
   }
 
   const income = usedThis.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
@@ -328,6 +347,132 @@ export async function GET() {
     console.warn('[budget-dashboard] variance skipped:', (e as Error).message);
   }
 
+  // ── Auto-budget: projected income minus savings goals ───────────────────
+  // When no manual Budget rows exist, compute an auto-budget from recurring
+  // income rules minus savings goals so the user sees meaningful figures.
+  let autoBudget: DashboardPayload['autoBudget'] = {
+    hasManualBudget: false,
+    monthlyProjectedIncome: 0,
+    monthlyProjectedExpenses: 0,
+    monthlySavingsTotal: 0,
+    availableToBudget: 0,
+  };
+  try {
+    // Check if user has any manual Budget rows
+    const budgetPropId = propId['Type'];
+    const hasManualBudget = budgetPropId
+      ? pages.some((p) => {
+          const vals: Record<string, any> = {};
+          for (const pv of p.properties) vals[pv.property.name] = pv.value;
+          return String(vals['Type'] ?? '') === 'Budget';
+        })
+      : false;
+
+    // Monthly-normalize recurring rules
+    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
+    const monthlyFactor: Record<string, number> = {
+      weekly: 52 / 12,
+      biweekly: 26 / 12,
+      semimonthly: 24 / 12,
+      monthly: 1,
+    };
+    let monthlyIncome = 0;
+    let monthlyExpenses = 0;
+    for (const r of rules) {
+      const factor = monthlyFactor[r.frequency] ?? 1;
+      const monthly = r.amount * factor;
+      if (r.type === 'income') monthlyIncome += monthly;
+      else monthlyExpenses += monthly;
+    }
+
+    // Sum savings goals (use targetAmount as a rough monthly proxy)
+    const goals = await prisma.savingsGoal.findMany({ where: { userId } });
+    const monthlySavings = goals.reduce((s, g) => s + g.targetAmount, 0);
+
+    autoBudget = {
+      hasManualBudget,
+      monthlyProjectedIncome: Math.round(monthlyIncome * 100) / 100,
+      monthlyProjectedExpenses: Math.round(monthlyExpenses * 100) / 100,
+      monthlySavingsTotal: monthlySavings,
+      availableToBudget: Math.round(Math.max(0, monthlyIncome - monthlySavings) * 100) / 100,
+    };
+  } catch (e) {
+    console.warn('[budget-dashboard] auto-budget skipped:', (e as Error).message);
+  }
+
+  // ── Expected vs Actual ──────────────────────────────────────────────────
+  let expectedVsActual: DashboardPayload['expectedVsActual'] = {
+    incomeExpected: 0, incomeActual: 0,
+    expenseExpected: 0, expenseActual: 0,
+    rules: [],
+  };
+  try {
+    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
+    const ruleResults: DashboardPayload['expectedVsActual']['rules'] = [];
+    let totalIncomeExpected = 0;
+    let totalExpenseExpected = 0;
+
+    for (const rule of rules) {
+      const dueDates = occurrencesBetween(
+        rule.anchorDate,
+        rule.frequency as 'weekly' | 'biweekly' | 'semimonthly' | 'monthly',
+        displayMonthStart,
+        new Date(Math.min(displayMonthEnd.getTime(), Date.now())), // don't forecast past today
+      );
+      if (dueDates.length === 0) continue;
+
+      const expectedCount = dueDates.length;
+      const expectedTotal = expectedCount * rule.amount;
+      if (rule.type === 'income') totalIncomeExpected += expectedTotal;
+      else totalExpenseExpected += expectedTotal;
+
+      // Match each expected occurrence against actual transactions
+      let matchedCount = 0;
+      let matchedTotal = 0;
+      const ruleNorm = rule.name.trim().toLowerCase();
+      for (const due of dueDates) {
+        const dueStr = due.toISOString().slice(0, 10);
+        const match = usedThis.find((t) => {
+          const tNorm = t.vendor.trim().toLowerCase();
+          const vendorMatch = tNorm.includes(ruleNorm) || ruleNorm.includes(tNorm);
+          if (!vendorMatch) return false;
+          const tAbs = Math.abs(t.amount);
+          if (Math.abs(tAbs - rule.amount) / rule.amount > 0.3) return false;
+          const threeDays = 3 * 24 * 60 * 60 * 1000;
+          if (Math.abs(new Date(t.date + 'T00:00:00').getTime() - due.getTime()) > threeDays) return false;
+          return true;
+        });
+        if (match) {
+          matchedCount++;
+          matchedTotal += Math.abs(match.amount);
+        }
+      }
+
+      ruleResults.push({
+        ruleId: rule.id,
+        name: rule.name,
+        type: rule.type,
+        expectedAmt: rule.amount,
+        expectedCount,
+        matchedCount,
+        matchedTotal: Math.round(matchedTotal * 100) / 100,
+      });
+    }
+
+    const incomeActual = usedThis.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+    const expenseActual = usedThis.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
+
+    expectedVsActual = {
+      incomeExpected: Math.round(totalIncomeExpected * 100) / 100,
+      incomeActual: Math.round(incomeActual * 100) / 100,
+      expenseExpected: Math.round(totalExpenseExpected * 100) / 100,
+      expenseActual: Math.round(expenseActual * 100) / 100,
+      rules: ruleResults,
+    };
+  } catch (e) {
+    console.warn('[budget-dashboard] expected-vs-actual skipped:', (e as Error).message);
+  }
+
   const payload: DashboardPayload = {
     databaseId: db.id,
     databaseName: db.name,
@@ -336,6 +481,7 @@ export async function GET() {
     expenses,
     net: income - expenses,
     prevMonth: { income: prevIncome, expenses: prevExpenses, net: prevIncome - prevExpenses },
+    expectedVsActual,
     byCategory,
     excesses,
     subscriptions,
@@ -347,6 +493,7 @@ export async function GET() {
     trends,
     patternSuggestions,
     ruleVariance,
+    autoBudget,
   };
 
   return NextResponse.json(payload);

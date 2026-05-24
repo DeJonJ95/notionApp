@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   Plus, GripHorizontal, Trash2, ChevronLeft, ChevronRight,
-  Eye, EyeOff, X, Settings, Columns, ExternalLink, Edit3, Link2, Search,
+  Eye, EyeOff, X, Settings, Columns, ExternalLink, Edit3, Link2, Search, Sparkles,
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 import { RelationCell, RollupCell } from './RelationCell';
@@ -1544,6 +1544,12 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     const projectedSurplus = projIncome - totalBudgeted;
     const actualNet = totalIncome - totalSpent;
 
+    // When no manual Budget rows exist but we have projected income, use that
+    // as the available budget so the view shows meaningful numbers.
+    const autoBudgetActive = totalBudgeted === 0 && projIncome > 0;
+    const effectiveBudget = autoBudgetActive ? projIncome : totalBudgeted;
+    const effectiveRemaining = effectiveBudget - totalSpent;
+
     return (
       <div className="space-y-4">
         {renderBudgetPeriodToolbar()}
@@ -1640,24 +1646,39 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
           )}
         </div>
 
+        {autoBudgetActive && (
+          <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 px-3 py-2 text-sm flex items-center gap-2">
+            <Sparkles size={14} className="text-blue-500 shrink-0" />
+            <span className="text-xs text-muted">
+              No budget envelopes set — showing <strong>projected income</strong> from recurring rules as the available budget.
+              Add rows with Type = <strong>Budget</strong> to set custom category targets.
+            </span>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-lg border border-border bg-surface p-4 text-center">
             <div className="text-xs text-muted uppercase tracking-wide mb-1">Budgeted</div>
-            <div className="text-xl font-bold text-text">{fmtCurrency(totalBudgeted)}</div>
+            <div className="text-xl font-bold text-text">
+              {autoBudgetActive ? fmtCurrency(projIncome) : fmtCurrency(totalBudgeted)}
+              {autoBudgetActive && <span className="text-[10px] text-blue-500 ml-1 font-normal">(auto)</span>}
+            </div>
           </div>
           <div className="rounded-lg border border-border bg-surface p-4 text-center">
             <div className="text-xs text-muted uppercase tracking-wide mb-1">Spent</div>
             <div className="text-xl font-bold text-text">{fmtCurrency(totalSpent)}</div>
           </div>
-          <div className={`rounded-lg border p-4 text-center ${totalRemaining >= 0 ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
+          <div className={`rounded-lg border p-4 text-center ${effectiveRemaining >= 0 ? 'border-green-500/30 bg-green-500/5' : 'border-red-500/30 bg-red-500/5'}`}>
             <div className="text-xs text-muted uppercase tracking-wide mb-1">Remaining</div>
-            <div className={`text-xl font-bold ${totalRemaining >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtCurrency(totalRemaining)}</div>
+            <div className={`text-xl font-bold ${effectiveRemaining >= 0 ? 'text-green-600' : 'text-red-500'}`}>{fmtCurrency(effectiveRemaining)}</div>
           </div>
         </div>
         <div className="space-y-2">
           {categories.length === 0 ? (
             <div className="text-sm text-muted text-center py-8">
-              Add a row with Type = "Budget" to set envelope amounts, then add expense transactions to track spending.
+              {autoBudgetActive
+                ? 'No category budgets set. The available budget above reflects projected income. Add rows with Type = "Budget" to set per-category targets.'
+                : 'Add a row with Type = "Budget" to set envelope amounts, then add expense transactions to track spending.'}
             </div>
           ) : (
             categories.map((c) => {
