@@ -7,5 +7,5 @@
 self.NOTES_CLIPPER_CONFIG = {
   // Origin of your deployed notes app, no trailing slash.
   // For local dev override to "http://localhost:3000".
-  apiBase: 'https://your-notes-app.vercel.app',
+  apiBase: 'https://notionlikeapp.vercel.app',
 };

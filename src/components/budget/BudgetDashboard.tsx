@@ -4,14 +4,18 @@ import Link from 'next/link';
 import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
-  Target, Tag, BarChart3,
+  Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X,
 } from 'lucide-react';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
 import { RecurringRulesModal } from './RecurringRulesModal';
 import { SavingsGoalsModal } from './SavingsGoalsModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
+import { ImportReminderBanner } from './ImportReminderBanner';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
+import type { ImportsPayload } from '@/app/api/budget/imports/route';
+import type { ReconciliationPayload } from '@/app/api/budget/reconciliation/route';
+import type { PatternSuggestion } from '@/lib/budgetDb';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
@@ -28,6 +32,15 @@ export function BudgetDashboard() {
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
 
+  // Feature 1: Import coverage
+  const [importsData, setImportsData] = useState<ImportsPayload | null>(null);
+
+  // Feature 3: Reconciliation
+  const [reconciliation, setReconciliation] = useState<ReconciliationPayload | null>(null);
+  const [reconLoading, setReconLoading] = useState(false);
+
+  // Feature 5: Pattern suggestions (from dashboard payload)
+
   const load = useCallback(() => {
     setLoading(true);
     fetch('/api/budget/dashboard')
@@ -35,6 +48,11 @@ export function BudgetDashboard() {
       .then(setData)
       .catch(() => {})
       .finally(() => setLoading(false));
+    // Also load imports data for coverage + reminder
+    fetch('/api/budget/imports')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setImportsData)
+      .catch(() => {});
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -138,11 +156,124 @@ export function BudgetDashboard() {
         </button>
       </div>
 
+      {/* Feature 6: Import reminder banner */}
+      <ImportReminderBanner
+        daysSinceLastImport={importsData?.daysSinceLastImport ?? null}
+        onImport={() => setImportOpen(true)}
+      />
+
+      {/* Feature 3: Reconciliation button + results */}
+      {importsData && importsData.imports.length > 0 && (
+        <>
+          {reconciliation && (
+            <div className="rounded-xl border border-accent/30 bg-accent/5 px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <CheckCircle2 size={14} className="text-accent" />
+                <span className="text-sm font-medium">Reconciliation: {reconciliation.dateFrom} → {reconciliation.dateTo}</span>
+                <button
+                  onClick={() => setReconciliation(null)}
+                  className="ml-auto p-0.5 rounded text-muted hover:text-text"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mt-2">
+                <div className="text-xs">
+                  <span className="text-green-600 font-medium">{reconciliation.result.matched.length} matched</span>
+                  <span className="text-muted ml-1">expected</span>
+                </div>
+                {reconciliation.result.missing.length > 0 && (
+                  <div className="text-xs">
+                    <span className="text-red-500 font-medium">{reconciliation.result.missing.length} missing</span>
+                  </div>
+                )}
+                {reconciliation.result.unexpected.length > 0 && (
+                  <div className="text-xs">
+                    <span className="text-yellow-500 font-medium">{reconciliation.result.unexpected.length} unexpected</span>
+                  </div>
+                )}
+              </div>
+              {reconciliation.result.missing.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {reconciliation.result.missing.map((m, idx) => (
+                    <div key={idx} className="flex items-center gap-2 text-xs text-muted bg-bg rounded px-2 py-1">
+                      <AlertTriangle size={10} className="text-red-500 shrink-0" />
+                      <span className="truncate">{m.ruleName}</span>
+                      <span className="shrink-0">· due {m.dueDate} · {fmt2(m.expectedAmount)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            onClick={async () => {
+              if (!importsData.imports[0]) return;
+              setReconLoading(true);
+              try {
+                const res = await fetch(`/api/budget/reconciliation?from=${importsData.imports[0].dateFrom}&to=${importsData.imports[0].dateTo}`);
+                if (res.ok) {
+                  setReconciliation(await res.json());
+                }
+              } finally {
+                setReconLoading(false);
+              }
+            }}
+            disabled={reconLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-surface text-muted hover:text-text transition-colors"
+          >
+            {reconLoading ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+            {reconLoading ? 'Reconciling…' : 'Reconcile last import'}
+          </button>
+        </>
+      )}
+
       {data.generatedThisLoad > 0 && (
         <div className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2 text-sm flex items-center gap-2">
           <Sparkles size={13} className="text-accent" />
           Auto-added <strong>{data.generatedThisLoad}</strong> recurring transaction{data.generatedThisLoad !== 1 ? 's' : ''} since your last visit.
         </div>
+      )}
+
+      {/* Feature 1: Coverage section */}
+      {importsData && importsData.imports.length > 0 && (
+        <Section title="Coverage" icon={<Layers size={13} className="text-accent" />}>
+          <div className="space-y-2">
+            {/* Timeline of imports */}
+            <div className="flex flex-wrap gap-2">
+              {importsData.imports.slice(0, 10).map((imp) => (
+                <div
+                  key={imp.id}
+                  className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs"
+                  title={`${imp.filename}: ${imp.txCount} transactions`}
+                >
+                  <span className="text-muted">{imp.dateFrom}</span>
+                  <span className="text-muted mx-1">→</span>
+                  <span className="text-muted">{imp.dateTo}</span>
+                  <span className="ml-1.5 text-accent">{imp.txCount} tx</span>
+                </div>
+              ))}
+            </div>
+            {/* Gaps */}
+            {importsData.gaps.length > 0 && (
+              <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+                <p className="text-xs font-medium text-yellow-700 mb-1">
+                  Coverage gaps
+                </p>
+                <div className="space-y-1">
+                  {importsData.gaps.map((g, idx) => (
+                    <p key={idx} className="text-xs text-muted">
+                      Missing {g.from} → {g.to} ({g.days} days)
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-muted">
+              Last import: {importsData.lastImportDate ?? 'Never'} ({importsData.daysSinceLastImport != null ? `${importsData.daysSinceLastImport} days ago` : 'N/A'})
+            </p>
+          </div>
+        </Section>
       )}
 
       {/* Cashflow cards */}
@@ -274,6 +405,75 @@ export function BudgetDashboard() {
           <div className="flex items-center justify-center gap-4 mt-2 text-[11px] text-muted">
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500/70 inline-block" /> Income</span>
             <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/70 inline-block" /> Expenses</span>
+          </div>
+        </Section>
+      )}
+
+      {/* Feature 5: Pattern suggestions */}
+      {data.patternSuggestions && data.patternSuggestions.length > 0 && (
+        <Section title="Suggested recurring" icon={<Zap size={13} className="text-accent" />}>
+          <p className="text-xs text-muted mb-2">
+            Detected regular patterns. Tap <strong>Track</strong> to add as a recurring rule.
+          </p>
+          <div className="space-y-1">
+            {data.patternSuggestions.slice(0, 10).map((ps, idx) => (
+              <div key={idx} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{ps.vendor}</div>
+                  <div className="text-xs text-muted">
+                    {ps.type === 'income' ? '+' : '-'}${ps.averageAmount.toFixed(2)} · {ps.frequency} · {ps.occurrences}× · {(ps.confidence * 100).toFixed(0)}% confidence
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setRecurringPrefill({ name: ps.vendor, amount: ps.averageAmount, category: ps.category, type: ps.type });
+                    setRecurringOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
+                >
+                  <Repeat size={12} /> Track
+                </button>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Feature 4: Rule variance shown in recurring section */}
+      {data.ruleVariance && data.ruleVariance.length > 0 && (
+        <Section title="Recurring rule variance" icon={<BarChart3 size={13} className="text-blue-500" />}>
+          <p className="text-xs text-muted mb-2">
+            How actual amounts compare to your recurring rule amounts.
+            <Link href={`/database/${data.databaseId}`} className="text-accent hover:underline ml-1">View all</Link>
+          </p>
+          <div className="space-y-1">
+            {data.ruleVariance.filter((rv) => rv.variance.sampleCount > 0).slice(0, 10).map((rv) => (
+              <div key={rv.ruleId} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                <span className={`w-1 h-8 rounded-full ${rv.type === 'income' ? 'bg-green-500' : 'bg-red-500'}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{rv.name}</div>
+                  <div className="text-xs text-muted">
+                    Rule: ${rv.amount.toFixed(2)} · Actual avg: {fmt2(rv.variance.averageAmount)}
+                    {Math.abs(rv.variance.variancePercent) > 5 && (
+                      <span className={`ml-1 ${rv.variance.variancePercent > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                        ({rv.variance.variancePercent > 0 ? '+' : ''}{rv.variance.variancePercent}% off)
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {Math.abs(rv.variance.variancePercent) > 10 && rv.variance.sampleCount >= 2 && (
+                  <button
+                    onClick={() => {
+                      setRecurringPrefill({ name: rv.name, amount: rv.variance.suggestedAmount, category: rv.category ?? 'Other' });
+                      setRecurringOpen(true);
+                    }}
+                    className="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/5 shrink-0"
+                  >
+                    Update to {fmt2(rv.variance.suggestedAmount)}
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
         </Section>
       )}

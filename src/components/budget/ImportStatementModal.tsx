@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef } from 'react';
-import { Loader2, Upload, X, Check, AlertCircle, FileText } from 'lucide-react';
+import { Loader2, Upload, X, Check, AlertCircle, FileText, AlertTriangle } from 'lucide-react';
 
 type Tx = {
   date: string;
@@ -8,6 +8,11 @@ type Tx = {
   description: string;
   amount: number;
   category: string;
+};
+
+type DuplicateInfo = {
+  incoming: Tx;
+  matched: { date: string; vendor: string; amount: number };
 };
 
 interface Props {
@@ -22,10 +27,11 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
   const [databaseName, setDatabaseName] = useState<string>('');
   const [txs, setTxs] = useState<Tx[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [stage, setStage] = useState<'upload' | 'preview' | 'saving' | 'done'>('upload');
+  const [stage, setStage] = useState<'upload' | 'preview' | 'saving' | 'done' | 'duplicates'>('upload');
   const [error, setError] = useState('');
   const [progress, setProgress] = useState('');
   const [truncated, setTruncated] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateInfo[]>([]);
 
   const upload = async (file: File) => {
     setError('');
@@ -86,15 +92,20 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
     setTxs((prev) => prev.filter((_, idx) => idx !== i));
   };
 
-  const confirm = async () => {
+  const confirm = async (overrides?: { skipDuplicates?: boolean }) => {
     if (!databaseId || txs.length === 0) return;
+    const skipDuplicates = overrides?.skipDuplicates ?? false;
     setStage('saving');
     setError('');
     try {
       const res = await fetch('/api/budget/import/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ databaseId, transactions: txs }),
+        body: JSON.stringify({
+          databaseId,
+          transactions: skipDuplicates ? txs : txs,
+          force: !skipDuplicates && overrides === undefined ? false : overrides !== undefined,
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -102,6 +113,14 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
         setStage('preview');
         return;
       }
+
+      // Handle duplicates
+      if (json.duplicates && json.duplicates.length > 0) {
+        setDuplicates(json.duplicates);
+        setStage('duplicates');
+        return;
+      }
+
       // Persist learned categorization rules (fire-and-forget)
       for (const [match, category] of learnedRef.current.entries()) {
         fetch('/api/budget/rules', {
@@ -273,6 +292,33 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
               <p className="text-sm font-medium">Imported {txs.length} transactions</p>
             </div>
           )}
+
+          {stage === 'duplicates' && duplicates.length > 0 && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={16} className="text-yellow-500" />
+                  <span className="text-sm font-medium">{duplicates.length} duplicate transaction{duplicates.length > 1 ? 's' : ''} detected</span>
+                </div>
+                <p className="text-xs text-muted mb-3">
+                  These appear to already exist in your budget database.
+                </p>
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {duplicates.map((d, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded border border-border bg-bg px-2.5 py-1.5 text-xs">
+                      <span className="text-muted w-20 shrink-0">{d.incoming.date}</span>
+                      <span className="flex-1 truncate">{d.incoming.vendor}</span>
+                      <span className="font-mono w-20 text-right shrink-0">
+                        {d.incoming.amount < 0 ? '-' : '+'}${Math.abs(d.incoming.amount).toFixed(2)}
+                      </span>
+                      <span className="text-muted mx-1">→</span>
+                      <span className="text-muted truncate max-w-[120px]">Matched: {d.matched.vendor} on {d.matched.date}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -292,11 +338,48 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
               Cancel
             </button>
             <button
-              onClick={confirm}
+              onClick={() => confirm()}
               disabled={txs.length === 0}
               className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/80 disabled:opacity-40 transition-colors flex items-center gap-1.5"
             >
               <Check size={14} /> Confirm &amp; import
+            </button>
+          </div>
+        )}
+
+        {stage === 'duplicates' && (
+          <div className="flex items-center gap-3 px-5 py-3 border-t border-border shrink-0">
+            <div className="flex-1" />
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-surface transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                // Skip duplicates: filter out duplicate transactions
+                const dupKeys = new Set(duplicates.map((d) =>
+                  `${d.incoming.date}|${d.incoming.vendor.toLowerCase().trim()}|${d.incoming.amount}`
+                ));
+                setTxs((prev) => prev.filter((t) =>
+                  !dupKeys.has(`${t.date}|${t.vendor.toLowerCase().trim()}|${t.amount}`)
+                ));
+                setDuplicates([]);
+                confirm({ skipDuplicates: true });
+              }}
+              className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-surface transition-colors"
+            >
+              Skip duplicates
+            </button>
+            <button
+              onClick={() => {
+                setDuplicates([]);
+                confirm({ skipDuplicates: false });
+              }}
+              className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/80 transition-colors"
+            >
+              Add anyway
             </button>
           </div>
         )}

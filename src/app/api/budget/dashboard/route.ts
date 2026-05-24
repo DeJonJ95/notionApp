@@ -5,7 +5,11 @@ import {
   findOrCreateBudgetDb,
   runRecurringEngine,
   forecastOccurrences,
+  detectRecurringPatterns,
+  computeRuleVariance,
   type ForecastItem,
+  type PatternSuggestion,
+  type RuleVariance,
 } from '@/lib/budgetDb';
 
 export type Tx = {
@@ -54,6 +58,10 @@ export type DashboardPayload = {
   generatedThisLoad: number;     // how many tx were auto-created by the engine on this request
   // Spending trends — last 6 calendar months
   trends: { month: string; income: number; expenses: number }[];
+  // Feature 5: Pattern auto-detection suggestions
+  patternSuggestions: PatternSuggestion[];
+  // Feature 4: Variance tracking per rule
+  ruleVariance: { ruleId: string; name: string; type: string; amount: number; category: string; variance: RuleVariance }[];
 };
 
 function ymd(d: Date) {
@@ -272,6 +280,54 @@ export async function GET() {
   const scheduledNet = scheduledThisMonth.reduce((s, f) => s + f.amount, 0);
   const projectedMonthEnd = (income - expenses) + scheduledNet;
 
+  // ── Pattern auto-detection (Feature 5) ───────────────────────────────────
+  let patternSuggestions: PatternSuggestion[] = [];
+  try {
+    const rules = await prisma.recurringRule.findMany({ where: { userId } });
+    const txForPatterns = all.map((t) => ({
+      vendor: t.vendor,
+      amount: t.amount,
+      date: t.date,
+      category: t.category,
+    }));
+    patternSuggestions = detectRecurringPatterns(txForPatterns, rules);
+  } catch (e) {
+    console.warn('[budget-dashboard] pattern detection skipped:', (e as Error).message);
+  }
+
+  // ── Rule variance (Feature 4) ────────────────────────────────────────────
+  let ruleVariance: { ruleId: string; name: string; type: string; amount: number; variance: RuleVariance }[] = [];
+  try {
+    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
+    ruleVariance = rules.map((r) => {
+      const matchedTxs = all
+        .filter((t) => {
+          const rn = r.name.toLowerCase().trim();
+          const tn = t.vendor.toLowerCase().trim();
+          const vendorMatch = tn.includes(rn) || rn.includes(tn);
+          const amtMatch = Math.abs(Math.abs(t.amount) - r.amount) / r.amount < 0.3;
+          return vendorMatch && amtMatch;
+        })
+        .map((t) => ({
+          date: t.date,
+          vendor: t.vendor,
+          description: '',
+          amount: t.amount,
+          category: t.category,
+        }));
+      return {
+        ruleId: r.id,
+        name: r.name,
+        type: r.type,
+        amount: r.amount,
+        category: r.category,
+        variance: computeRuleVariance(r.amount, matchedTxs),
+      };
+    });
+  } catch (e) {
+    console.warn('[budget-dashboard] variance skipped:', (e as Error).message);
+  }
+
   const payload: DashboardPayload = {
     databaseId: db.id,
     databaseName: db.name,
@@ -289,6 +345,8 @@ export async function GET() {
     projectedMonthEnd,
     generatedThisLoad: generated,
     trends,
+    patternSuggestions,
+    ruleVariance,
   };
 
   return NextResponse.json(payload);
