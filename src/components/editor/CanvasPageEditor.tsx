@@ -207,6 +207,7 @@ function CanvasCard({
   const [longPressActive, setLongPressActive] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef(0);
+  const lastPointerIdRef = useRef(-1);
   // Keep longPressActive in sync with the parent's isMoving — when the
   // drag ends (isMoving flips false) we clear our local flag too.
   useEffect(() => {
@@ -255,10 +256,11 @@ function CanvasCard({
     // Double-tap detection — zoom to 100% centered on this block.
     if (onDoubleTap) {
       const now = Date.now();
-      if (now - lastTapRef.current < 300) {
+      if (e.pointerId === lastPointerIdRef.current && now - lastTapRef.current < 300) {
         e.preventDefault();
         e.stopPropagation();
         lastTapRef.current = 0;
+        lastPointerIdRef.current = -1;
         if (longPressTimerRef.current) {
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
@@ -267,6 +269,7 @@ function CanvasCard({
         return;
       }
       lastTapRef.current = now;
+      lastPointerIdRef.current = e.pointerId;
     }
 
     // CANVA-STYLE FAST PATH: an image inside this block is already selected,
