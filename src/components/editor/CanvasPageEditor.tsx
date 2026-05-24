@@ -1745,7 +1745,7 @@ export function CanvasPageEditor({
       <div
         ref={scrollRef}
         className="flex-1 overflow-auto relative"
-        style={{ touchAction: movingBlockId ? 'none' : 'auto' }}
+        style={{ touchAction: movingBlockId ? 'none' : 'manipulation' }}
       >
         {/* Wrapper sized to the scaled content so scrollbars stay correct */}
         <div style={{ width: canvasW * zoom, height: canvasH * zoom }}>
