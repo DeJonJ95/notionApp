@@ -22,7 +22,13 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const menuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
 
+  // Counter-scale resize handles with canvas zoom so they stay a usable
+  // screen-pixel size (same pattern as block-level handles in the parent).
+  const imageZoom = editorRef.current?.storage?.image?.zoom ?? 1;
+  const invScale = Math.min(4, Math.max(1, 1 / imageZoom));
   const storedWidth: number | null = node.attrs.width;
   const currentWidth = displayWidth ?? storedWidth;
 
@@ -32,8 +38,6 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
   storedWidthRef.current = storedWidth;
   const updateAttributesRef = useRef(updateAttributes);
   updateAttributesRef.current = updateAttributes;
-  const editorRef = useRef(editor);
-  editorRef.current = editor;
 
   // Tap/click image body — selects + lets the parent block decide
   // whether the same gesture is a drag.
@@ -407,7 +411,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
               title="Drag to resize"
               className="absolute -top-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-nw-resize
                          w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
-              style={{ touchAction: 'none' }}
+              style={{ touchAction: 'none', transform: `scale(${invScale})` }}
             />
             {/* Top-right */}
             <div
@@ -416,7 +420,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
               title="Drag to resize"
               className="absolute -top-1.5 -right-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-ne-resize
                          w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
-              style={{ touchAction: 'none' }}
+              style={{ touchAction: 'none', transform: `scale(${invScale})` }}
             />
             {/* Bottom-left */}
             <div
@@ -425,7 +429,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
               title="Drag to resize"
               className="absolute -bottom-1.5 -left-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-sw-resize
                          w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
-              style={{ touchAction: 'none' }}
+              style={{ touchAction: 'none', transform: `scale(${invScale})` }}
             />
             {/* Bottom-right */}
             <div
@@ -434,7 +438,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
               title="Drag to resize"
               className="absolute -bottom-1.5 -right-1.5 rounded-full bg-accent border-2 border-white shadow-md z-10 cursor-se-resize
                          w-3 h-3 [@media(hover:none)]:w-5 [@media(hover:none)]:h-5"
-              style={{ touchAction: 'none' }}
+              style={{ touchAction: 'none', transform: `scale(${invScale})` }}
             />
             {/* Width label */}
             {currentWidth && (
@@ -619,6 +623,7 @@ export const ResizableImage = TipTapNode.create({
     return {
       onResize: null as null | ((width: number, isFinal: boolean) => void),
       onSelectedChange: null as null | ((selected: boolean) => void),
+      zoom: 1,
     };
   },
 
