@@ -11,7 +11,7 @@ import Underline from '@tiptap/extension-underline';
 import TextStyle from '@tiptap/extension-text-style';
 import FontFamily from '@tiptap/extension-font-family';
 import { FontSize } from './FontSize';
-import { ResizableImage } from './ResizableImage';
+import { ResizableImage, getImageStorage } from './ResizableImage';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
@@ -224,23 +224,27 @@ export function CanvasTextBlock({
     immediatelyRender: false,
   });
 
-  // Expose the image-resize callback to the ResizableImage NodeView
+  // Expose the image-resize callback to the ResizableImage NodeView.
+  // Uses the WeakMap-based getImageStorage (not editor.storage.image) so
+  // multiple CanvasTextBlock instances don't overwrite each other's callbacks.
   useEffect(() => {
     if (!editor) return;
-    if (editor.storage?.image) {
-      editor.storage.image.onResize = onImageResize ?? null;
-      editor.storage.image.onSelectedChange = onImageSelectedChange ?? null;
+    const s = getImageStorage(editor);
+    if (s) {
+      s.onResize = onImageResize ?? null;
+      s.onSelectedChange = onImageSelectedChange ?? null;
       // ResizableImage fires this after the long-press-menu Delete IF the
       // doc is empty afterward. Route it to onEmpty (the same path that
       // the Backspace-on-empty handler uses) so the canvas drops the
       // whole block instead of leaving a stranded empty text block.
-      editor.storage.image.onEmpty = onEmpty ? () => onEmpty(blockId) : null;
+      s.onEmpty = onEmpty ? () => onEmpty(blockId) : null;
     }
     return () => {
-      if (editor.storage?.image) {
-        editor.storage.image.onResize = null;
-        editor.storage.image.onSelectedChange = null;
-        editor.storage.image.onEmpty = null;
+      const s2 = getImageStorage(editor);
+      if (s2) {
+        s2.onResize = null;
+        s2.onSelectedChange = null;
+        s2.onEmpty = null;
       }
     };
   }, [editor, onImageResize, onImageSelectedChange, onEmpty, blockId]);
@@ -248,8 +252,8 @@ export function CanvasTextBlock({
   // Keep the ResizableImage NodeView informed of canvas zoom so its
   // resize handles counter-scale to remain a usable screen-pixel size.
   useEffect(() => {
-    if (!editor?.storage?.image) return;
-    editor.storage.image.zoom = zoom ?? 1;
+    const s = getImageStorage(editor);
+    if (s) s.zoom = zoom ?? 1;
   }, [editor, zoom]);
 
   useEffect(() => {

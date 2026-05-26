@@ -5,6 +5,29 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Trash2, Image as ImageIcon, ExternalLink } from 'lucide-react';
 
+// ── Per-editor image storage ──────────────────────────────────────────────────
+// TipTap's addStorage() creates a single storage object shared across all
+// editor instances when the extension object is a module-level singleton.
+// That means images in different CanvasTextBlocks all read/write the same
+// onResize/onSelectedChange callbacks — the last-mounted block's wins.
+// A WeakMap keyed by the editor object guarantees per-instance isolation.
+const imageStorageMap = new WeakMap<any, {
+  onResize: ((width: number, isFinal: boolean) => void) | null;
+  onSelectedChange: ((selected: boolean) => void) | null;
+  onEmpty: (() => void) | null;
+  zoom: number;
+}>();
+
+export function getImageStorage(editor: any) {
+  if (!editor) return null;
+  let s = imageStorageMap.get(editor);
+  if (!s) {
+    s = { onResize: null, onSelectedChange: null, onEmpty: null, zoom: 1 };
+    imageStorageMap.set(editor, s);
+  }
+  return s;
+}
+
 // ── Node View ────────────────────────────────────────────────────────────────
 
 function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode }: any) {
@@ -31,7 +54,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
 
   // Counter-scale resize handles with canvas zoom so they stay a usable
   // screen-pixel size (same pattern as block-level handles in the parent).
-  const imageZoom = editorRef.current?.storage?.image?.zoom ?? 1;
+  const imageZoom = getImageStorage(editorRef.current)?.zoom ?? 1;
   const invScale = Math.min(4, Math.max(1, 1 / imageZoom));
   const storedWidth: number | null = node.attrs.width;
   const currentWidth = displayWidth ?? storedWidth;
@@ -70,7 +93,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       isSelectedRef.current = true; // synchronous — pinch listeners read this immediately
       // Sync the parent's imageSelectedRef NOW so the bubbling
       // pointerdown sees us as "already selected" in the same tick.
-      editor?.storage?.image?.onSelectedChange?.(true);
+      getImageStorage(editor)?.onSelectedChange?.(true);
       // Blur the editor so iOS doesn't pop the keyboard.
       editor?.commands?.blur?.();
       if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
@@ -156,7 +179,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
           doc.firstChild?.type.name === 'paragraph' &&
           doc.firstChild.childCount === 0);
       if (isEmptyDoc) {
-        editor?.storage?.image?.onEmpty?.();
+        getImageStorage(editor)?.onEmpty?.();
       }
     }, 0);
   }, [deleteNode, getPos, editor, node]);
@@ -198,7 +221,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
   // handles the down-transition and is a safety net for any path that
   // changes isSelected without going through that handler.)
   useEffect(() => {
-    editor?.storage?.image?.onSelectedChange?.(isSelected);
+    getImageStorage(editor)?.onSelectedChange?.(isSelected);
   }, [isSelected, editor]);
 
   // Suppress the iOS soft keyboard while an image is selected. iOS
@@ -231,7 +254,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       if (!img.naturalWidth) return;
       const w = Math.min(img.naturalWidth, 600);
       updateAttributes({ width: w });
-      editor?.storage?.image?.onResize?.(w, true);
+      getImageStorage(editor)?.onResize?.(w, true);
     };
     if (img.complete && img.naturalWidth > 0) {
       setInitial();
@@ -288,7 +311,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       if (!isSelectedRef.current) {
         isSelectedRef.current = true;
         setIsSelected(true);
-        editorRef.current?.storage?.image?.onSelectedChange?.(true);
+        getImageStorage(editorRef.current)?.onSelectedChange?.(true);
       }
 
       // Cancel any pending long-press menu timer so it never fires mid-pinch.
@@ -315,7 +338,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       const newW = Math.round(Math.max(80, pinchState.initialW * ratio));
       liveWidthRef.current = newW;
       setDisplayWidth(newW);
-      editorRef.current?.storage?.image?.onResize?.(newW, false);
+      getImageStorage(editorRef.current)?.onResize?.(newW, false);
     };
 
     const onTouchEnd = (e: TouchEvent) => {
@@ -324,7 +347,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
         if (liveWidthRef.current !== null) {
           const finalW = liveWidthRef.current;
           updateAttributesRef.current({ width: finalW });
-          editorRef.current?.storage?.image?.onResize?.(finalW, true);
+          getImageStorage(editorRef.current)?.onResize?.(finalW, true);
         }
         pinchState = null;
         liveWidthRef.current = null;
@@ -365,7 +388,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       const newW = Math.round(Math.max(80, resizeRef.current.startW + dx));
       liveWidthRef.current = newW;
       setDisplayWidth(newW);
-      editor?.storage?.image?.onResize?.(newW, false);
+      getImageStorage(editor)?.onResize?.(newW, false);
       if (ev.cancelable) ev.preventDefault();
     };
 
@@ -376,7 +399,7 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
       if (resizeRef.current !== null && liveWidthRef.current !== null) {
         const finalW = liveWidthRef.current;
         updateAttributes({ width: finalW });
-        editor?.storage?.image?.onResize?.(finalW, true);
+        getImageStorage(editor)?.onResize?.(finalW, true);
       }
       resizeRef.current = null;
       liveWidthRef.current = null;
@@ -655,24 +678,8 @@ export const ResizableImage = TipTapNode.create({
     } as any;
   },
 
-  // The host (CanvasTextBlock) writes callbacks here so the canvas block
-  // can react to image-internal state:
-  //   - onResize: keep block width in sync with image width.
-  //   - onSelectedChange: know when an image is selected so the block
-  //     can treat a subsequent drag as "move me" without waiting for
-  //     the 400ms long-press the unselected path uses.
-  //   - onEmpty: fired after the user deletes the image (long-press menu
-  //     → Delete) if the host doc has no other content left. Lets the
-  //     canvas drop the entire block so the user doesn't get a stranded
-  //     empty text block where the image was.
-  addStorage() {
-    return {
-      onResize: null as null | ((width: number, isFinal: boolean) => void),
-      onSelectedChange: null as null | ((selected: boolean) => void),
-      onEmpty: null as null | (() => void),
-      zoom: 1,
-    };
-  },
+// Storage is now managed via a WeakMap keyed by editor (see getImageStorage
+  // at the top of this file) for per-instance isolation.
 
   addNodeView() {
     return ReactNodeViewRenderer(ResizableImageView);
