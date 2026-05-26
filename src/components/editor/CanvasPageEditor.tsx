@@ -1402,20 +1402,45 @@ export function CanvasPageEditor({
     insertTranscriptBlock(title, text, '🎵');
 
   // ── Image upload ───────────────────────────────────────────────────────
-  const uploadImage = useCallback(async (file: File) => {
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: file.name, contentType: file.type }),
-    });
-    if (!res.ok) return;
-    const { uploadUrl, publicUrl } = await res.json();
-    await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-    // Each upload always creates its own new block so images never overwrite each other
-    createBlock(DOC_X, nextStackY(), DOC_W_TEXT, 'text', {
-      type: 'doc',
-      content: [{ type: 'image', attrs: { src: publicUrl, width: null } }],
-    });
+  // Accepts one or many files. Each image becomes its own block, stacked
+  // vertically below existing content. Uploads run in PARALLEL so a batch
+  // of 10 photos doesn't take ten times as long as one — but each file's
+  // landing Y is pre-assigned by its index, so a slow upload at position 0
+  // still lands above a faster upload at position 1.
+  const uploadImages = useCallback(async (files: File[] | FileList) => {
+    const arr = Array.from(files);
+    if (arr.length === 0) return;
+
+    // Compute the starting Y ONCE. nextStackY() reads the `blocks` state,
+    // and React batches our createBlock() calls inside this tick — so
+    // calling nextStackY() per file would return the same Y for every
+    // file and they'd all overlap. Walk Y forward manually instead.
+    // 280px ≈ a freshly-inserted image card's height + gap; canvas auto-
+    // resizes once real image dimensions settle.
+    const startY = nextStackY();
+    const STACK_STEP = 280;
+
+    await Promise.all(
+      arr.map(async (file, i) => {
+        try {
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: file.name, contentType: file.type }),
+          });
+          if (!res.ok) return;
+          const { uploadUrl, publicUrl } = await res.json();
+          await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+          createBlock(DOC_X, startY + i * STACK_STEP, DOC_W_TEXT, 'text', {
+            type: 'doc',
+            content: [{ type: 'image', attrs: { src: publicUrl, width: null } }],
+          });
+        } catch {
+          // Skip this file; other uploads in the batch continue. The user
+          // sees whichever images succeeded — better than failing the lot.
+        }
+      })
+    );
   }, [createBlock, nextStackY]);
 
   // ── Pinterest popup ───────────────────────────────────────────────────
@@ -1460,28 +1485,36 @@ export function CanvasPageEditor({
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
       if (!e.clipboardData) return;
-      const items = Array.from(e.clipboardData.items);
-      const imageItem = items.find(
-        (it) => it.kind === 'file' && it.type.startsWith('image/')
-      );
-      if (!imageItem) return; // not an image — let normal text paste run
-
-      const file = imageItem.getAsFile();
-      if (!file) return;
+      // Some apps (e.g. file managers, slide editors) put multiple image
+      // items on the clipboard in a single copy. Grab them all, not just
+      // the first — otherwise pasting a 10-image clipboard silently drops 9.
+      const imageFiles = Array.from(e.clipboardData.items)
+        .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+        .map((it) => it.getAsFile())
+        .filter((f): f is File => f !== null);
+      if (imageFiles.length === 0) return; // no images — let normal text paste run
 
       e.preventDefault();
       e.stopPropagation();
       try {
-        await uploadImage(file);
-        toast.success('Image added to your note.');
+        await uploadImages(imageFiles);
+        toast.success(
+          imageFiles.length === 1
+            ? 'Image added to your note.'
+            : `${imageFiles.length} images added to your note.`
+        );
       } catch {
-        toast.error('Could not save the pasted image.');
+        toast.error(
+          imageFiles.length === 1
+            ? 'Could not save the pasted image.'
+            : 'Could not save the pasted images.'
+        );
       }
     };
     // Capture phase so we beat TipTap's editor-level paste handler.
     document.addEventListener('paste', onPaste, true);
     return () => document.removeEventListener('paste', onPaste, true);
-  }, [uploadImage]);
+  }, [uploadImages]);
 
   // ── Book Info: AI summary + PDF search link ───────────────────────────
   const handleBookSummary = async () => {
@@ -1947,15 +1980,19 @@ export function CanvasPageEditor({
         />
       )}
 
-      {/* Hidden file input for image uploads */}
+      {/* Hidden file input for image uploads. `multiple` so the OS picker
+          lets the user pick a batch — they then land as a vertical stack
+          of blocks. */}
       <input
         ref={imageInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) uploadImage(file);
+          const files = e.target.files;
+          if (files && files.length > 0) uploadImages(files);
+          // Reset so picking the same file(s) again still triggers onChange.
           e.target.value = '';
         }}
       />
