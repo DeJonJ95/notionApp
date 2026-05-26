@@ -135,12 +135,30 @@ function ResizableImageView({ node, updateAttributes, editor, getPos, deleteNode
     // fall back to getPos + deleteRange for older versions.
     if (typeof deleteNode === 'function') {
       deleteNode();
-      return;
-    }
-    if (typeof getPos === 'function' && editor) {
+    } else if (typeof getPos === 'function' && editor) {
       const pos = getPos();
       editor.chain().focus().deleteRange({ from: pos, to: pos + node.nodeSize }).run();
     }
+
+    // If the image was the block's only content, TipTap leaves behind an
+    // empty paragraph (the editor's required minimum), which renders as a
+    // stranded empty text block where the image used to be. Detect that
+    // and let the host drop the whole block.
+    //
+    // setTimeout so the deletion transaction has committed before we read
+    // the doc — synchronous read here returns the pre-delete state.
+    setTimeout(() => {
+      const doc = editor?.state?.doc;
+      if (!doc) return;
+      const isEmptyDoc =
+        doc.childCount === 0 ||
+        (doc.childCount === 1 &&
+          doc.firstChild?.type.name === 'paragraph' &&
+          doc.firstChild.childCount === 0);
+      if (isEmptyDoc) {
+        editor?.storage?.image?.onEmpty?.();
+      }
+    }, 0);
   }, [deleteNode, getPos, editor, node]);
 
   const handleReplace = useCallback(() => {
@@ -643,10 +661,15 @@ export const ResizableImage = TipTapNode.create({
   //   - onSelectedChange: know when an image is selected so the block
   //     can treat a subsequent drag as "move me" without waiting for
   //     the 400ms long-press the unselected path uses.
+  //   - onEmpty: fired after the user deletes the image (long-press menu
+  //     → Delete) if the host doc has no other content left. Lets the
+  //     canvas drop the entire block so the user doesn't get a stranded
+  //     empty text block where the image was.
   addStorage() {
     return {
       onResize: null as null | ((width: number, isFinal: boolean) => void),
       onSelectedChange: null as null | ((selected: boolean) => void),
+      onEmpty: null as null | (() => void),
       zoom: 1,
     };
   },
