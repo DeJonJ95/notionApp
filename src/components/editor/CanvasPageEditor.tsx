@@ -1403,31 +1403,38 @@ export function CanvasPageEditor({
 
   // ── Image upload ───────────────────────────────────────────────────────
   // Accepts one or many files. Each image becomes its own block, stacked
-  // vertically below existing content. Uploads run in PARALLEL so a batch
-  // of 10 photos doesn't take ten times as long as one.
+  // vertically below existing content. Two phases:
   //
-  // Stacking math: we read each file's natural dimensions client-side
-  // BEFORE uploading and use those to compute exact Y positions. A naive
-  // fixed STACK_STEP doesn't work — ResizableImage's first-load auto-size
-  // renders most photos at 400–800px tall, so any step smaller than that
-  // causes blocks to overlap. In the overlap zone the later block in the
-  // map paints on top and absorbs all pointer events, making the earlier
-  // images appear "unmovable / unresizable" because the gestures land on
-  // the wrong block. Pre-computing positions from actual heights makes
-  // every block fully interactable.
+  //   1. PRE-FLIGHT (parallel): decode each File locally to read its
+  //      natural dimensions, then upload to R2. The decode lets us
+  //      project each block's rendered height so we can pre-assign a
+  //      non-overlapping Y per block. The upload returns the public URL.
+  //
+  //   2. INSERT (synchronous): once every upload has a URL, fire all
+  //      createBlock calls in a single forEach. This matches MoodBoardModal's
+  //      proven insertion pattern: all setBlocks updates land in the SAME
+  //      React tick and batch into one render, so every block mounts with
+  //      a consistent React tree. The earlier "fire createBlock from inside
+  //      each upload's async closure" approach interleaved setBlocks across
+  //      multiple ticks and ended up with only one mounted block fully
+  //      interactable — the others appeared frozen.
   const uploadImages = useCallback(async (files: File[] | FileList) => {
     const arr = Array.from(files);
     if (arr.length === 0) return;
 
-    // Decode each file locally to learn its natural width/height. This is
-    // fast (no network), runs in parallel, and lets us project the rendered
-    // height in the canvas: width clamps to 600px, height scales with the
-    // aspect ratio to match ResizableImage's first-load auto-size behavior.
+    // ResizableImage's first-load auto-size renders images at this maximum
+    // width with the natural aspect ratio. We use the same value here so
+    // our projected heights match what actually renders.
     const RENDER_W_CAP = 600;
-    const dims = await Promise.all(
-      arr.map(
-        (file) =>
-          new Promise<{ w: number; h: number }>((resolve) => {
+
+    // Phase 1: in parallel, decode + upload each file. Returns the public
+    // URL alongside the natural dimensions (or null on failure).
+    type UploadOk = { url: string; w: number; h: number };
+    const results = await Promise.all(
+      arr.map(async (file): Promise<UploadOk | null> => {
+        try {
+          // Decode locally to learn the rendered height.
+          const dims = await new Promise<{ w: number; h: number }>((resolve) => {
             const objUrl = URL.createObjectURL(file);
             const img = new Image();
             img.onload = () => {
@@ -1436,50 +1443,49 @@ export function CanvasPageEditor({
             };
             img.onerror = () => {
               URL.revokeObjectURL(objUrl);
-              // Fallback if we couldn't decode (HEIC on some browsers, etc).
-              // Pick a sensible "landscape photo" default so the next block
-              // doesn't pile on top of this one.
+              // Fallback for un-decodable types (e.g. HEIC in Chrome). Use a
+              // reasonable landscape default so the next block still gets a
+              // sensible Y offset.
               resolve({ w: RENDER_W_CAP, h: 400 });
             };
             img.src = objUrl;
-          })
-      )
-    );
+          });
 
-    // Walk Y forward using each block's projected height. Y for block i =
-    // startY + (sum of projected heights of blocks 0..i-1) + gaps.
-    const GAP = 24;
-    const startY = nextStackY();
-    let cursor = startY;
-    const positions = dims.map((d) => {
-      const renderW = Math.min(d.w, RENDER_W_CAP);
-      const renderH = (d.h / d.w) * renderW;
-      const y = cursor;
-      cursor += renderH + GAP;
-      return y;
-    });
-
-    await Promise.all(
-      arr.map(async (file, i) => {
-        try {
+          // Upload.
           const res = await fetch('/api/upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: file.name, contentType: file.type }),
           });
-          if (!res.ok) return;
+          if (!res.ok) return null;
           const { uploadUrl, publicUrl } = await res.json();
           await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-          createBlock(DOC_X, positions[i], DOC_W_TEXT, 'text', {
-            type: 'doc',
-            content: [{ type: 'image', attrs: { src: publicUrl, width: null } }],
-          });
+          return { url: publicUrl, w: dims.w, h: dims.h };
         } catch {
-          // Skip this file; other uploads in the batch continue. The user
-          // sees whichever images succeeded — better than failing the lot.
+          return null;
         }
       })
     );
+
+    // Phase 2: synchronous block creation. Walk Y forward using each
+    // image's projected rendered height, plus a generous gap that absorbs
+    // the prose typography's vertical margins around an image (~32px top
+    // and bottom in `prose-base`). Without this padding allowance the
+    // *clickable wrappers* of adjacent blocks overlap even though the
+    // *images themselves* don't visibly touch.
+    const VERTICAL_PAD = 80; // prose top+bottom margins + breathing room
+    const startY = nextStackY();
+    let cursor = startY;
+    results.forEach((r) => {
+      if (!r) return;
+      const renderW = Math.min(r.w, RENDER_W_CAP);
+      const renderH = (r.h / r.w) * renderW;
+      createBlock(DOC_X, cursor, DOC_W_TEXT, 'text', {
+        type: 'doc',
+        content: [{ type: 'image', attrs: { src: r.url, width: null } }],
+      });
+      cursor += renderH + VERTICAL_PAD;
+    });
   }, [createBlock, nextStackY]);
 
   // ── Pinterest popup ───────────────────────────────────────────────────
