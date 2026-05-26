@@ -1403,37 +1403,34 @@ export function CanvasPageEditor({
 
   // ── Image upload ───────────────────────────────────────────────────────
   // Accepts one or many files. Each image becomes its own block, stacked
-  // vertically below existing content. Two phases:
+  // vertically below existing content. Three phases:
   //
-  //   1. PRE-FLIGHT (parallel): decode each File locally to read its
-  //      natural dimensions, then upload to R2. The decode lets us
-  //      project each block's rendered height so we can pre-assign a
-  //      non-overlapping Y per block. The upload returns the public URL.
+  //   1. PRE-FLIGHT: decode each File locally + upload to R2 in parallel.
+  //   2. PERSIST: POST every block to /api/blocks in parallel.
+  //   3. COMMIT: a SINGLE setBlocks call with all the new blocks at once.
   //
-  //   2. INSERT (synchronous): once every upload has a URL, fire all
-  //      createBlock calls in a single forEach. This matches MoodBoardModal's
-  //      proven insertion pattern: all setBlocks updates land in the SAME
-  //      React tick and batch into one render, so every block mounts with
-  //      a consistent React tree. The earlier "fire createBlock from inside
-  //      each upload's async closure" approach interleaved setBlocks across
-  //      multiple ticks and ended up with only one mounted block fully
-  //      interactable — the others appeared frozen.
+  // The single-setBlocks commit is the load-bearing detail. The previous
+  // versions called the per-block `createBlock` from inside each upload's
+  // async closure, so React received N separate setBlocks updates across
+  // N different ticks — and empirically that produced blocks that mostly
+  // failed to wire up their pointer handlers. Even calling all N
+  // createBlocks back-to-back in a synchronous forEach didn't help,
+  // because createBlock awaits its own API roundtrip before calling
+  // setBlocks. Doing the API calls in parallel and committing once with
+  // the full set makes the multi-upload mount behave identically to a
+  // single upload, just with N entries instead of one.
   const uploadImages = useCallback(async (files: File[] | FileList) => {
     const arr = Array.from(files);
     if (arr.length === 0) return;
 
-    // ResizableImage's first-load auto-size renders images at this maximum
-    // width with the natural aspect ratio. We use the same value here so
-    // our projected heights match what actually renders.
     const RENDER_W_CAP = 600;
+    const VERTICAL_PAD = 80; // prose-base adds ~32px top+bottom around images
 
-    // Phase 1: in parallel, decode + upload each file. Returns the public
-    // URL alongside the natural dimensions (or null on failure).
+    // Phase 1: decode dims + upload bytes (parallel).
     type UploadOk = { url: string; w: number; h: number };
-    const results = await Promise.all(
+    const uploads = await Promise.all(
       arr.map(async (file): Promise<UploadOk | null> => {
         try {
-          // Decode locally to learn the rendered height.
           const dims = await new Promise<{ w: number; h: number }>((resolve) => {
             const objUrl = URL.createObjectURL(file);
             const img = new Image();
@@ -1443,15 +1440,10 @@ export function CanvasPageEditor({
             };
             img.onerror = () => {
               URL.revokeObjectURL(objUrl);
-              // Fallback for un-decodable types (e.g. HEIC in Chrome). Use a
-              // reasonable landscape default so the next block still gets a
-              // sensible Y offset.
               resolve({ w: RENDER_W_CAP, h: 400 });
             };
             img.src = objUrl;
           });
-
-          // Upload.
           const res = await fetch('/api/upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1467,26 +1459,60 @@ export function CanvasPageEditor({
       })
     );
 
-    // Phase 2: synchronous block creation. Walk Y forward using each
-    // image's projected rendered height, plus a generous gap that absorbs
-    // the prose typography's vertical margins around an image (~32px top
-    // and bottom in `prose-base`). Without this padding allowance the
-    // *clickable wrappers* of adjacent blocks overlap even though the
-    // *images themselves* don't visibly touch.
-    const VERTICAL_PAD = 80; // prose top+bottom margins + breathing room
+    // Walk Y forward using projected rendered heights so no two blocks
+    // overlap. Width clamps to RENDER_W_CAP; height follows the natural
+    // aspect ratio — same math as ResizableImage's first-load auto-size.
     const startY = nextStackY();
     let cursor = startY;
-    results.forEach((r) => {
-      if (!r) return;
-      const renderW = Math.min(r.w, RENDER_W_CAP);
-      const renderH = (r.h / r.w) * renderW;
-      createBlock(DOC_X, cursor, DOC_W_TEXT, 'text', {
-        type: 'doc',
-        content: [{ type: 'image', attrs: { src: r.url, width: null } }],
-      });
+    const positions = uploads.map((u) => {
+      if (!u) return null;
+      const renderW = Math.min(u.w, RENDER_W_CAP);
+      const renderH = (u.h / u.w) * renderW;
+      const y = cursor;
       cursor += renderH + VERTICAL_PAD;
+      return y;
     });
-  }, [createBlock, nextStackY]);
+
+    // Phase 2: POST every block to /api/blocks in parallel. Each block
+    // gets a unique `position` (Date.now() + index) so the server doesn't
+    // see a collision when this batch lands in the same millisecond.
+    const now = Date.now();
+    const created = await Promise.all(
+      uploads.map(async (u, i) => {
+        if (!u || positions[i] === null) return null;
+        try {
+          const body = {
+            pageId: page.id,
+            type: 'text',
+            content: {
+              type: 'doc',
+              content: [{ type: 'image', attrs: { src: u.url, width: null } }],
+            },
+            canvasX: DOC_X,
+            canvasY: positions[i] as number,
+            canvasWidth: DOC_W_TEXT,
+            position: now + i,
+          };
+          const res = await fetch('/api/blocks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    // Phase 3: single commit. Functional setState appends all the new
+    // blocks atomically; React then does ONE reconciliation pass mounting
+    // every new CanvasCard together, same as it would for a single block.
+    const validNew = created.filter((b): b is CanvasBlockData => b !== null);
+    if (validNew.length === 0) return;
+    setBlocks((prev) => [...prev, ...validNew]);
+  }, [nextStackY, page.id]);
 
   // ── Pinterest popup ───────────────────────────────────────────────────
   // Opens pinterest.com/search/pins/?q=<term> in a sized popup so the user
