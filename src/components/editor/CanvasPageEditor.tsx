@@ -208,6 +208,11 @@ function CanvasCard({
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapRef = useRef(0);
   const lastPointerIdRef = useRef(-1);
+  // Set when a second pointer arrives during the image-selected fast-path
+  // (indicating a 2-finger pinch). Blocks subsequent fast-path drags from
+  // starting — without this the second finger's 80ms timer fires mid-pinch
+  // and drags the block while the user is trying to resize.
+  const dragBlockedRef = useRef(false);
   // Keep longPressActive in sync with the parent's isMoving — when the
   // drag ends (isMoving flips false) we clear our local flag too.
   useEffect(() => {
@@ -256,7 +261,11 @@ function CanvasCard({
     // Double-tap detection — zoom to 100% centered on this block.
     if (onDoubleTap) {
       const now = Date.now();
-      if (e.pointerId === lastPointerIdRef.current && now - lastTapRef.current < 300) {
+      // On mobile, sequential taps get different pointerIds, so use
+	      // a time-based fallback when an image is selected.
+	      const samePointer = e.pointerId === lastPointerIdRef.current;
+	      const timeGap = now - lastTapRef.current;
+	      if (timeGap < 300 && (samePointer || imageSelectedRef.current)) {
         e.preventDefault();
         e.stopPropagation();
         lastTapRef.current = 0;
@@ -265,20 +274,29 @@ function CanvasCard({
           clearTimeout(longPressTimerRef.current);
           longPressTimerRef.current = null;
         }
-        onDoubleTap(block);
+        // Double-tap on a selected image = drag instead of zoom
+	        if (imageSelectedRef.current) {
+	          beginDrag(e.clientX, e.clientY, e.pointerId);
+	          return;
+	        }
+	        onDoubleTap(block);
         return;
       }
       lastTapRef.current = now;
       lastPointerIdRef.current = e.pointerId;
     }
 
-    // CANVA-STYLE FAST PATH: an image inside this block is already selected,
+        // CANVA-STYLE FAST PATH: an image inside this block is already selected,
     // so a single-finger drag should move the block IMMEDIATELY without
     // the 400ms long-press wait. To not also hijack two-finger pinch (which
-    // resizes the image), wait ~80ms before committing the drag — if a
+    // resizes the image), wait ~80ms before committing the drag - if a
     // second pointer arrives in that window, the user was starting a pinch
     // and we cancel.
     if (imageSelectedRef.current) {
+      // A second finger already cancelled a previous pointer's drag
+      // (2-finger pinch) - don't start another drag for this finger.
+      if (dragBlockedRef.current) return;
+
       e.preventDefault();
       e.stopPropagation();
       const startX = e.clientX;
@@ -286,7 +304,14 @@ function CanvasCard({
       const pointerId = e.pointerId;
       let cancelled = false;
       const onSecondTouch = (ev: PointerEvent) => {
-        if (ev.pointerId !== pointerId) { cancelled = true; cleanup(); }
+        if (ev.pointerId !== pointerId) {
+          cancelled = true;
+          dragBlockedRef.current = true;
+          cleanup();
+          const resetGuard = () => { dragBlockedRef.current = false; };
+          document.addEventListener('pointerup', resetGuard, { once: true });
+          document.addEventListener('pointercancel', resetGuard, { once: true });
+        }
       };
       const cleanup = () => {
         document.removeEventListener('pointerdown', onSecondTouch);
@@ -297,9 +322,7 @@ function CanvasCard({
         if (!cancelled) beginDrag(startX, startY, pointerId);
       }, 80);
       return;
-    }
-
-    // SLOW PATH: long-press anywhere on the block (excluding image content;
+    }    // SLOW PATH: long-press anywhere on the block (excluding image content;
     // ResizableImage's own pointerdown stopsPropagation while not selected)
     // initiates a drag. Cancels on early movement (scroll attempt) or
     // pointerup before the 400ms timer fires.
