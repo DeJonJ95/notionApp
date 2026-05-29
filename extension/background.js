@@ -60,10 +60,65 @@ async function saveImage({ pageId, sourceUrl, alt }) {
   return readJson(res, 'Save image');
 }
 
+// ── Per-tab activation state ───────────────────────────────────────
+// Clipping is opt-in per tab: the content script ships dormant and only
+// shows hover buttons once the user activates the current tab from the
+// popup. We persist the active tab ids in session storage so the state
+// survives a service-worker restart but clears when the browser closes.
+async function getActiveTabs() {
+  const { activeTabs } = await chrome.storage.session.get('activeTabs');
+  return activeTabs || {};
+}
+
+async function setTabActive(tabId, active) {
+  const tabs = await getActiveTabs();
+  if (active) tabs[tabId] = true;
+  else delete tabs[tabId];
+  await chrome.storage.session.set({ activeTabs: tabs });
+}
+
+async function isTabActive(tabId) {
+  const tabs = await getActiveTabs();
+  return Boolean(tabs[tabId]);
+}
+
+// Forget a tab's state when it closes so the map doesn't grow unbounded.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  setTabActive(tabId, false).catch(() => {});
+});
+
 // ── Message router ─────────────────────────────────────────────────
 // All cross-frame communication goes through this; both content script
 // and popup post messages here and await responses.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  // Content script asking, on load, whether ITS tab is active.
+  if (msg?.type === 'getClipActive') {
+    const tabId = _sender.tab?.id;
+    if (tabId == null) {
+      sendResponse({ active: false });
+      return false;
+    }
+    isTabActive(tabId).then((active) => sendResponse({ active }));
+    return true;
+  }
+  // Popup asking about a specific tab (it has no sender.tab of its own).
+  if (msg?.type === 'getClipForTab') {
+    isTabActive(msg.tabId).then((active) => sendResponse({ active }));
+    return true;
+  }
+  // Popup flipping a tab on/off. Persist, then live-notify the content
+  // script so it updates without a reload.
+  if (msg?.type === 'setClipForTab') {
+    setTabActive(msg.tabId, msg.active)
+      .then(() =>
+        chrome.tabs
+          .sendMessage(msg.tabId, { type: 'applyClipActive', active: msg.active })
+          .catch(() => {}) // tab may have no content script (chrome:// etc.)
+      )
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
   if (msg?.type === 'getPages') {
     fetchPages()
       .then((pages) => sendResponse({ ok: true, pages }))
