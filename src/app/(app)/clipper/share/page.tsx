@@ -29,22 +29,34 @@ function findUrl(...values: (string | undefined)[]): string {
 export default async function ClipperSharePage({
   searchParams,
 }: {
-  searchParams: { title?: string; text?: string; url?: string };
+  searchParams: { title?: string; text?: string; url?: string; img?: string };
 }) {
   const session = await auth();
   if (!(session?.user as any)?.id) {
     // Preserve the share params through the sign-in round trip so the
-    // user lands back here with everything intact.
+    // user lands back here with everything intact. (A shared file can't
+    // survive the round trip — only text/url/img do.)
     const params = new URLSearchParams();
     if (searchParams.title) params.set('title', searchParams.title);
     if (searchParams.text) params.set('text', searchParams.text);
     if (searchParams.url) params.set('url', searchParams.url);
+    if (searchParams.img) params.set('img', searchParams.img);
     const cb = `/clipper/share${params.toString() ? `?${params.toString()}` : ''}`;
     redirect(`/signin?callbackUrl=${encodeURIComponent(cb)}`);
   }
 
+  // `img` is a fully-resolved image URL (the POST share-target already
+  // uploaded the shared file to R2). When present, the picker skips the
+  // og:image resolution step entirely.
+  const resolvedImage = searchParams.img ?? '';
   const sharedUrl = findUrl(searchParams.url, searchParams.text);
   const sharedTitle = searchParams.title ?? '';
 
-  return <ShareReceiver initialUrl={sharedUrl} initialTitle={sharedTitle} />;
+  return (
+    <ShareReceiver
+      initialUrl={sharedUrl}
+      initialTitle={sharedTitle}
+      initialImageUrl={resolvedImage}
+    />
+  );
 }
