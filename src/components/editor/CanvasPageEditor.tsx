@@ -113,7 +113,7 @@ function estimateNodeHeight(node: any): number {
 // Default column for stacked content (Notion-style left margin).
 const DOC_X = 80;
 const DOC_W_TEXT = 720;
-const DOC_W_DB = 1100; // wider default so DB split-view is actually usable
+const DOC_W_DB = 640; // slightly narrower than text so the DB doesn't dominate the canvas
 const BLOCK_GAP = 18;
 const MIN_BLOCK_W = 240;
 const MAX_BLOCK_W = 2400;
@@ -541,9 +541,45 @@ function CanvasCard({
         onMouseLeave={() => onHover(null)}
       >
         {block.type === 'database' ? (
-          // Databases keep their own border since they're a structured thing
-          <div className="rounded-lg border border-border bg-surface overflow-hidden">
-            <CanvasDatabaseBlock databaseId={block.content?.databaseId} onSelect={(dbId) => onContentUpdate(block.id, { ...block.content, databaseId: dbId })} />
+          <div className="flex">
+            {/* Databases keep their own border since they're a structured thing */}
+            <div className="rounded-lg border border-border bg-surface overflow-hidden flex-1 min-w-0">
+              <CanvasDatabaseBlock databaseId={block.content?.databaseId} onSelect={(dbId) => onContentUpdate(block.id, { ...block.content, databaseId: dbId })} />
+            </div>
+            {/* Resize handle — visible on hover. Counter-scaled so it stays
+                a usable size at any zoom level. */}
+            <div
+              data-resize-handle
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const startX = e.clientX;
+                const startW = block.canvasWidth;
+                const onMove = (ev: PointerEvent) => {
+                  ev.preventDefault();
+                  const dx = (ev.clientX - startX) / zoom;
+                  onResize(block.id, Math.max(MIN_BLOCK_W, Math.min(MAX_BLOCK_W, startW + dx)));
+                };
+                const onUp = () => {
+                  document.removeEventListener('pointermove', onMove);
+                  document.removeEventListener('pointerup', onUp);
+                  document.removeEventListener('pointercancel', onUp);
+                  onResizeEnd(block.id);
+                };
+                document.addEventListener('pointermove', onMove);
+                document.addEventListener('pointerup', onUp);
+                document.addEventListener('pointercancel', onUp);
+              }}
+              className="pointer-events-auto hidden group-hover:flex cursor-col-resize items-center justify-center [@media(hover:none)]:!hidden"
+              style={{
+                width: 14,
+                marginLeft: -1,
+                transform: `scale(${Math.min(4, Math.max(1, 1 / zoom))})`,
+                transformOrigin: 'left center',
+              }}
+            >
+              <div className="w-[3px] h-8 rounded-full bg-border hover:bg-accent transition-colors" />
+            </div>
           </div>
         ) : (
           // Text blocks render flush — no card, no border, no padding.
