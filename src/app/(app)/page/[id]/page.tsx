@@ -26,6 +26,7 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
     canvasX: b.canvasX ?? 60,
     canvasY: b.canvasY ?? 60,
     canvasWidth: b.canvasWidth ?? 420,
+    canvasHeight: b.canvasHeight ?? null,
   }));
 
   return (

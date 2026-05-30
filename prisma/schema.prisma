@@ -208,6 +208,7 @@ model Block {
   canvasX      Float?
   canvasY      Float?
   canvasWidth  Float?
+  canvasHeight Float?
   parentId     String?
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt

@@ -8,6 +8,7 @@ const updateSchema = z.object({
   canvasX: z.number().optional(),
   canvasY: z.number().optional(),
   canvasWidth: z.number().optional(),
+  canvasHeight: z.number().optional(),
   position: z.number().optional(),
 });
 

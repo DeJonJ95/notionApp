@@ -10,6 +10,7 @@ const createSchema = z.object({
   canvasX: z.number().optional(),
   canvasY: z.number().optional(),
   canvasWidth: z.number().optional(),
+  canvasHeight: z.number().optional(),
   position: z.number().optional(),
 });
 
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
       canvasX: parsed.data.canvasX ?? null,
       canvasY: parsed.data.canvasY ?? null,
       canvasWidth: parsed.data.canvasWidth ?? null,
+      canvasHeight: parsed.data.canvasHeight ?? null,
     },
   });
 
