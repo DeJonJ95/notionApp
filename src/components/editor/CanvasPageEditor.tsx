@@ -77,7 +77,6 @@ export type CanvasBlockData = {
   canvasX: number;
   canvasY: number;
   canvasWidth: number;
-  canvasHeight: number | null;
 };
 
 type PageData = {
@@ -135,7 +134,6 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
         canvasX: DOC_X,
         canvasY: y,
         canvasWidth: DOC_W_DB,
-        canvasHeight: null,
       });
       y += 420 + BLOCK_GAP;
       j++;
@@ -165,7 +163,6 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
       canvasX: DOC_X,
       canvasY: y,
       canvasWidth: DOC_W_TEXT,
-      canvasHeight: null,
     });
     y += Math.max(40, groupH) + BLOCK_GAP;
   }
@@ -550,10 +547,12 @@ function CanvasCard({
         {block.type === 'database' ? (
           <div className="relative">
             {/* Databases keep their own border since they're a structured thing.
-                When canvasHeight is set, clamp the height and let content scroll. */}
+                When content.height is set, clamp the height and let content scroll.
+                Height lives in the content JSON (not a DB column) so it needs no
+                schema migration on this project's no-migrate deploy pipeline. */}
             <div
               className="rounded-lg border border-border bg-surface overflow-hidden flex-1 min-w-0"
-              style={block.canvasHeight ? { maxHeight: block.canvasHeight, overflowY: 'auto' } : {}}
+              style={block.content?.height ? { maxHeight: block.content.height, overflowY: 'auto' } : {}}
             >
               <CanvasDatabaseBlock databaseId={block.content?.databaseId} onSelect={(dbId) => onContentUpdate(block.id, { ...block.content, databaseId: dbId })} />
             </div>
@@ -567,7 +566,7 @@ function CanvasCard({
                 const startX = e.clientX;
                 const startY = e.clientY;
                 const startW = block.canvasWidth;
-                const startH = block.canvasHeight ?? 400;
+                const startH = block.content?.height ?? 400;
                 const MIN_DB_H = 80;
                 const MAX_DB_H = 4000;
                 const onMove = (ev: PointerEvent) => {
@@ -798,7 +797,7 @@ export function CanvasPageEditor({
 
   // ── Block creation ─────────────────────────────────────────────────────
   const createBlock = useCallback(
-    async (x: number, y: number, width = DOC_W_TEXT, type = 'text', content?: any, height?: number | null) => {
+    async (x: number, y: number, width = DOC_W_TEXT, type = 'text', content?: any) => {
       const body = {
         pageId: page.id,
         type,
@@ -806,7 +805,6 @@ export function CanvasPageEditor({
         canvasX: x,
         canvasY: y,
         canvasWidth: width,
-        canvasHeight: height ?? null,
         position: Date.now(),
       };
       const res = await fetch('/api/blocks', {
@@ -1063,8 +1061,11 @@ export function CanvasPageEditor({
     });
   }, []);
 
+  // Database-block height lives in the block's content JSON (content.height),
+  // not a dedicated column — this project's deploy never runs migrations, so a
+  // new column would 500 every block query against the un-migrated DB.
   const handleResizeHeight = useCallback((id: string, height: number) => {
-    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, canvasHeight: height } : b)));
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, content: { ...b.content, height } } : b)));
   }, []);
   const handleResizeHeightEnd = useCallback((id: string) => {
     setBlocks((prev) => {
@@ -1073,7 +1074,7 @@ export function CanvasPageEditor({
         fetch(`/api/blocks/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ canvasHeight: b.canvasHeight }),
+          body: JSON.stringify({ content: b.content }),
         }).catch(() => {});
       }
       return prev;
@@ -1227,7 +1228,7 @@ export function CanvasPageEditor({
 
   // ── Add a database embed block (stacked below existing content) ───────
   const addDatabaseBlock = () => {
-    createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null }, 400);
+    createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null, height: 400 });
   };
 
   // ── Canvas size — grows with content AND always fills the viewport ────
