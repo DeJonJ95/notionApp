@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase } from 'lucide-react';
 import { useRecentPages } from '@/lib/recentPages';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
@@ -301,6 +301,14 @@ export function Sidebar() {
             className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
           >
             <Wallet size={14} /> Budget
+          </Link>
+
+          <Link
+            href="/jobs"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
+          >
+            <Briefcase size={14} /> Jobs
           </Link>
 
           <Link
