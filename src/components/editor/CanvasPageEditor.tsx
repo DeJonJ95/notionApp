@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen, AlignLeft, ChevronDown } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -188,6 +188,7 @@ function CanvasCard({
   onResizeHeightEnd,
   onDoubleTap,
   onInsertDatabase,
+  autoFocus,
 }: {
   block: CanvasBlockData;
   zoom: number;
@@ -205,6 +206,7 @@ function CanvasCard({
   onResizeHeightEnd?: (id: string) => void;
   onDoubleTap?: (block: CanvasBlockData) => void;
   onInsertDatabase?: () => void;
+  autoFocus?: boolean;
 }) {
   // True while the user is intentionally moving this block on touch —
   // either because the parent says so (drag committed) or because the
@@ -608,6 +610,7 @@ function CanvasCard({
           <CanvasTextBlock
             blockId={block.id}
             initialContent={block.content}
+            autoFocus={autoFocus}
             zoom={zoom}
             onUpdate={onContentUpdate}
             onEmpty={onBlockEmpty}
@@ -656,6 +659,15 @@ export function CanvasPageEditor({
   const [moodboardOpen, setMoodboardOpen] = useState(false);
   const [newBlockId, setNewBlockId] = useState<string | null>(null);
   const [movingBlockId, setMovingBlockId] = useState<string | null>(null);
+  // Overflow ("More") menu in the top action bar — keeps the toolbar to a
+  // few primary actions so it doesn't wrap into several rows on narrow/
+  // mobile widths.
+  const [moreOpen, setMoreOpen] = useState(false);
+  // Whether the shared formatting toolbar has a block to act on. Formatting
+  // is sticky (acts on the last-focused block even after blur), so this
+  // only goes false before the user has ever focused a block — at which
+  // point the bar dims to signal it's contextual instead of silently no-op'ing.
+  const [hasFormatTarget, setHasFormatTarget] = useState(false);
   // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom).
   // On a phone the document column (720px) is far wider than the viewport,
   // so default to ~0.55 there — it lands roughly fit-to-width instead of
@@ -687,6 +699,16 @@ export function CanvasPageEditor({
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
 
+  // Close the "More" overflow menu on any outside click.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [moreOpen]);
+
   // Drag state: we store the canvas-coord offset between the finger and the
   // block's top-left, then on each move recompute the block position from the
   // current finger screen pos + current scroll + zoom. This naturally handles
@@ -710,6 +732,11 @@ export function CanvasPageEditor({
   const fontTargetEditor = useRef<any>(null);
   // Track if we've already migrated this page so we don't re-migrate on re-render
   const migratedRef = useRef(false);
+  // Outside-click target for the "More" overflow menu.
+  const moreRef = useRef<HTMLDivElement>(null);
+  // Guards the one-time mobile fit-to-width auto-zoom so it doesn't fight the
+  // user after they've adjusted zoom themselves.
+  const didAutoZoom = useRef(false);
 
   // ── Bootstrap: auto-migrate old single-document block ─────────────────
   useEffect(() => {
@@ -1040,7 +1067,7 @@ export function CanvasPageEditor({
     // different block is focused, never cleared on blur. Without this the
     // toolbar dies the instant focus flickers (e.g. clicking the toolbar,
     // opening a dialog, mobile keyboard).
-    if (id) lastFocusedId.current = id;
+    if (id) { lastFocusedId.current = id; setHasFormatTarget(true); }
   }, []);
 
   // ── Resize ────────────────────────────────────────────────────────────
@@ -1231,6 +1258,38 @@ export function CanvasPageEditor({
     createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null, height: 400 });
   };
 
+  // ── Arrange all blocks into a single document column ──────────────────
+  // The freeform canvas lets blocks drift side-by-side, which clips wide
+  // content off the right edge and forces horizontal scrolling. This snaps
+  // every block to the doc column (DOC_X) and stacks them top-to-bottom in
+  // their current visual order, using each block's real rendered height so
+  // nothing overlaps. Content is untouched — only positions change.
+  const arrangeInColumn = useCallback(() => {
+    setBlocks((prev) => {
+      if (prev.length === 0) return prev;
+      const sorted = [...prev].sort((a, b) => a.canvasY - b.canvasY || a.canvasX - b.canvasX);
+      const posById: Record<string, number> = {};
+      let y = 60;
+      for (const b of sorted) {
+        const el = innerRef.current?.querySelector(`[data-block-id="${b.id}"]`) as HTMLElement | null;
+        const h = el && el.offsetHeight > 0 ? el.offsetHeight : (b.type === 'database' ? 440 : 120);
+        posById[b.id] = y;
+        y += h + BLOCK_GAP;
+      }
+      const next = prev.map((b) => ({ ...b, canvasX: DOC_X, canvasY: posById[b.id] }));
+      // Persist each new position (fire-and-forget, same as drag-end).
+      next.forEach((b) => {
+        fetch(`/api/blocks/${b.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ canvasX: b.canvasX, canvasY: b.canvasY }),
+        }).catch(() => {});
+      });
+      return next;
+    });
+    toast.success('Blocks arranged into a column');
+  }, []);
+
   // ── Canvas size — grows with content AND always fills the viewport ────
   // The canvas is rendered at scale(zoom). If we only sized it to the
   // content, zooming out would leave the visible area larger than the
@@ -1242,6 +1301,22 @@ export function CanvasPageEditor({
   const z = zoom || 1;
   const canvasW = Math.max(contentW, viewport.w > 0 ? Math.ceil(viewport.w / z) : contentW);
   const canvasH = Math.max(contentH, viewport.h > 0 ? Math.ceil(viewport.h / z) : contentH);
+
+  // ── Mobile: open at fit-to-width instead of a hardcoded zoom ───────────
+  // On phones the document column is far wider than the viewport. Rather
+  // than guessing a zoom (the old constant 0.55), fit the actual content
+  // width to the viewport once both the blocks and the viewport size are
+  // known — so the whole column is visible on open and nothing is clipped
+  // off the right edge. Runs once; the user's later zoom changes stick.
+  useEffect(() => {
+    if (didAutoZoom.current) return;
+    if (viewport.w === 0 || blocks.length === 0) return;
+    didAutoZoom.current = true;
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      const fit = viewport.w / contentW;
+      setZoom(Math.max(0.2, Math.min(1, +fit.toFixed(3))));
+    }
+  }, [viewport.w, blocks.length, contentW]);
 
   // ── Canvas zoom: alt/ctrl/⌘ + wheel (desktop) and pinch (touch) ───────
   // These must be NON-PASSIVE native listeners — React attaches wheel/touch
@@ -1792,7 +1867,8 @@ export function CanvasPageEditor({
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Block-type buttons */}
+          {/* Primary actions — kept inline so the bar stays one row on
+              mobile. Everything else lives in the "More" menu below. */}
           <button
             onClick={() => createBlock(DOC_X, nextStackY(), DOC_W_TEXT)}
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
@@ -1805,66 +1881,75 @@ export function CanvasPageEditor({
           >
             <Database size={12} /> Database
           </button>
-          <div className="w-px bg-border self-stretch mx-0.5" />
           <button
-            onClick={() => setRecordOpen((v) => !v)}
-            className={`flex items-center gap-1.5 text-xs border rounded-lg px-2.5 py-1.5 transition ${
-              recordOpen ? 'bg-red-500/10 border-red-400 text-red-500' : 'border-border hover:bg-bg'
-            }`}
-          >
-            <Mic size={12} /> Record
-          </button>
-          <button
-            onClick={handleBookSummary}
-            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
-            title="Generate a summary of this book and a PDF search link"
-          >
-            <BookOpen size={12} /> Book Info
-          </button>
-          <button
-            onClick={() => setSummarizeOpen(true)}
-            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
-          >
-            <ClipboardList size={12} /> Summarize
-          </button>
-          {isOwner && (
-            <button
-              onClick={() => setYoutubeOpen(true)}
-              className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
-              title="Import a YouTube video's transcript"
-            >
-              <Youtube size={12} className="text-red-500" /> YouTube
-            </button>
-          )}
-          <button
-            onClick={() => setTiktokOpen(true)}
+            onClick={arrangeInColumn}
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
-            title="Import a TikTok video's transcript (only works if the video has captions)"
+            title="Stack every block into a single column (fixes blocks that drifted off to the side)"
           >
-            <Music2 size={12} className="text-pink-500" /> TikTok
+            <AlignLeft size={12} /> Arrange
           </button>
-          <button
-            onClick={() => setOrganizeOpen(true)}
-            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
-          >
-            <Sparkles size={12} /> Organize
-          </button>
-          {isOwner && (
+
+          {/* Overflow menu — AI tools + media imports, collapsed so the
+              top bar doesn't wrap into several rows on narrow widths. */}
+          <div className="relative" ref={moreRef}>
             <button
-              onClick={() => setMoodboardOpen(true)}
-              className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg text-accent transition"
-              title="Search Unsplash and drop curated images onto this canvas"
+              onClick={() => setMoreOpen((v) => !v)}
+              className={`flex items-center gap-1 text-xs border rounded-lg px-2.5 py-1.5 transition ${
+                moreOpen ? 'bg-bg border-border' : 'border-border hover:bg-bg'
+              }`}
             >
-              <Palette size={12} /> Mood board
+              <Plus size={12} /> More <ChevronDown size={12} />
             </button>
-          )}
-          <button
-            onClick={openPinterest}
-            className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
-            title="Browse Pinterest in a popup. Right-click a pin → Copy Image, then paste here."
-          >
-            <Pin size={12} className="text-red-500" /> Pinterest
-          </button>
+            {moreOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-lg border border-border bg-surface shadow-xl py-1">
+                <MoreItem
+                  icon={<Mic size={14} className={recordOpen ? 'text-red-500' : ''} />}
+                  label={recordOpen ? 'Stop recording panel' : 'Record audio'}
+                  onClick={() => { setRecordOpen((v) => !v); setMoreOpen(false); }}
+                />
+                <MoreItem
+                  icon={<ClipboardList size={14} className="text-accent" />}
+                  label="Summarize note"
+                  onClick={() => { setSummarizeOpen(true); setMoreOpen(false); }}
+                />
+                <MoreItem
+                  icon={<Sparkles size={14} className="text-accent" />}
+                  label="Organize note"
+                  onClick={() => { setOrganizeOpen(true); setMoreOpen(false); }}
+                />
+                <MoreItem
+                  icon={<BookOpen size={14} className="text-accent" />}
+                  label="Book Info"
+                  onClick={() => { handleBookSummary(); setMoreOpen(false); }}
+                />
+                {isOwner && (
+                  <MoreItem
+                    icon={<Palette size={14} className="text-accent" />}
+                    label="Mood board"
+                    onClick={() => { setMoodboardOpen(true); setMoreOpen(false); }}
+                  />
+                )}
+                <MoreItem
+                  icon={<Pin size={14} className="text-red-500" />}
+                  label="Browse Pinterest"
+                  onClick={() => { openPinterest(); setMoreOpen(false); }}
+                />
+                {isOwner && (
+                  <MoreItem
+                    icon={<Youtube size={14} className="text-red-500" />}
+                    label="Import YouTube transcript"
+                    onClick={() => { setYoutubeOpen(true); setMoreOpen(false); }}
+                  />
+                )}
+                <MoreItem
+                  icon={<Music2 size={14} className="text-pink-500" />}
+                  label="Import TikTok transcript"
+                  onClick={() => { setTiktokOpen(true); setMoreOpen(false); }}
+                />
+              </div>
+            )}
+          </div>
+
           <div className="w-px bg-border self-stretch mx-0.5" />
           <button onClick={toggleFavorite} className="p-1.5 rounded hover:bg-bg" title="Favorite">
             <Star size={15} className={favorite ? 'fill-yellow-400 stroke-yellow-500' : ''} />
@@ -1876,7 +1961,14 @@ export function CanvasPageEditor({
       </div>
 
       {/* ── Formatting toolbar (operates on currently-focused block) ──── */}
-      <div className="flex items-center gap-0.5 px-5 py-1 border-b border-border bg-surface/50 shrink-0 flex-wrap text-muted">
+      {/* Dims + goes inert until a block has been focused, so clicking a
+          format button before selecting a block reads as disabled rather
+          than silently doing nothing. */}
+      <div
+        className={`flex items-center gap-0.5 px-5 py-1 border-b border-border bg-surface/50 shrink-0 flex-wrap text-muted transition-opacity ${
+          hasFormatTarget ? '' : 'opacity-40 pointer-events-none'
+        }`}
+      >
         {/* Inline marks */}
         <FmtBtn icon={<Bold size={14} />} title="Bold (Ctrl/Cmd+B)"
           onAct={() => runOnFocused((e) => e.chain().focus().toggleBold().run())} />
@@ -1992,7 +2084,9 @@ export function CanvasPageEditor({
         <FmtBtn icon={<Redo2 size={14} />} title="Redo (Ctrl/Cmd+Shift+Z)"
           onAct={() => runOnFocused((e) => e.chain().focus().redo().run())} />
         <span className="ml-2 text-[10px] text-muted/60 hidden sm:inline">
-          Tip: press &quot;/&quot; in any block for the slash menu
+          {hasFormatTarget
+            ? 'Tip: press "/" in any block for the slash menu'
+            : 'Select a block to start formatting'}
         </span>
       </div>
 
@@ -2076,6 +2170,7 @@ export function CanvasPageEditor({
               onResizeHeightEnd={handleResizeHeightEnd}
               onDoubleTap={focusOnBlock}
               onInsertDatabase={addDatabaseBlock}
+              autoFocus={newBlockId === b.id}
             />
           ))}
 
@@ -2215,6 +2310,28 @@ function FmtBtn({
       className="p-1.5 rounded hover:bg-bg hover:text-text transition-colors"
     >
       {icon}
+    </button>
+  );
+}
+
+// ——— Overflow ("More") menu row ————————————————————————————————————————————
+function MoreItem({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left text-text hover:bg-bg transition-colors"
+    >
+      {icon}
+      {label}
     </button>
   );
 }
