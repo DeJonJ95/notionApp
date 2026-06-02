@@ -60,6 +60,20 @@ async function saveImage({ pageId, sourceUrl, alt }) {
   return readJson(res, 'Save image');
 }
 
+// ApplyKit: capture a scraped hiring.cafe listing into the jobs tracker.
+// Same bearer-token auth as the clipper endpoints; the server upserts on
+// (userId, sourceUrl) so re-capturing a job updates rather than duplicates.
+async function ingestJob(payload) {
+  const token = await getToken();
+  if (!token) throw new Error('Not connected — open the extension popup to paste your token.');
+  const res = await fetch(`${API}/api/jobs/ingest`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return readJson(res, 'Capture job');
+}
+
 // ── Per-tab activation state ───────────────────────────────────────
 // Clipping is opt-in per tab: the content script ships dormant and only
 // shows hover buttons once the user activates the current tab from the
@@ -130,6 +144,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .then((data) => sendResponse({ ok: true, ...data }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;
+  }
+  if (msg?.type === 'ingestJob') {
+    ingestJob(msg.payload)
+      .then((data) => sendResponse({ ok: true, ...data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true; // async
   }
   if (msg?.type === 'setToken') {
     setToken(msg.token)

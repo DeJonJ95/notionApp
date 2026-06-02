@@ -54,6 +54,21 @@ to see it once.
 
 You're done. The extension now works on every page you visit.
 
+## Capturing jobs from hiring.cafe (ApplyKit)
+
+On `hiring.cafe` the extension shows two buttons in the bottom-right:
+
+- **➕ Capture this job** — enabled while a job's detail modal is open. It
+  reads the full Job Description plus the title, company, salary, and apply
+  link, and sends the listing to your app's `/jobs` tracker.
+- **📥 Import all on page** — bulk-imports a structured summary of every job
+  in the current results into `/jobs`. Open any of them later and hit
+  "Capture this job" to upgrade it to the full description.
+
+Uses the same token as the clipper (set it once in the popup). Captured jobs
+appear under **Jobs** in the app, where ApplyKit scores your resumes and
+tailors the best fit.
+
 ## Troubleshooting
 
 - **"Not connected" error**: open the extension popup and paste your token again.
