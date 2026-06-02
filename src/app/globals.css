@@ -125,7 +125,20 @@ html, body {
   text-decoration: underline;
 }
 
-/* Mobile-friendly tap targets */
+/* Mobile-friendly tap targets — 44px is the WCAG / platform guideline. */
 @media (max-width: 768px) {
-  button, a { min-height: 36px; }
+  button, a { min-height: 44px; }
+}
+
+/* Thin, unobtrusive horizontal scrollbar for the formatting toolbar so it
+   scrolls instead of wrapping into multiple rows on narrow screens. */
+.toolbar-scroll {
+  scrollbar-width: thin;
+}
+.toolbar-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.toolbar-scroll::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border-radius: 3px;
 }

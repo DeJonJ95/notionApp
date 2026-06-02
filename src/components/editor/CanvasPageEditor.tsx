@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen, AlignLeft, ChevronDown } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen, AlignLeft, ChevronDown, HelpCircle } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -668,6 +668,14 @@ export function CanvasPageEditor({
   // only goes false before the user has ever focused a block — at which
   // point the bar dims to signal it's contextual instead of silently no-op'ing.
   const [hasFormatTarget, setHasFormatTarget] = useState(false);
+  // Canvas shortcuts/help popover (bottom-right).
+  const [helpOpen, setHelpOpen] = useState(false);
+  // Mobile: whether a block editor is currently focused (keyboard likely up),
+  // and how many px the on-screen keyboard overlaps the bottom of the layout
+  // viewport. Together they drive the keyboard-docked formatting strip.
+  const [isEditing, setIsEditing] = useState(false);
+  const [kbInset, setKbInset] = useState(0);
+  const [isTouch, setIsTouch] = useState(false);
   // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom).
   // On a phone the document column (720px) is far wider than the viewport,
   // so default to ~0.55 there — it lands roughly fit-to-width instead of
@@ -697,6 +705,34 @@ export function CanvasPageEditor({
     ro.observe(el);
     window.addEventListener('resize', measure);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
+  // Detect touch/coarse-pointer once so the mobile-only affordances
+  // (keyboard-docked formatting strip) render only where they belong.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    setIsTouch(window.matchMedia('(hover: none)').matches || window.matchMedia('(pointer: coarse)').matches);
+  }, []);
+
+  // Track how far the on-screen keyboard overlaps the bottom of the layout
+  // viewport via the VisualViewport API. When a soft keyboard opens, the
+  // visual viewport shrinks; the difference is how high we float the mobile
+  // formatting strip so it sits just above the keyboard. Falls back to 0
+  // (strip hidden) where VisualViewport isn't available.
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () => {
+      const inset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      setKbInset(inset);
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
   }, []);
 
   // Close the "More" overflow menu on any outside click.
@@ -1068,6 +1104,7 @@ export function CanvasPageEditor({
     // toolbar dies the instant focus flickers (e.g. clicking the toolbar,
     // opening a dialog, mobile keyboard).
     if (id) { lastFocusedId.current = id; setHasFormatTarget(true); }
+    setIsEditing(!!id);
   }, []);
 
   // ── Resize ────────────────────────────────────────────────────────────
@@ -1902,14 +1939,14 @@ export function CanvasPageEditor({
       {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-surface shrink-0 flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={changeIcon} className="text-2xl hover:bg-bg rounded p-1 transition" title="Change icon">
+          <button onClick={changeIcon} className="text-2xl hover:bg-bg rounded p-1 transition" title="Change icon" aria-label="Change page icon">
             {icon ?? '📄'}
           </button>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Untitled"
-            className="text-lg font-semibold bg-transparent outline-none placeholder:text-muted/40 min-w-0 w-48 md:w-72"
+            className="text-lg font-semibold bg-transparent outline-none placeholder:text-muted/60 min-w-0 w-48 md:w-72"
           />
           <span className="text-xs text-muted ml-2">
             {savingState === 'saving' ? 'Saving…' : 'Saved'}
@@ -2001,10 +2038,10 @@ export function CanvasPageEditor({
           </div>
 
           <div className="w-px bg-border self-stretch mx-0.5" />
-          <button onClick={toggleFavorite} className="p-1.5 rounded hover:bg-bg" title="Favorite">
+          <button onClick={toggleFavorite} className="p-1.5 rounded hover:bg-bg" title="Favorite" aria-label={favorite ? 'Remove from favorites' : 'Add to favorites'}>
             <Star size={15} className={favorite ? 'fill-yellow-400 stroke-yellow-500' : ''} />
           </button>
-          <button onClick={deletePage} className="p-1.5 rounded hover:bg-bg text-muted hover:text-red-500" title="Delete page">
+          <button onClick={deletePage} className="p-1.5 rounded hover:bg-bg text-muted hover:text-red-500" title="Delete page" aria-label="Delete page">
             <Trash2 size={15} />
           </button>
         </div>
@@ -2015,7 +2052,7 @@ export function CanvasPageEditor({
           format button before selecting a block reads as disabled rather
           than silently doing nothing. */}
       <div
-        className={`flex items-center gap-0.5 px-5 py-1 border-b border-border bg-surface/50 shrink-0 flex-wrap text-muted transition-opacity ${
+        className={`toolbar-scroll flex items-center gap-0.5 px-5 py-1 border-b border-border bg-surface/50 shrink-0 flex-nowrap overflow-x-auto whitespace-nowrap text-muted transition-opacity [&>*]:shrink-0 ${
           hasFormatTarget ? '' : 'opacity-40 pointer-events-none'
         }`}
       >
@@ -2123,8 +2160,9 @@ export function CanvasPageEditor({
         <button
           type="button"
           title="Upload image"
+          aria-label="Upload image"
           onMouseDown={(e) => { e.preventDefault(); imageInputRef.current?.click(); }}
-          className="p-1.5 rounded hover:bg-bg hover:text-text transition-colors"
+          className="shrink-0 p-1.5 rounded hover:bg-bg hover:text-text transition-colors"
         >
           <ImageIcon size={14} />
         </button>
@@ -2178,7 +2216,7 @@ export function CanvasPageEditor({
             position: 'relative',
             width: canvasW,
             height: canvasH,
-            cursor: 'text',
+            cursor: 'default',
             transform: `scale(${zoom})`,
             transformOrigin: 'top left',
           }}
@@ -2193,7 +2231,7 @@ export function CanvasPageEditor({
               className="pointer-events-none absolute inset-0 flex items-center justify-center"
               aria-hidden="true"
             >
-              <div className="text-center text-muted/60 px-4">
+              <div className="text-center text-muted px-4">
                 <p className="text-sm">Tap anywhere to add a block</p>
                 <p className="text-xs mt-1">
                   Then type <kbd className="font-mono bg-bg/50 border border-border/50 rounded px-1 py-0.5 text-[10px]">/</kbd> inside it for the slash menu
@@ -2226,7 +2264,7 @@ export function CanvasPageEditor({
 
           {/* Hint when canvas is empty */}
           {blocks.length === 0 && (
-            <div style={{ position: 'absolute', left: DOC_X, top: 60 }} className="text-muted/60 text-sm pointer-events-none select-none">
+            <div style={{ position: 'absolute', left: DOC_X, top: 60 }} className="text-muted text-sm pointer-events-none select-none">
               Click anywhere to start writing
             </div>
           )}
@@ -2235,19 +2273,82 @@ export function CanvasPageEditor({
 
       </div>
 
+      {/* Mobile keyboard-docked formatting strip — on touch devices, when a
+          block is being edited and the soft keyboard is up, float the common
+          formatting actions just above the keyboard so the user doesn't have
+          to reach back up to the top toolbar. */}
+      {isTouch && isEditing && kbInset > 0 && (
+        <div
+          className="fixed left-0 right-0 z-40 flex items-center gap-1 px-2 py-1.5 border-t border-border bg-surface/95 backdrop-blur overflow-x-auto toolbar-scroll [&>*]:shrink-0"
+          style={{ bottom: kbInset }}
+        >
+          <FmtBtn icon={<Bold size={16} />} title="Bold"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleBold().run())} />
+          <FmtBtn icon={<Italic size={16} />} title="Italic"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleItalic().run())} />
+          <FmtBtn icon={<Underline size={16} />} title="Underline"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleUnderline().run())} />
+          <div className="w-px self-stretch bg-border mx-0.5" />
+          <FmtBtn icon={<Heading1 size={16} />} title="Heading 1"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleHeading({ level: 1 }).run())} />
+          <FmtBtn icon={<Heading2 size={16} />} title="Heading 2"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleHeading({ level: 2 }).run())} />
+          <div className="w-px self-stretch bg-border mx-0.5" />
+          <FmtBtn icon={<List size={16} />} title="Bulleted list"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleBulletList().run())} />
+          <FmtBtn icon={<ListChecks size={16} />} title="To-do list"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleTaskList().run())} />
+          <FmtBtn icon={<Quote size={16} />} title="Quote"
+            onAct={() => runOnFocused((e) => e.chain().focus().toggleBlockquote().run())} />
+        </div>
+      )}
+
+      {/* Canvas help popover — surfaces the otherwise-hidden gestures/keys. */}
+      {helpOpen && (
+        <div className="fixed bottom-16 right-4 z-40 w-72 rounded-lg border border-border bg-surface shadow-xl p-3 text-xs">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold text-text">Canvas shortcuts</span>
+            <button onClick={() => setHelpOpen(false)} className="p-1 rounded hover:bg-bg text-muted" aria-label="Close help">
+              <X size={13} />
+            </button>
+          </div>
+          <ul className="space-y-1.5 text-muted">
+            <li><span className="text-text">Tap empty canvas</span> — add a block</li>
+            <li><span className="text-text">/</span> inside a block — block menu</li>
+            <li><span className="text-text">Drag handle</span> or <span className="text-text">Alt-drag</span> — move a block</li>
+            <li><span className="text-text">Alt+Shift+Arrows</span> — nudge focused block</li>
+            <li><span className="text-text">Alt+Delete</span> — delete focused/hovered block</li>
+            <li><span className="text-text">Arrange</span> (top bar) — stack blocks into a column</li>
+            <li><span className="text-text">⌘/Ctrl + scroll</span> or pinch — zoom; <span className="text-text">double-tap</span> a block to zoom in</li>
+            <li><span className="text-text">0</span> — fit to screen · <span className="text-text">1</span> — 100%</li>
+          </ul>
+        </div>
+      )}
+
       {/* Floating zoom controls — fixed to bottom-right of viewport */}
       <div className="fixed bottom-4 right-4 z-30 flex items-center gap-0.5 bg-surface/95 border border-border rounded-lg shadow-md px-1 py-0.5 backdrop-blur">
+        <button
+          onClick={() => setHelpOpen((v) => !v)}
+          className={`p-1.5 rounded hover:bg-bg hover:text-text ${helpOpen ? 'text-accent' : 'text-muted'}`}
+          title="Canvas shortcuts & gestures"
+          aria-label="Canvas shortcuts and gestures"
+        >
+          <HelpCircle size={14} />
+        </button>
+        <div className="w-px self-stretch bg-border mx-0.5" />
         <button
           onClick={() => stepZoom(-0.1)}
           className="p-1.5 rounded hover:bg-bg text-muted hover:text-text"
           title="Zoom out"
+          aria-label="Zoom out"
         >
           <ZoomOut size={14} />
         </button>
         <button
-          onClick={fitToScreen}
+          onClick={() => setZoom(1)}
           className="px-2 py-0.5 text-xs font-mono text-muted hover:text-text rounded hover:bg-bg min-w-[3.5rem]"
-          title="Fit to screen"
+          title="Current zoom — click for 100%"
+          aria-label="Reset zoom to 100 percent"
         >
           {Math.round(zoom * 100)}%
         </button>
@@ -2255,15 +2356,18 @@ export function CanvasPageEditor({
           onClick={() => stepZoom(0.1)}
           className="p-1.5 rounded hover:bg-bg text-muted hover:text-text"
           title="Zoom in"
+          aria-label="Zoom in"
         >
           <ZoomIn size={14} />
         </button>
+        <div className="w-px self-stretch bg-border mx-0.5" />
         <button
-          onClick={() => setZoom(1)}
-          className="p-1.5 rounded hover:bg-bg text-muted hover:text-text"
-          title="Reset to 100%"
+          onClick={fitToScreen}
+          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-bg text-xs text-muted hover:text-text"
+          title="Fit everything to the screen (0)"
+          aria-label="Fit to screen"
         >
-          <Maximize2 size={13} />
+          <Maximize2 size={13} /> Fit
         </button>
       </div>
 
@@ -2356,8 +2460,9 @@ function FmtBtn({
     <button
       type="button"
       title={title}
+      aria-label={title}
       onMouseDown={(e) => { e.preventDefault(); onAct(); }}
-      className="p-1.5 rounded hover:bg-bg hover:text-text transition-colors"
+      className="shrink-0 p-1.5 rounded hover:bg-bg hover:text-text transition-colors"
     >
       {icon}
     </button>
