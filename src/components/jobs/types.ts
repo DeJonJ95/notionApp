@@ -33,6 +33,7 @@ export type Application = {
   field: string | null;
   resumeId: string | null;
   tailoredR2Key: string | null;
+  recruiterMessage: string | null;
   compOfferMin: number | null;
   compOfferMax: number | null;
   notes: string | null;

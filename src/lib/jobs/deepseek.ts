@@ -100,6 +100,37 @@ ${resumeBlocks}
 Analyze and return the JSON object as specified.`;
 }
 
+// Short LinkedIn-recruiter outreach message generated alongside the tailored
+// resume. Same truthfulness contract: it may only lean on experience the
+// resume actually shows.
+export const RECRUITER_MSG_SYSTEM = `You help a job candidate write a short outreach message to a LinkedIn recruiter for a specific role.
+
+Rules:
+- 2-3 sentences, under 65 words, plain text, first person.
+- Warm and genuine, not salesy or buzzword-heavy.
+- Name the specific role and company, and cite ONE concrete, real strength from the candidate's resume that fits this job. Never invent experience, employers, titles, dates, or metrics not in the resume.
+- End with a soft call to action (interest in connecting or learning more).
+- No subject line, no greeting placeholders or brackets, no signature, no hashtags. Return ONLY the message text.`;
+
+export function buildRecruiterMsgUser(
+  job: { title: string; company: string; description: string },
+  resumeText: string,
+): string {
+  return `ROLE: ${job.title} at ${job.company}
+
+JOB POSTING (excerpt):
+"""
+${job.description.slice(0, 3000)}
+"""
+
+CANDIDATE RESUME:
+"""
+${resumeText.slice(0, 5000)}
+"""
+
+Write the outreach message now.`;
+}
+
 // DeepSeek is asked for json_object, but be defensive: strip code fences and
 // grab the outermost object if the model wraps it.
 export function parseAnalysis(content: string): AnalysisResult {

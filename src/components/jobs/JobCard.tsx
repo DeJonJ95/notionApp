@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import {
   Sparkles, Loader2, Download, ExternalLink, ChevronDown, ChevronRight,
-  CheckCircle2, AlertTriangle, FileText, Wand2,
+  CheckCircle2, AlertTriangle, FileText, Wand2, Mail, Copy, Check,
 } from 'lucide-react';
 import { ALL_STATUSES, STATUS_COLORS, statusLabel } from '@/lib/jobs/status';
 import type { Listing, Resume, Tweak, Analysis } from './types';
@@ -38,7 +38,7 @@ export function JobCard({
   const [resumeId, setResumeId] = useState<string>(
     analysis?.recommendedResumeId || app?.resumeId || resumes[0]?.id || '',
   );
-  const [tailorResult, setTailorResult] = useState<{ url: string; applied: number; unmatched: Tweak[] } | null>(null);
+  const [tailorResult, setTailorResult] = useState<{ url: string; applied: number; unmatched: Tweak[]; recruiterMessage: string | null } | null>(null);
 
   const analyze = async () => {
     setErr(''); setAnalyzing(true);
@@ -68,7 +68,7 @@ export function JobCard({
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? 'Tailoring failed');
-      setTailorResult({ url: d.downloadUrl, applied: d.applied, unmatched: d.unmatched ?? [] });
+      setTailorResult({ url: d.downloadUrl, applied: d.applied, unmatched: d.unmatched ?? [], recruiterMessage: d.recruiterMessage ?? null });
       onChanged();
     } catch (e: any) { setErr(e.message); }
     finally { setTailoring(false); }
@@ -240,6 +240,11 @@ export function JobCard({
                   </a>
                 </div>
               )}
+
+              {/* Recruiter outreach message — generated alongside the resume */}
+              {(tailorResult?.recruiterMessage ?? app?.recruiterMessage) && (
+                <RecruiterMessage text={(tailorResult?.recruiterMessage ?? app?.recruiterMessage)!} />
+              )}
             </div>
           )}
 
@@ -258,6 +263,30 @@ export function JobCard({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function RecruiterMessage({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked — user can select manually */ }
+  };
+  return (
+    <div className="border border-border rounded p-3 bg-bg space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-1">
+          <Mail size={12} /> Recruiter outreach message
+        </div>
+        <button onClick={copy} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
+          {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <p className="text-sm whitespace-pre-wrap">{text}</p>
     </div>
   );
 }

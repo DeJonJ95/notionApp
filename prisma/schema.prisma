@@ -102,6 +102,7 @@ model JobApplication {
   resumeId      String?
   resume        Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
   tailoredR2Key String?
+  recruiterMessage String?         @db.Text
   status        String             @default("SAVED")
   field         String?
   compOfferMin  Int?
