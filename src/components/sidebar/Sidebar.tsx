@@ -11,6 +11,7 @@ import { ExtractFromNotes } from '@/components/extract/ExtractFromNotes';
 import { ShortcutsHelp } from '@/components/sidebar/ShortcutsHelp';
 import { cn } from '@/lib/utils';
 import { promptDialog } from '@/components/ui/feedback';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 type Database = { id: string; name: string };
 type Workspace = { id: string; name: string; slug: string; icon: string | null; databases: Database[] };
@@ -411,7 +412,8 @@ export function Sidebar() {
           </div>
         </nav>
 
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-border space-y-1">
+          <ThemeToggle />
           <button
             onClick={() => signOut({ callbackUrl: '/signin' })}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg text-sm text-muted"

@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Light palette is the default. Dark applies automatically with the OS
+   preference, OR explicitly when the user forces a theme via the toggle
+   (`.theme-dark` / `.theme-light` on <html>). The explicit classes carry
+   higher specificity (`:root.theme-*` = two simple selectors) than the base
+   and media `:root` rules, so a manual choice always wins over the system. */
 :root {
   --bg: 255 255 255;
   --surface: 247 247 245;
@@ -20,6 +25,25 @@
     --muted: 155 155 155;
     --accent: 35 131 226;
   }
+}
+
+/* Manual overrides — win over the system media query regardless of OS. */
+:root.theme-light {
+  --bg: 255 255 255;
+  --surface: 247 247 245;
+  --border: 233 233 231;
+  --text: 25 23 17;
+  --muted: 120 119 116;
+  --accent: 35 131 226;
+}
+
+:root.theme-dark {
+  --bg: 25 25 25;
+  --surface: 32 32 32;
+  --border: 47 47 47;
+  --text: 230 230 230;
+  --muted: 155 155 155;
+  --accent: 35 131 226;
 }
 
 html, body {

@@ -33,7 +33,19 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Apply the saved theme before first paint so there's no flash of
+            the wrong palette on load. Runs synchronously in <head>; the
+            ThemeToggle keeps localStorage in sync afterward. No saved value
+            means "system" — handled by the prefers-color-scheme media query. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('kove:theme');if(t==='dark')document.documentElement.classList.add('theme-dark');else if(t==='light')document.documentElement.classList.add('theme-light');}catch(e){}})();",
+          }}
+        />
+      </head>
       <body className="min-h-screen bg-bg text-text antialiased">
         <Providers>{children}</Providers>
       </body>

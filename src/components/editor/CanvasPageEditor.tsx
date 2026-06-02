@@ -477,7 +477,7 @@ function CanvasCard({
           data-drag-handle
           style={{ touchAction: 'none' }}
           className="p-1 rounded cursor-grab active:cursor-grabbing text-muted hover:text-text hover:bg-surface transition-colors"
-          title="Drag to move (or hold Alt and drag anywhere on the block)"
+          title="Drag to move (or hold Alt and drag anywhere on the block, or Alt+Shift+Arrows)"
         >
           <GripVertical size={14} />
         </button>
@@ -1156,6 +1156,56 @@ export function CanvasPageEditor({
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [handleDeleteBlock]);
+
+  // ── Keyboard-movable blocks (accessibility) ───────────────────────────
+  // Dragging is the only pointer way to reposition a block; this gives a
+  // keyboard path. Alt+Shift+Arrow nudges the focused block (works while
+  // editing its text) or, if nothing is focused, the hovered block.
+  // Alt+Shift (not plain Alt) avoids the browser's Alt+Left/Right history
+  // navigation. The new position persists after a short pause.
+  useEffect(() => {
+    const STEP = 24;
+    let saveTimer: ReturnType<typeof setTimeout> | null = null;
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
+      let dx = 0;
+      let dy = 0;
+      if (e.key === 'ArrowLeft') dx = -STEP;
+      else if (e.key === 'ArrowRight') dx = STEP;
+      else if (e.key === 'ArrowUp') dy = -STEP;
+      else if (e.key === 'ArrowDown') dy = STEP;
+      else return;
+      const id = focusedBlockRef.current || hoveredBlockRef.current;
+      if (!id) return;
+      e.preventDefault();
+      setBlocks((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? { ...b, canvasX: Math.max(0, b.canvasX + dx), canvasY: Math.max(0, b.canvasY + dy) }
+            : b
+        )
+      );
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        setBlocks((prev) => {
+          const b = prev.find((x) => x.id === id);
+          if (b) {
+            fetch(`/api/blocks/${id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ canvasX: b.canvasX, canvasY: b.canvasY }),
+            }).catch(() => {});
+          }
+          return prev;
+        });
+      }, 500);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (saveTimer) clearTimeout(saveTimer);
+    };
+  }, []);
 
   // ── Editor ref registry (for summarize/organize) ──────────────────────
   const registerEditor = useCallback((id: string, editor: any) => {
