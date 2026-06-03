@@ -54,20 +54,31 @@ to see it once.
 
 You're done. The extension now works on every page you visit.
 
-## Capturing jobs from hiring.cafe (ApplyKit)
-
-On `hiring.cafe` the extension shows two buttons in the bottom-right:
-
-- **➕ Capture this job** — enabled while a job's detail modal is open. It
-  reads the full Job Description plus the title, company, salary, and apply
-  link, and sends the listing to your app's `/jobs` tracker.
-- **📥 Import all on page** — bulk-imports a structured summary of every job
-  in the current results into `/jobs`. Open any of them later and hit
-  "Capture this job" to upgrade it to the full description.
+## Capturing jobs (ApplyKit)
 
 Uses the same token as the clipper (set it once in the popup). Captured jobs
 appear under **Jobs** in the app, where ApplyKit scores your resumes and
 tailors the best fit.
+
+### On any job page
+
+A **➕ Capture this job** button appears in the bottom-right whenever the page
+looks like a job posting — i.e. it has schema.org JobPosting data (Greenhouse,
+Lever, Ashby, Indeed, most company career pages) or it's a known ATS / job
+board (Workday, iCIMS, SmartRecruiters, …) or a single-job view on LinkedIn /
+Indeed / Glassdoor / etc. It reads the **rendered** page (so it works on
+JS-heavy sites a server fetch can't read): if structured data is present it
+captures the full posting; otherwise it sends the visible text and the app
+fills in the title/company.
+
+### On hiring.cafe
+
+Two extra buttons tailored to hiring.cafe:
+
+- **➕ Capture this job** — while a job's detail modal is open, reads the full
+  Job Description plus title/company/salary/apply link.
+- **📥 Import all on page** — bulk-imports a structured summary of every result.
+  Open any later and "Capture this job" to upgrade it to the full description.
 
 ## Troubleshooting
 
