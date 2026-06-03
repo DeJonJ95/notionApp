@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { Plus, Loader2, FileText, Briefcase, X } from 'lucide-react';
+import { Plus, Loader2, FileText, Briefcase, X, Globe } from 'lucide-react';
 import { JobCard } from './JobCard';
 import { PIPELINE_STATUSES, statusLabel } from '@/lib/jobs/status';
 import type { Listing, Resume } from './types';
@@ -85,6 +85,8 @@ export function JobsDashboard() {
 }
 
 function AddJobModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [url, setUrl] = useState('');
+  const [fetching, setFetching] = useState(false);
   const [sourceUrl, setSourceUrl] = useState('');
   const [company, setCompany] = useState('');
   const [title, setTitle] = useState('');
@@ -92,6 +94,22 @@ function AddJobModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =>
   const [description, setDescription] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const fetchFromUrl = async () => {
+    if (!url.trim()) { setError('Paste a job URL first'); return; }
+    setError(''); setFetching(true);
+    try {
+      const r = await fetch('/api/jobs/ingest-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? 'Could not fetch that page');
+      onAdded();
+    } catch (e: any) { setError(e.message); }
+    finally { setFetching(false); }
+  };
 
   const submit = async () => {
     setError(''); setSaving(true);
@@ -122,6 +140,31 @@ function AddJobModal({ onClose, onAdded }: { onClose: () => void; onAdded: () =>
           <button onClick={onClose} className="p-1 rounded hover:bg-bg"><X size={18} /></button>
         </div>
         <div className="space-y-3">
+          {/* Fastest path: paste any job URL — works on most ATS + company pages */}
+          <div>
+            <label className="text-xs font-medium text-muted">Paste a job link (LinkedIn, Greenhouse, Lever, company page…)</label>
+            <div className="flex gap-2 mt-1">
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchFromUrl()}
+                placeholder="https://…"
+                className="flex-1 px-3 py-2 rounded border border-border bg-bg text-sm"
+              />
+              <button
+                onClick={fetchFromUrl}
+                disabled={fetching}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded bg-accent text-white text-sm disabled:opacity-50 shrink-0"
+              >
+                {fetching ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />} Fetch
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <div className="h-px flex-1 bg-border" /> or enter manually <div className="h-px flex-1 bg-border" />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Job title" className="px-3 py-2 rounded border border-border bg-bg text-sm" />
             <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Company" className="px-3 py-2 rounded border border-border bg-bg text-sm" />

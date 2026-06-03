@@ -100,6 +100,36 @@ ${resumeBlocks}
 Analyze and return the JSON object as specified.`;
 }
 
+// Fallback for capturing a job from a page that has no JobPosting JSON-LD:
+// extract just the title + company from the page text. The job description
+// itself is taken verbatim from the cleaned page text (not the model) so the
+// full JD is preserved and nothing is fabricated.
+export const PARSE_PAGE_SYSTEM = `You read the text of a job-posting web page and extract two facts: the job title and the hiring company name.
+Return ONLY a JSON object: {"title": string, "company": string}.
+Use exactly what the page says. If a field is genuinely not present, use an empty string. Never guess or invent.`;
+
+export function buildParsePageUser(text: string): string {
+  return `JOB PAGE TEXT:
+"""
+${text.slice(0, 9000)}
+"""
+
+Return the JSON object now.`;
+}
+
+export function parseTitleCompany(content: string): { title: string; company: string } {
+  let txt = content.trim();
+  if (txt.startsWith('```')) txt = txt.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  const s = txt.indexOf('{'), e = txt.lastIndexOf('}');
+  if (s >= 0 && e > s) txt = txt.slice(s, e + 1);
+  try {
+    const o = JSON.parse(txt);
+    return { title: String(o.title ?? '').trim(), company: String(o.company ?? '').trim() };
+  } catch {
+    return { title: '', company: '' };
+  }
+}
+
 // Short LinkedIn-recruiter outreach message generated alongside the tailored
 // resume. Same truthfulness contract: it may only lean on experience the
 // resume actually shows.
