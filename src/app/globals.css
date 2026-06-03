@@ -142,3 +142,34 @@ html, body {
   background: rgb(var(--border));
   border-radius: 3px;
 }
+
+/* Aesthetic, unobtrusive scrollbars app-wide. The thumb is a slim rounded
+   pill (a transparent border + padding-box clip gives it breathing room) that
+   stays quiet until hovered. Firefox uses the thin/colour properties; WebKit
+   uses the pseudo-elements. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--border));
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--muted));
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+/* Don't draw the little corner box where two scrollbars meet. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
