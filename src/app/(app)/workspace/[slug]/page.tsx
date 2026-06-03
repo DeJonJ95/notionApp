@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { NewPageButton } from '@/components/sidebar/NewPageButton';
 import { NewDatabaseButton } from '@/components/database/NewDatabaseButton';
+import { EntityIcon } from '@/components/icons/registry';
 
 export default async function WorkspacePage({
   params,
@@ -70,7 +71,7 @@ export default async function WorkspacePage({
                 href={`/page/${p.id}`}
                 className="flex items-center gap-2 px-2 py-2 rounded-md hover:bg-surface"
               >
-                <span>{p.icon ?? '📄'}</span>
+                <EntityIcon icon={p.icon} size={16} className="shrink-0 text-muted" />
                 <span className="truncate">{p.title}</span>
               </Link>
             </li>

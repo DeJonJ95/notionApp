@@ -1,16 +1,17 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase, NotebookPen } from 'lucide-react';
 import { useRecentPages } from '@/lib/recentPages';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
+import { NewWorkspaceModal } from './NewWorkspaceModal';
+import { EntityIcon } from '@/components/icons/registry';
 import { SearchModal } from '@/components/search/SearchModal';
 import { TemplateModal } from '@/components/templates/TemplateModal';
 import { ExtractFromNotes } from '@/components/extract/ExtractFromNotes';
 import { ShortcutsHelp } from '@/components/sidebar/ShortcutsHelp';
 import { cn } from '@/lib/utils';
-import { promptDialog } from '@/components/ui/feedback';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 type Database = { id: string; name: string };
@@ -35,6 +36,7 @@ export function Sidebar() {
   const [templateOpen, setTemplateOpen] = useState(false);
   const [extractOpen, setExtractOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [newWsOpen, setNewWsOpen] = useState(false);
   const [reminderCount, setReminderCount] = useState(0);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
@@ -165,6 +167,12 @@ export function Sidebar() {
       )}
       {extractOpen && <ExtractFromNotes onClose={() => setExtractOpen(false)} />}
       {shortcutsOpen && <ShortcutsHelp onClose={() => setShortcutsOpen(false)} />}
+      {newWsOpen && (
+        <NewWorkspaceModal
+          onClose={() => setNewWsOpen(false)}
+          onCreated={() => { setNewWsOpen(false); refresh(); }}
+        />
+      )}
 
       {/* Mobile toggle — floating bottom-left so it never sits on top of
           page titles / breadcrumbs (which are top-left). Hidden while the
@@ -343,7 +351,7 @@ export function Sidebar() {
               onClick={() => setOpen(false)}
               className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg font-medium text-accent"
             >
-              <span>📔</span> Today&apos;s Journal
+              <NotebookPen size={15} /> Today&apos;s Journal
             </Link>
           )}
 
@@ -359,7 +367,7 @@ export function Sidebar() {
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg truncate"
                 >
-                  <span>{r.icon ?? '📄'}</span>
+                  <EntityIcon icon={r.icon} size={15} className="shrink-0 text-muted" />
                   <span className="truncate">{r.title}</span>
                 </Link>
               ))}
@@ -378,7 +386,7 @@ export function Sidebar() {
                   onClick={() => setOpen(false)}
                   className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg truncate"
                 >
-                  <span>{p.icon ?? '📄'}</span>
+                  <EntityIcon icon={p.icon} size={15} className="shrink-0 text-muted" />
                   <span className="truncate">{p.title}</span>
                 </Link>
               ))}
@@ -397,21 +405,7 @@ export function Sidebar() {
               />
             ))}
             <button
-              onClick={async () => {
-                const name = await promptDialog({
-                  title: 'New workspace',
-                  message: 'Name your workspace.',
-                  defaultValue: 'New workspace',
-                });
-                if (name === null) return;
-                const trimmed = name.trim() || 'New workspace';
-                await fetch('/api/workspaces', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ name: trimmed }),
-                });
-                refresh();
-              }}
+              onClick={() => setNewWsOpen(true)}
               className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded text-xs text-muted hover:bg-bg hover:text-text transition-colors"
               title="Create a new workspace"
             >

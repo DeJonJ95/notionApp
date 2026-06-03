@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { EntityIcon } from '@/components/icons/registry';
 import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen, AlignLeft, ChevronDown, HelpCircle } from 'lucide-react';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
@@ -1939,8 +1940,8 @@ export function CanvasPageEditor({
       {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-surface shrink-0 flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={changeIcon} className="text-2xl hover:bg-bg rounded p-1 transition" title="Change icon" aria-label="Change page icon">
-            {icon ?? '📄'}
+          <button onClick={changeIcon} className="hover:bg-bg rounded p-1 transition flex items-center" title="Change icon" aria-label="Change page icon">
+            <EntityIcon icon={icon} size={26} />
           </button>
           <input
             value={title}

@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { ChevronRight, ChevronDown, Plus, Trash2, LayoutGrid, Edit3, Check, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { confirmDialog, promptDialog, toast } from '@/components/ui/feedback';
+import { confirmDialog, toast } from '@/components/ui/feedback';
 import { PagePreview } from './PagePreview';
+import { EntityIcon } from '@/components/icons/registry';
+import { IconPicker } from '@/components/icons/IconPicker';
 
 type Workspace = { id: string; name: string; slug: string; icon: string | null };
 type Database = { id: string; name: string };
@@ -34,8 +36,22 @@ export function PageTree({
   const [expanded, setExpanded] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(workspace.name);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const iconPickerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
+
+  // Close the icon popover when clicking outside it.
+  useEffect(() => {
+    if (!iconPickerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (iconPickerRef.current && !iconPickerRef.current.contains(e.target as Node)) {
+        setIconPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [iconPickerOpen]);
   const topLevel = pages
     .filter((p) => p.parentId === null)
     .sort((a, b) => a.position - b.position);
@@ -65,18 +81,12 @@ export function PageTree({
     onChange();
   };
 
-  const changeIcon = async () => {
-    const next = await promptDialog({
-      title: 'Workspace icon',
-      message: 'Enter an emoji (or leave blank to clear).',
-      defaultValue: workspace.icon ?? '',
-      placeholder: '📁',
-    });
-    if (next === null) return;
+  const setWorkspaceIcon = async (icon: string | null) => {
+    setIconPickerOpen(false);
     await fetch(`/api/workspaces/${workspace.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ icon: next.trim() || null }),
+      body: JSON.stringify({ icon }),
     });
     onChange();
   };
@@ -112,14 +122,25 @@ export function PageTree({
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
 
-        {/* Icon — click to change */}
-        <button
-          onClick={changeIcon}
-          className="px-1 py-1 rounded hover:bg-bg text-xs shrink-0"
-          title="Change workspace icon"
-        >
-          {workspace.icon ?? '📁'}
-        </button>
+        {/* Icon — click to pick from the icon library */}
+        <div className="relative shrink-0" ref={iconPickerRef}>
+          <button
+            onClick={() => setIconPickerOpen((v) => !v)}
+            className="px-1 py-1 rounded hover:bg-bg shrink-0 flex items-center"
+            title="Change workspace icon"
+          >
+            <EntityIcon icon={workspace.icon} kind="workspace" size={15} />
+          </button>
+          {iconPickerOpen && (
+            <div className="absolute z-50 left-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg p-2">
+              <IconPicker
+                value={workspace.icon}
+                onSelect={setWorkspaceIcon}
+                onClear={() => setWorkspaceIcon(null)}
+              />
+            </div>
+          )}
+        </div>
 
         {renaming ? (
           <>
@@ -331,7 +352,7 @@ function PageNode({
           onClick={() => { cancelHover(); onNavigate?.(); }}
           className="flex-1 flex items-center gap-1.5 py-1 truncate text-sm"
         >
-          <span>{page.icon ?? '📄'}</span>
+          <EntityIcon icon={page.icon} size={14} className="shrink-0 text-muted" />
           <span className="truncate">{page.title}</span>
         </Link>
         <button

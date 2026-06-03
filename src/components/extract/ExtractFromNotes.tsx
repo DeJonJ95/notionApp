@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Sparkles, Check, AlertCircle, ChevronRight, FileText, Layers, ClipboardPaste, Pencil } from 'lucide-react';
+import { EntityIcon } from '@/components/icons/registry';
 import type { ResolvedChange } from '@/app/api/extract/route';
 
 type Database = { id: string; name: string };
@@ -318,7 +319,7 @@ export function ExtractFromNotes({ onClose }: Props) {
                             onChange={() => setPickedPageId(p.id)}
                             className="accent-accent"
                           />
-                          <span className="w-4 text-center">{p.icon ?? '📄'}</span>
+                          <EntityIcon icon={p.icon} size={15} className="shrink-0 text-muted" />
                           <span className="truncate flex-1">{p.title || 'Untitled'}</span>
                           <span className="text-xs text-muted shrink-0">
                             {new Date(p.updatedAt).toLocaleDateString()}
@@ -366,7 +367,7 @@ export function ExtractFromNotes({ onClose }: Props) {
                             onChange={() => toggleRecentPage(p.id)}
                             className="accent-accent"
                           />
-                          <span className="w-4 text-center">{p.icon ?? '📄'}</span>
+                          <EntityIcon icon={p.icon} size={15} className="shrink-0 text-muted" />
                           <span className="truncate flex-1 text-text">{p.title || 'Untitled'}</span>
                           <span className="text-xs text-muted shrink-0">
                             {new Date(p.updatedAt).toLocaleDateString()}
