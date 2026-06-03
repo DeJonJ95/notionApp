@@ -41,20 +41,29 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const resume = await prisma.resume.findFirst({
     where: { id: parsed.data.resumeId, userId },
-    select: { r2Key: true, parsedText: true },
+    select: { r2Key: true, parsedText: true, fileType: true },
   });
   if (!resume) return NextResponse.json({ error: 'Resume not found' }, { status: 404 });
 
-  let result: { bytes: Buffer; applied: number; unmatched: { original: string; rewrite: string }[] };
-  try {
-    const original = await getBytes(resume.r2Key);
-    result = tailorDocx(original, parsed.data.tweaks);
-  } catch {
-    return NextResponse.json({ error: 'Could not tailor that resume' }, { status: 422 });
+  // Surgical in-place editing only works for .docx. PDF resumes can't be edited
+  // without reflowing, so for a PDF we skip the file and the user applies the
+  // approved tweaks manually (the recruiter message + tracking still run).
+  let applied = 0;
+  let unmatched: { original: string; rewrite: string }[] = [];
+  let tailoredR2Key: string | null = null;
+  if (resume.fileType === 'docx') {
+    let result: { bytes: Buffer; applied: number; unmatched: { original: string; rewrite: string }[] };
+    try {
+      const original = await getBytes(resume.r2Key);
+      result = tailorDocx(original, parsed.data.tweaks);
+    } catch {
+      return NextResponse.json({ error: 'Could not tailor that resume' }, { status: 422 });
+    }
+    applied = result.applied;
+    unmatched = result.unmatched;
+    tailoredR2Key = `${userId}/tailored/${listing.id}-${Date.now()}.docx`;
+    await putBytes(tailoredR2Key, result.bytes, DOCX_MIME);
   }
-
-  const tailoredR2Key = `${userId}/tailored/${listing.id}-${Date.now()}.docx`;
-  await putBytes(tailoredR2Key, result.bytes, DOCX_MIME);
 
   // Generate a short LinkedIn-recruiter outreach message from the same
   // resume + job. Best-effort: a failure here shouldn't fail the tailoring.
@@ -96,9 +105,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   logCall('applykit', 'tailor', { userId });
   return NextResponse.json({
     application,
-    applied: result.applied,
-    unmatched: result.unmatched,
+    applied,
+    unmatched,
     recruiterMessage,
-    downloadUrl: `/api/files/download?key=${encodeURIComponent(tailoredR2Key)}`,
+    tailoredFile: !!tailoredR2Key,
+    downloadUrl: tailoredR2Key ? `/api/files/download?key=${encodeURIComponent(tailoredR2Key)}` : null,
   });
 }

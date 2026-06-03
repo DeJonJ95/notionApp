@@ -39,7 +39,8 @@ model Resume {
   userId       String
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   label        String
-  r2Key        String           // original .docx object key in R2
+  r2Key        String           // original resume object key in R2
+  fileType     String           @default("docx") // "docx" | "pdf"
   parsedText   String           @db.Text
   createdAt    DateTime         @default(now())
   applications JobApplication[]
