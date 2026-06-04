@@ -2,10 +2,14 @@
 import { useState } from 'react';
 import {
   Sparkles, Loader2, Download, ExternalLink, ChevronDown, ChevronRight,
-  CheckCircle2, AlertTriangle, FileText, Wand2, Mail, Copy, Check,
+  CheckCircle2, AlertTriangle, FileText, Wand2, Mail, Copy, Check, Trash2,
 } from 'lucide-react';
 import { ALL_STATUSES, STATUS_COLORS, statusLabel } from '@/lib/jobs/status';
+import { downloadFile } from '@/lib/jobs/download';
 import type { Listing, Resume, Tweak, Analysis } from './types';
+
+// Filesystem-safe slug for a downloaded tailored resume filename.
+const slug = (s: string) => s.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'resume';
 
 const fmtK = (n: number) => `$${Math.round(n / 1000)}k`;
 function comp(min: number | null, max: number | null): string | null {
@@ -26,6 +30,8 @@ export function JobCard({
   const [open, setOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [tailoring, setTailoring] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [downloadingResume, setDownloadingResume] = useState(false);
   const [err, setErr] = useState('');
 
   const analysis = listing.analysis;
@@ -79,7 +85,36 @@ export function JobCard({
     onChanged();
   };
 
+  const remove = async () => {
+    if (!confirm(`Remove “${listing.title}”? This also deletes its analysis and application history.`)) return;
+    setErr(''); setRemoving(true);
+    try {
+      const r = await fetch(`/api/jobs/${listing.id}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error('Could not remove this job');
+      onChanged(); // list reloads and this card unmounts
+    } catch (e: any) { setErr(e.message); setRemoving(false); }
+  };
+
+  // Stream the tailored resume to a blob so the PWA stays on this screen
+  // instead of navigating away to the file (where there's no way back).
+  const downloadResume = async (url: string) => {
+    setErr(''); setDownloadingResume(true);
+    try {
+      await downloadFile(url, `${slug(listing.company)}-${slug(listing.title)}.docx`);
+    } catch {
+      setErr('Could not download the tailored resume. Please try again.');
+    } finally {
+      setDownloadingResume(false);
+    }
+  };
+
   const compStr = comp(listing.compMin, listing.compMax);
+
+  // Prefer the fresh tailor result, but fall back to the file persisted on the
+  // application so the download survives a page reload / new session.
+  const tailoredUrl =
+    tailorResult?.url ??
+    (app?.tailoredR2Key ? `/api/files/download?key=${encodeURIComponent(app.tailoredR2Key)}` : null);
 
   return (
     <div className="border border-border rounded-lg bg-surface">
@@ -237,11 +272,6 @@ export function JobCard({
                           {tailorResult.unmatched.length} tweak(s) couldn&apos;t be located in the .docx and were skipped.
                         </div>
                       )}
-                      {tailorResult.url && (
-                        <a href={tailorResult.url} className="inline-flex items-center gap-1 text-accent hover:underline">
-                          <Download size={14} /> Download tailored resume
-                        </a>
-                      )}
                     </>
                   ) : (
                     <div className="flex items-start gap-2 text-amber-600">
@@ -261,6 +291,19 @@ export function JobCard({
             </div>
           )}
 
+          {/* Persistent download — works across reloads via the stored file */}
+          {tailoredUrl && (
+            <div>
+              <button
+                onClick={() => downloadResume(tailoredUrl)}
+                disabled={downloadingResume}
+                className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline disabled:opacity-50"
+              >
+                {downloadingResume ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Download tailored resume
+              </button>
+            </div>
+          )}
+
           {err && <p className="text-sm text-red-600">{err}</p>}
 
           {/* Tracker controls */}
@@ -274,6 +317,17 @@ export function JobCard({
               <FileText size={14} /> Mark as applied
             </button>
           )}
+
+          {/* Remove the job and its pipeline (analysis + application) */}
+          <div className="flex justify-end border-t border-border pt-3">
+            <button
+              onClick={remove}
+              disabled={removing}
+              className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-red-600 disabled:opacity-50"
+            >
+              {removing ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />} Remove job
+            </button>
+          </div>
         </div>
       )}
     </div>
