@@ -46,7 +46,7 @@ export default async function DashboardPage() {
               href={`/workspace/${w.slug}`}
               className="rounded-lg border border-border p-4 hover:bg-surface transition"
             >
-              <div className="text-2xl mb-2">{w.icon}</div>
+              <EntityIcon icon={w.icon} kind="workspace" size={24} className="mb-2" />
               <div className="font-medium">{w.name}</div>
               <div className="text-xs text-muted">{w._count.pages} pages</div>
             </Link>
