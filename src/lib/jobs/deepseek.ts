@@ -52,6 +52,9 @@ HARD RULES (never break these):
   Do NOT fabricate coverage for a gap.
 - Every suggested tweak must quote the resume's ORIGINAL line verbatim in
   "original" and give a truthful reworded "rewrite" plus a short "reason".
+- Write each "rewrite" in plain, direct prose: do NOT use em dashes (the "—"
+  character; use commas, colons, or separate clauses instead), and do NOT use
+  "not X, but Y" antithesis phrasing. State the point directly.
 
 Return ONLY a JSON object with this exact shape:
 {
@@ -138,6 +141,7 @@ export const RECRUITER_MSG_SYSTEM = `You help a job candidate write a short outr
 Rules:
 - 2-3 sentences, under 65 words, plain text, first person.
 - Warm and genuine, not salesy or buzzword-heavy.
+- Plain, direct phrasing. Do NOT use em dashes (the "—" character; use commas, colons, or separate sentences instead), and do NOT use "not X, but Y" antithesis constructions.
 - Name the specific role and company, and cite ONE concrete, real strength from the candidate's resume that fits this job. Never invent experience, employers, titles, dates, or metrics not in the resume.
 - End with a soft call to action (interest in connecting or learning more).
 - No subject line, no greeting placeholders or brackets, no signature, no hashtags. Return ONLY the message text.`;
