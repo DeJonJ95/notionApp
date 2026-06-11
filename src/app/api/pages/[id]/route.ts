@@ -11,6 +11,7 @@ const updateSchema = z.object({
   isArchived: z.boolean().optional(),
   parentId: z.string().nullable().optional(),
   position: z.number().optional(),
+  viewMode: z.enum(['document', 'canvas']).optional(),
   // databaseId allows attaching an existing page to a database (Link existing).
   // Pass null to detach.
   databaseId: z.string().nullable().optional(),

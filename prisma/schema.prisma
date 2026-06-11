@@ -295,6 +295,7 @@ model Page {
   position    Float     @default(0)
   isFavorite  Boolean   @default(false)
   isArchived  Boolean   @default(false)
+  viewMode    String?   @default("document")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

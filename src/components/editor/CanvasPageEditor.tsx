@@ -5,7 +5,8 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { EntityIcon } from '@/components/icons/registry';
-import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen, AlignLeft, ChevronDown, HelpCircle } from 'lucide-react';
+import { Star, Trash2, Sparkles, ImageIcon, Database, Mic, ClipboardList, GripVertical, X, Plus, Youtube, Music2, Palette, Pin, Heading1, Heading2, Heading3, List, ListOrdered, ListChecks, Quote, Code, ZoomIn, ZoomOut, Maximize2, Bold, Italic, Underline, Strikethrough, Link2, Minus, Undo2, Redo2, BookOpen, AlignLeft, ChevronDown, HelpCircle, LayoutGrid, FileText } from 'lucide-react';
+import { getPositionBetween } from '@/lib/utils';
 import { CanvasTextBlock } from '@/components/editor/CanvasTextBlock';
 import { OrganizeModal } from '@/components/extract/OrganizeModal';
 import { AudioRecorder } from '@/components/editor/AudioRecorder';
@@ -78,6 +79,7 @@ export type CanvasBlockData = {
   canvasX: number;
   canvasY: number;
   canvasWidth: number;
+  position: number;
 };
 
 type PageData = {
@@ -135,6 +137,7 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
         canvasX: DOC_X,
         canvasY: y,
         canvasWidth: DOC_W_DB,
+        position: 0,
       });
       y += 420 + BLOCK_GAP;
       j++;
@@ -164,6 +167,7 @@ function docToCanvasBlocks(doc: any): Omit<CanvasBlockData, 'id'>[] {
       canvasX: DOC_X,
       canvasY: y,
       canvasWidth: DOC_W_TEXT,
+      position: 0,
     });
     y += Math.max(40, groupH) + BLOCK_GAP;
   }
@@ -628,15 +632,106 @@ function CanvasCard({
   );
 }
 
+// ——— Document-view block row ——————————————————————————————————————————————
+
+function DocumentBlockRow({
+  block,
+  onDelete,
+  onContentUpdate,
+  onBlockEmpty,
+  registerEditor,
+  onFocusChange,
+  onInsertDatabase,
+  autoFocus,
+  onDragHandlePointerDown,
+  isDragging,
+  isDragOver,
+  dragOverHalf,
+  setRef,
+}: {
+  block: CanvasBlockData;
+  onDelete: (id: string) => void;
+  onContentUpdate: (id: string, content: any) => void;
+  onBlockEmpty: (id: string) => void;
+  registerEditor: (id: string, editor: any) => void;
+  onFocusChange: (id: string | null) => void;
+  onInsertDatabase?: () => void;
+  autoFocus?: boolean;
+  onDragHandlePointerDown: (e: React.PointerEvent, blockId: string) => void;
+  isDragging: boolean;
+  isDragOver: boolean;
+  dragOverHalf: 'top' | 'bottom' | null;
+  setRef: (el: HTMLElement | null) => void;
+}) {
+  return (
+    <div
+      ref={setRef}
+      className={`group relative py-0.5 transition-opacity ${isDragging ? 'opacity-30' : ''}`}
+    >
+      {/* Drop indicator line */}
+      {isDragOver && dragOverHalf === 'top' && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-accent rounded pointer-events-none" />
+      )}
+      {isDragOver && dragOverHalf === 'bottom' && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded pointer-events-none" />
+      )}
+      {/* Left gutter — drag handle + delete, visible on hover */}
+      <div className="hidden group-hover:flex flex-col items-center gap-0.5 absolute -left-7 top-1">
+        <button
+          onPointerDown={(e) => onDragHandlePointerDown(e, block.id)}
+          className="p-0.5 rounded text-muted hover:text-text cursor-grab active:cursor-grabbing touch-none select-none"
+          title="Drag to reorder"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical size={14} />
+        </button>
+        <button
+          onClick={() => onDelete(block.id)}
+          className="p-0.5 rounded text-muted hover:text-red-500"
+          title="Delete block"
+          aria-label="Delete block"
+        >
+          <X size={12} />
+        </button>
+      </div>
+      {/* Block content */}
+      <div className="min-w-0">
+        {block.type === 'database' ? (
+          <div className="rounded-lg border border-border bg-surface overflow-hidden">
+            <CanvasDatabaseBlock
+              databaseId={block.content?.databaseId}
+              onSelect={(dbId) => onContentUpdate(block.id, { ...block.content, databaseId: dbId })}
+            />
+          </div>
+        ) : (
+          <CanvasTextBlock
+            blockId={block.id}
+            initialContent={block.content}
+            autoFocus={autoFocus}
+            zoom={1}
+            onUpdate={onContentUpdate}
+            onEmpty={onBlockEmpty}
+            getEditorRef={registerEditor}
+            onFocusChange={onFocusChange}
+            onInsertDatabase={onInsertDatabase}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ——— CanvasPageEditor ——————————————————————————————————————————————————————
 
 export function CanvasPageEditor({
   page,
   initialBlocks,
+  initialViewMode,
   onDeleted,
 }: {
   page: PageData;
   initialBlocks: CanvasBlockData[];
+  initialViewMode?: string;
   // When rendered embedded (e.g. a database split-view panel) the host
   // passes this so deleting the page closes the panel instead of
   // navigating the whole app to home.
@@ -677,6 +772,14 @@ export function CanvasPageEditor({
   const [isEditing, setIsEditing] = useState(false);
   const [kbInset, setKbInset] = useState(0);
   const [isTouch, setIsTouch] = useState(false);
+  // View mode: 'document' = vertical scroll (Notion-style), 'canvas' = freeform
+  const [viewMode, setViewMode] = useState<'document' | 'canvas'>(
+    initialViewMode === 'canvas' ? 'canvas' : 'document'
+  );
+  // Document-mode drag-to-reorder
+  const [docDraggingId, setDocDraggingId] = useState<string | null>(null);
+  const [docDragOverId, setDocDragOverId] = useState<string | null>(null);
+  const [docDragOverHalf, setDocDragOverHalf] = useState<'top' | 'bottom' | null>(null);
   // Canvas-level zoom (transform-scale on the inner canvas; not browser zoom).
   // On a phone the document column (720px) is far wider than the viewport,
   // so default to ~0.55 there — it lands roughly fit-to-width instead of
@@ -694,6 +797,8 @@ export function CanvasPageEditor({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  const docBlockRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const docDragRef = useRef<{ blockId: string } | null>(null);
 
   // Track the scroll viewport's visible size so the canvas can always be
   // at least as big as the window (see canvasW/canvasH below).
@@ -1346,6 +1451,93 @@ export function CanvasPageEditor({
     createBlock(DOC_X, nextStackY(), DOC_W_DB, 'database', { databaseId: null, height: 400 });
   };
 
+  // ── View-mode toggle ───────────────────────────────────────────────────
+  const toggleViewMode = useCallback(async () => {
+    const next: 'document' | 'canvas' = viewMode === 'document' ? 'canvas' : 'document';
+    if (next === 'document') {
+      // canvas → document: rewrite position to match visual canvasY order
+      setBlocks((prev) => {
+        if (prev.length === 0) return prev;
+        const sorted = [...prev].sort((a, b) => a.canvasY - b.canvasY || a.canvasX - b.canvasX);
+        const updated = sorted.map((b, i) => ({ ...b, position: (i + 1) * 1024 }));
+        updated.forEach((b) => {
+          fetch(`/api/blocks/${b.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ position: b.position }),
+          }).catch(() => {});
+        });
+        return updated;
+      });
+    }
+    setViewMode(next);
+    saveMeta({ viewMode: next });
+  }, [viewMode, saveMeta]);
+
+  // ── Document-mode drag-to-reorder ─────────────────────────────────────
+  const handleDocDragStart = useCallback((e: React.PointerEvent, blockId: string) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    docDragRef.current = { blockId };
+    setDocDraggingId(blockId);
+
+    const findOver = (clientY: number): { id: string; half: 'top' | 'bottom' } | null => {
+      let closest: { id: string; half: 'top' | 'bottom' } | null = null;
+      let closestDist = Infinity;
+      for (const [id, el] of docBlockRefs.current.entries()) {
+        if (id === blockId) continue;
+        const rect = el.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const dist = Math.abs(clientY - midY);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = { id, half: clientY < midY ? 'top' : 'bottom' };
+        }
+      }
+      return closest;
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      const over = findOver(ev.clientY);
+      setDocDragOverId(over?.id ?? null);
+      setDocDragOverHalf(over?.half ?? null);
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      const over = findOver(ev.clientY);
+      docDragRef.current = null;
+      setDocDraggingId(null);
+      setDocDragOverId(null);
+      setDocDragOverHalf(null);
+      if (!over || over.id === blockId) return;
+
+      setBlocks((prev) => {
+        const sorted = [...prev].sort((a, b) => a.position - b.position);
+        const withoutDrag = sorted.filter((b) => b.id !== blockId);
+        const overIdx = withoutDrag.findIndex((b) => b.id === over.id);
+        if (overIdx === -1) return prev;
+        const insertIdx = over.half === 'top' ? overIdx : overIdx + 1;
+        const prevPos = insertIdx > 0 ? (withoutDrag[insertIdx - 1]?.position ?? null) : null;
+        const nextPos = insertIdx < withoutDrag.length ? (withoutDrag[insertIdx]?.position ?? null) : null;
+        const newPos = getPositionBetween(prevPos, nextPos);
+        const updated = prev.map((b) => (b.id === blockId ? { ...b, position: newPos } : b));
+        fetch(`/api/blocks/${blockId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ position: newPos }),
+        }).catch(() => {});
+        return updated;
+      });
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+  }, []);
+
   // ── Arrange all blocks into a single document column ──────────────────
   // The freeform canvas lets blocks drift side-by-side, which clips wide
   // content off the right edge and forces horizontal scrolling. This snaps
@@ -1969,12 +2161,24 @@ export function CanvasPageEditor({
           >
             <Database size={12} /> Database
           </button>
+          {viewMode === 'canvas' && (
+            <button
+              onClick={arrangeInColumn}
+              className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
+              title="Stack every block into a single column (fixes blocks that drifted off to the side)"
+            >
+              <AlignLeft size={12} /> Arrange
+            </button>
+          )}
           <button
-            onClick={arrangeInColumn}
+            onClick={toggleViewMode}
             className="flex items-center gap-1.5 text-xs border border-border rounded-lg px-2.5 py-1.5 hover:bg-bg transition"
-            title="Stack every block into a single column (fixes blocks that drifted off to the side)"
+            title={viewMode === 'document' ? 'Switch to freeform canvas' : 'Switch to document view'}
           >
-            <AlignLeft size={12} /> Arrange
+            {viewMode === 'document'
+              ? <><LayoutGrid size={12} /> Canvas</>
+              : <><FileText size={12} /> Document</>
+            }
           </button>
 
           {/* Overflow menu — AI tools + media imports, collapsed so the
@@ -2195,7 +2399,44 @@ export function CanvasPageEditor({
         </div>
       )}
 
+      {/* ── Document (vertical) view ─────────────────────────────────── */}
+      {viewMode === 'document' && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-[760px] mx-auto px-10 md:px-14 py-10">
+            {blocks.length === 0 && (
+              <div className="text-muted text-sm pointer-events-none select-none">
+                Click "Text" above to start writing
+              </div>
+            )}
+            {[...blocks]
+              .sort((a, b) => a.position - b.position)
+              .map((b) => (
+                <DocumentBlockRow
+                  key={b.id}
+                  block={b}
+                  onDelete={handleDeleteBlock}
+                  onContentUpdate={handleContentUpdate}
+                  onBlockEmpty={handleDeleteBlock}
+                  registerEditor={registerEditor}
+                  onFocusChange={handleFocusChange}
+                  onInsertDatabase={addDatabaseBlock}
+                  autoFocus={newBlockId === b.id}
+                  onDragHandlePointerDown={handleDocDragStart}
+                  isDragging={docDraggingId === b.id}
+                  isDragOver={docDragOverId === b.id}
+                  dragOverHalf={docDragOverId === b.id ? docDragOverHalf : null}
+                  setRef={(el) => {
+                    if (el) docBlockRefs.current.set(b.id, el);
+                    else docBlockRefs.current.delete(b.id);
+                  }}
+                />
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Canvas scroll area ────────────────────────────────────────── */}
+      {viewMode === 'canvas' && (
       <div
         ref={scrollRef}
         className="flex-1 overflow-auto relative"
@@ -2273,6 +2514,7 @@ export function CanvasPageEditor({
         </div>
 
       </div>
+      )}
 
       {/* Mobile keyboard-docked formatting strip — on touch devices, when a
           block is being edited and the soft keyboard is up, float the common
@@ -2305,7 +2547,7 @@ export function CanvasPageEditor({
       )}
 
       {/* Canvas help popover — surfaces the otherwise-hidden gestures/keys. */}
-      {helpOpen && (
+      {viewMode === 'canvas' && helpOpen && (
         <div className="fixed bottom-16 right-4 z-40 w-72 rounded-lg border border-border bg-surface shadow-xl p-3 text-xs">
           <div className="flex items-center justify-between mb-2">
             <span className="font-semibold text-text">Canvas shortcuts</span>
@@ -2326,8 +2568,8 @@ export function CanvasPageEditor({
         </div>
       )}
 
-      {/* Floating zoom controls — fixed to bottom-right of viewport */}
-      <div className="fixed bottom-4 right-4 z-30 flex items-center gap-0.5 bg-surface/95 border border-border rounded-lg shadow-md px-1 py-0.5 backdrop-blur">
+      {/* Floating zoom controls — fixed to bottom-right of viewport, canvas mode only */}
+      {viewMode === 'canvas' && <div className="fixed bottom-4 right-4 z-30 flex items-center gap-0.5 bg-surface/95 border border-border rounded-lg shadow-md px-1 py-0.5 backdrop-blur">
         <button
           onClick={() => setHelpOpen((v) => !v)}
           className={`p-1.5 rounded hover:bg-bg hover:text-text ${helpOpen ? 'text-accent' : 'text-muted'}`}
@@ -2370,7 +2612,7 @@ export function CanvasPageEditor({
         >
           <Maximize2 size={13} /> Fit
         </button>
-      </div>
+      </div>}
 
       {/* ── Modals ─────────────────────────────────────────────────────── */}
       {organizeOpen && (

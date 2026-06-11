@@ -26,6 +26,7 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
     canvasX: b.canvasX ?? 60,
     canvasY: b.canvasY ?? 60,
     canvasWidth: b.canvasWidth ?? 420,
+    position: b.position,
   }));
 
   return (
@@ -40,6 +41,7 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
           isFavorite: page.isFavorite,
         }}
         initialBlocks={initialBlocks}
+        initialViewMode={page.viewMode ?? 'document'}
       />
     </div>
   );
