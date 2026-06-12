@@ -721,6 +721,141 @@ function DocumentBlockRow({
   );
 }
 
+// ——— Document-view scroll bookmarks (Notion-style outline rail) ————————————
+//
+// Thin heading bars pinned to the right edge of the document view. Scanned
+// live from the rendered ProseMirror headings so they stay in sync as the
+// user types. Hover expands the rail to show heading text; clicking a bar
+// scrolls that heading to the top. The bar for the section currently at the
+// top of the viewport is highlighted.
+
+type OutlineHeading = { id: string; text: string; level: number };
+
+function DocOutlineRail({
+  scrollRef,
+  blocks,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement>;
+  blocks: CanvasBlockData[];
+}) {
+  const [headings, setHeadings] = useState<OutlineHeading[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [hovered, setHovered] = useState(false);
+
+  // Walk the rendered editor DOM for h1/h2/h3 and build the outline. Scoped to
+  // `.ProseMirror` so headings inside embedded databases don't leak in. Each
+  // element gets a stable data-outline-id (assigned once) used as the scroll
+  // target and active-section key.
+  const scan = useCallback(() => {
+    const sc = scrollRef.current;
+    if (!sc) return;
+    const els = Array.from(
+      sc.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3')
+    ) as HTMLElement[];
+    const list: OutlineHeading[] = [];
+    for (const el of els) {
+      const text = el.textContent?.trim() ?? '';
+      if (!text) continue; // skip empty heading placeholders
+      if (!el.dataset.outlineId) {
+        el.dataset.outlineId = `ol-${Math.random().toString(36).slice(2, 9)}`;
+      }
+      const level = el.tagName === 'H1' ? 1 : el.tagName === 'H2' ? 2 : 3;
+      list.push({ id: el.dataset.outlineId, text, level });
+    }
+    setHeadings(list);
+  }, [scrollRef]);
+
+  // Re-scan on block changes and on any DOM mutation inside the scroll area
+  // (typing, adding/removing blocks). Debounced so a burst of keystrokes only
+  // triggers one rescan.
+  useEffect(() => {
+    scan();
+    const sc = scrollRef.current;
+    if (!sc) return;
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const mo = new MutationObserver(() => {
+      if (t) clearTimeout(t);
+      t = setTimeout(scan, 200);
+    });
+    mo.observe(sc, { subtree: true, childList: true, characterData: true });
+    return () => {
+      if (t) clearTimeout(t);
+      mo.disconnect();
+    };
+  }, [scan, blocks]);
+
+  // Highlight the last heading whose top has scrolled above the fold.
+  useEffect(() => {
+    const sc = scrollRef.current;
+    if (!sc || headings.length === 0) return;
+    const onScroll = () => {
+      const scTop = sc.getBoundingClientRect().top;
+      let active: string | null = headings[0]?.id ?? null;
+      for (const h of headings) {
+        const el = sc.querySelector(`[data-outline-id="${h.id}"]`) as HTMLElement | null;
+        if (!el) continue;
+        if (el.getBoundingClientRect().top - scTop <= 80) active = h.id;
+        else break;
+      }
+      setActiveId(active);
+    };
+    onScroll();
+    sc.addEventListener('scroll', onScroll, { passive: true });
+    return () => sc.removeEventListener('scroll', onScroll);
+  }, [headings, scrollRef]);
+
+  const scrollTo = useCallback(
+    (id: string) => {
+      const el = scrollRef.current?.querySelector(
+        `[data-outline-id="${id}"]`
+      ) as HTMLElement | null;
+      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    [scrollRef]
+  );
+
+  // Nothing to navigate to until there are at least a couple of headings.
+  if (headings.length < 2) return null;
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className={`hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 flex-col items-end gap-1.5 max-h-[80%] overflow-y-auto transition-colors ${
+        hovered ? 'bg-surface/95 border border-border rounded-lg shadow-lg px-3 py-2 backdrop-blur' : ''
+      }`}
+    >
+      {headings.map((h) => {
+        const isActive = h.id === activeId;
+        const barW = h.level === 1 ? 16 : h.level === 2 ? 12 : 8;
+        return (
+          <button
+            key={h.id}
+            onClick={() => scrollTo(h.id)}
+            title={h.text}
+            className="flex items-center justify-end gap-2 group/bar"
+          >
+            <span
+              className={`text-xs text-right truncate transition-all ${
+                hovered ? 'max-w-[220px] opacity-100' : 'max-w-0 opacity-0'
+              } ${isActive ? 'text-text font-medium' : 'text-muted'}`}
+              style={{ paddingLeft: hovered ? (h.level - 1) * 10 : 0 }}
+            >
+              {h.text}
+            </span>
+            <span
+              className={`shrink-0 h-[3px] rounded-full transition-colors ${
+                isActive ? 'bg-accent' : 'bg-muted/40 group-hover/bar:bg-muted'
+              }`}
+              style={{ width: barW }}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ——— CanvasPageEditor ——————————————————————————————————————————————————————
 
 export function CanvasPageEditor({
@@ -797,6 +932,9 @@ export function CanvasPageEditor({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
+  // Scroll container for the vertical document view — the outline rail reads
+  // and scrolls it.
+  const docScrollRef = useRef<HTMLDivElement>(null);
   const docBlockRefs = useRef<Map<string, HTMLElement>>(new Map());
   const docDragRef = useRef<{ blockId: string } | null>(null);
 
@@ -2401,8 +2539,9 @@ export function CanvasPageEditor({
 
       {/* ── Document (vertical) view ─────────────────────────────────── */}
       {viewMode === 'document' && (
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-[760px] mx-auto px-10 md:px-14 py-10">
+        <div className="flex-1 relative min-h-0">
+          <div ref={docScrollRef} className="h-full overflow-y-auto">
+            <div className="max-w-[760px] mx-auto px-10 md:px-14 py-10">
             {blocks.length === 0 && (
               <div className="text-muted text-sm pointer-events-none select-none">
                 Click "Text" above to start writing
@@ -2431,7 +2570,9 @@ export function CanvasPageEditor({
                   }}
                 />
               ))}
+            </div>
           </div>
+          <DocOutlineRail scrollRef={docScrollRef} blocks={blocks} />
         </div>
       )}
 
