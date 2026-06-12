@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { auth } from '@/lib/auth';
 import { Sidebar } from '@/components/sidebar/Sidebar';
+import { PomodoroTimer } from '@/components/pomodoro/PomodoroTimer';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -10,6 +11,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <main className="flex-1 overflow-y-auto">{children}</main>
+      <PomodoroTimer />
     </div>
   );
 }

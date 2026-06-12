@@ -4,8 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { BudgetReminders } from '@/components/budget/BudgetReminders';
 import { WelcomeCard } from '@/components/onboarding/WelcomeCard';
 import { EntityIcon } from '@/components/icons/registry';
-import { PomodoroTimer } from '@/components/pomodoro/PomodoroTimer';
-
 export default async function DashboardPage() {
   const session = await auth();
   const userId = (session?.user as any)?.id;
@@ -81,7 +79,6 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      <PomodoroTimer />
     </div>
   );
 }
