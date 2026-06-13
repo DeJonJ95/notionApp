@@ -220,7 +220,14 @@ export function Sidebar() {
         )}
       >
         <div className="flex items-center justify-between p-3 border-b border-border">
-          <span className="font-semibold text-sm">Kove</span>
+          <Link
+            href="/"
+            onClick={() => setOpen(false)}
+            className="font-semibold text-sm rounded px-1 -mx-1 hover:bg-bg transition-colors"
+            aria-label="Go home"
+          >
+            Kove
+          </Link>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setSearchOpen(true)}

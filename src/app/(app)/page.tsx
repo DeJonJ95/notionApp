@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { BudgetReminders } from '@/components/budget/BudgetReminders';
 import { WelcomeCard } from '@/components/onboarding/WelcomeCard';
 import { EntityIcon } from '@/components/icons/registry';
+import { TodaysNoteButton } from '@/components/journal/TodaysNoteButton';
 export default async function DashboardPage() {
   const session = await auth();
   const userId = (session?.user as any)?.id;
@@ -26,7 +27,12 @@ export default async function DashboardPage() {
       <h1 className="text-3xl font-bold mb-2">
         Hi{session?.user?.name ? `, ${session.user.name.split(' ')[0]}` : ''}
       </h1>
-      <p className="text-muted mb-10">Pick up where you left off.</p>
+      <p className="text-muted mb-6">Pick up where you left off.</p>
+
+      {/* Quick access to today's journal — saves a sidebar trip on mobile */}
+      <div className="mb-10">
+        <TodaysNoteButton />
+      </div>
 
       {/* First-run onboarding — dismissible, localStorage-gated */}
       <WelcomeCard />
