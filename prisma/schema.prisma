@@ -22,6 +22,7 @@ model User {
   categorizationRules CategorizationRule[]
   savingsGoals SavingsGoal[]
   clipperTokens ClipperToken[]
+  calendarTokens CalendarToken[]
   importLogs    ImportLog[]
   resumes         Resume[]
   jobListings     JobListing[]
@@ -143,6 +144,23 @@ model ClipperToken {
   prefix     String
   tokenHash  String   @unique
   label      String?  // optional user-supplied name ("My laptop")
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
+// A subscribe-by-URL token for the read-only ICS calendar feed. Calendar
+// apps (Google, Outlook) fetch the feed URL with no Authorization header,
+// so the secret lives in the URL path itself. Stored as a SHA-256 hash —
+// same model as ClipperToken — so a DB leak doesn't expose the live feed
+// URL. One feed per user: generating a new one replaces the old.
+model CalendarToken {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prefix     String
+  tokenHash  String   @unique
   createdAt  DateTime @default(now())
   lastUsedAt DateTime?
 
