@@ -40,7 +40,6 @@ export function Sidebar() {
   const [reminderCount, setReminderCount] = useState(0);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [pages, setPages] = useState<Page[]>([]);
-  const [todayJournalId, setTodayJournalId] = useState<string | null>(null);
   // Desktop-only collapse — persists across reloads. The mobile drawer
   // (`open`) is independent; on small screens this state is ignored.
   const [collapsed, setCollapsed] = useState(false);
@@ -103,29 +102,8 @@ export function Sidebar() {
       .then((d) => { if (d) setReminderCount(d.overdue + d.dueSoon ? d.overdue.length + d.dueSoon.length : 0); })
       .catch(() => {});
 
-    // Auto-create today's journal page (idempotent — safe to call every mount).
-    // Pass the client's local date so the title matches the user's timezone.
-    const d = new Date();
-    const localDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    fetch(`/api/journal/today?date=${localDate}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data?.pageId) return;
-        setTodayJournalId(data.pageId);
-        if (data.created) {
-          // Refresh pages AND workspaces — the "Daily Journals" workspace
-          // may have just been created on first run, so the tree needs it.
-          fetch('/api/pages')
-            .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-            .then(setPages)
-            .catch(() => {});
-          fetch('/api/workspaces')
-            .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-            .then(setWorkspaces)
-            .catch(() => {});
-        }
-      })
-      .catch(() => {});
+    // No journal auto-create needed here — the dedicated /journal page
+    // handles its own entry creation on first load.
   }, []);
 
   const refresh = () => {
@@ -360,15 +338,13 @@ export function Sidebar() {
             <CalendarDays size={14} /> Calendar feed
           </Link>
 
-          {todayJournalId && (
-            <Link
-              href={`/page/${todayJournalId}`}
-              onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg font-medium text-accent"
-            >
-              <NotebookPen size={15} /> Today&apos;s Journal
-            </Link>
-          )}
+          <Link
+            href="/journal"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg font-medium"
+          >
+            <NotebookPen size={15} /> Journal
+          </Link>
 
           {visibleRecents.length > 0 && (
             <div className="mt-4">
@@ -409,7 +385,9 @@ export function Sidebar() {
           )}
 
           <div className="mt-4 space-y-3">
-            {workspaces.map((w) => (
+            {workspaces
+              .filter((w) => w.name !== 'Daily Journals')
+              .map((w) => (
               <PageTree
                 key={w.id}
                 workspace={w}

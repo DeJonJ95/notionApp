@@ -8,25 +8,26 @@ datasource db {
 }
 
 model User {
-  id         String      @id @default(cuid())
-  email      String      @unique
-  name       String?
-  image      String?
-  emailVerified DateTime?
-  createdAt  DateTime    @default(now())
-  workspaces Workspace[]
-  pages      Page[]
-  accounts   Account[]
-  sessions   Session[]
-  recurringRules RecurringRule[]
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String?
+  image               String?
+  emailVerified       DateTime?
+  createdAt           DateTime             @default(now())
+  workspaces          Workspace[]
+  pages               Page[]
+  accounts            Account[]
+  sessions            Session[]
+  recurringRules      RecurringRule[]
   categorizationRules CategorizationRule[]
-  savingsGoals SavingsGoal[]
-  clipperTokens ClipperToken[]
-  calendarTokens CalendarToken[]
-  importLogs    ImportLog[]
-  resumes         Resume[]
-  jobListings     JobListing[]
-  jobApplications JobApplication[]
+  savingsGoals        SavingsGoal[]
+  clipperTokens       ClipperToken[]
+  calendarTokens      CalendarToken[]
+  journalEntries      JournalEntry[]
+  importLogs          ImportLog[]
+  resumes             Resume[]
+  jobListings         JobListing[]
+  jobApplications     JobApplication[]
 }
 
 // ── ApplyKit: AI job-application assistant ──────────────────────────
@@ -40,7 +41,7 @@ model Resume {
   userId       String
   user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   label        String
-  r2Key        String           // original resume object key in R2
+  r2Key        String // original resume object key in R2
   fileType     String           @default("docx") // "docx" | "pdf"
   parsedText   String           @db.Text
   createdAt    DateTime         @default(now())
@@ -53,24 +54,24 @@ model Resume {
 // manual paste). De-duped per user by source URL so re-capturing the same
 // posting updates rather than duplicates.
 model JobListing {
-  id          String          @id @default(cuid())
-  userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sourceUrl   String          // hiring.cafe (or other) listing URL
-  applyUrl    String?         // employer ATS apply link if known
-  company     String
-  title       String
-  location    String?
-  remote      Boolean         @default(true)
-  description String          @db.Text
-  compMin     Int?
-  compMax     Int?
-  compCurrency String?        @default("USD")
-  field       String?         // e.g. "Frontend", "Data", "Eng Manager"
-  rawJson     Json?           // whatever the capture scraped, for debugging
-  createdAt   DateTime        @default(now())
-  analysis    Analysis?
-  application JobApplication?
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceUrl    String // hiring.cafe (or other) listing URL
+  applyUrl     String? // employer ATS apply link if known
+  company      String
+  title        String
+  location     String?
+  remote       Boolean         @default(true)
+  description  String          @db.Text
+  compMin      Int?
+  compMax      Int?
+  compCurrency String?         @default("USD")
+  field        String? // e.g. "Frontend", "Data", "Eng Manager"
+  rawJson      Json? // whatever the capture scraped, for debugging
+  createdAt    DateTime        @default(now())
+  analysis     Analysis?
+  application  JobApplication?
 
   @@unique([userId, sourceUrl])
   @@index([userId])
@@ -82,12 +83,12 @@ model Analysis {
   id                  String     @id @default(cuid())
   listingId           String     @unique
   listing             JobListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  keywords            Json       // string[] of ATS keywords from the JD
-  requirements        Json       // string[] of hard requirements
+  keywords            Json // string[] of ATS keywords from the JD
+  requirements        Json // string[] of hard requirements
   recommendedResumeId String?
-  scores              Json       // [{ resumeId, label, score, rationale }]
-  suggestedTweaks     Json       // [{ original, rewrite, reason, resumeId }]
-  gaps                Json?      // string[] requirements no resume covers
+  scores              Json // [{ resumeId, label, score, rationale }]
+  suggestedTweaks     Json // [{ original, rewrite, reason, resumeId }]
+  gaps                Json? // string[] requirements no resume covers
   atsNotes            String?    @db.Text
   createdAt           DateTime   @default(now())
 }
@@ -96,24 +97,24 @@ model Analysis {
 // and drives the tracker. Status is a string validated by a zod enum in
 // src/lib/jobs/status.ts.
 model JobApplication {
-  id            String             @id @default(cuid())
-  userId        String
-  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  listingId     String             @unique
-  listing       JobListing         @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  resumeId      String?
-  resume        Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
-  tailoredR2Key String?
-  recruiterMessage String?         @db.Text
-  status        String             @default("SAVED")
-  field         String?
-  compOfferMin  Int?
-  compOfferMax  Int?
-  notes         String?            @db.Text
-  appliedAt     DateTime?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  events        ApplicationEvent[]
+  id               String             @id @default(cuid())
+  userId           String
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId        String             @unique
+  listing          JobListing         @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  resumeId         String?
+  resume           Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  tailoredR2Key    String?
+  recruiterMessage String?            @db.Text
+  status           String             @default("SAVED")
+  field            String?
+  compOfferMin     Int?
+  compOfferMax     Int?
+  notes            String?            @db.Text
+  appliedAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  events           ApplicationEvent[]
 
   @@index([userId, status])
 }
@@ -135,16 +136,16 @@ model ApplicationEvent {
 // hash so a database leak doesn't compromise live tokens. The plaintext
 // value is only ever returned to the user once at generation time.
 model ClipperToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   // First 8 chars of the raw token, shown in the settings UI so users
   // can identify which token they're looking at without exposing the
   // full secret. Indexed for the auth lookup happy path.
   prefix     String
-  tokenHash  String   @unique
-  label      String?  // optional user-supplied name ("My laptop")
-  createdAt  DateTime @default(now())
+  tokenHash  String    @unique
+  label      String? // optional user-supplied name ("My laptop")
+  createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
 
   @@index([userId])
@@ -156,23 +157,40 @@ model ClipperToken {
 // same model as ClipperToken — so a DB leak doesn't expose the live feed
 // URL. One feed per user: generating a new one replaces the old.
 model CalendarToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   prefix     String
-  tokenHash  String   @unique
-  createdAt  DateTime @default(now())
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
   lastUsedAt DateTime?
 
   @@index([userId])
+}
+
+// A daily journal entry — thin index over a Page, one per user per day.
+// Keeps the existing Page+Block storage model (so the TipTap editor
+// works for free) while giving us date-based lookup for the calendar.
+model JournalEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageId    String   @unique // 1:1 with the journal Page
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  date      DateTime // date only — @@unique per user
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 model CategorizationRule {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  match     String   // lowercased substring matched against vendor
-  category  String   // category to force when matched
+  match     String // lowercased substring matched against vendor
+  category  String // category to force when matched
   createdAt DateTime @default(now())
 
   @@unique([userId, match])
@@ -210,12 +228,12 @@ model RecurringRule {
   id                String    @id @default(cuid())
   userId            String
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type              String    // 'income' | 'expense'
-  name              String    // e.g. "City of Detroit paycheck", "Rent"
-  category          String    // must match a Personal Budget Category option
-  amount            Float     // always positive — sign applied based on type
-  frequency         String    // 'weekly' | 'biweekly' | 'semimonthly' | 'monthly'
-  anchorDate        DateTime  // next-due date (advances after each generation)
+  type              String // 'income' | 'expense'
+  name              String // e.g. "City of Detroit paycheck", "Rent"
+  category          String // must match a Personal Budget Category option
+  amount            Float // always positive — sign applied based on type
+  frequency         String // 'weekly' | 'biweekly' | 'semimonthly' | 'monthly'
+  anchorDate        DateTime // next-due date (advances after each generation)
   lastGeneratedDate DateTime? // most recent occurrence we wrote a row for
   isActive          Boolean   @default(true)
   createdAt         DateTime  @default(now())
@@ -225,16 +243,16 @@ model RecurringRule {
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   name      String
   slug      String
   icon      String?
   color     String?
   ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   pages     Page[]
   databases Database[]
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now())
 
   @@unique([ownerId, slug])
   @@index([ownerId])
@@ -254,15 +272,15 @@ model Database {
 }
 
 model Property {
-  id         String   @id @default(cuid())
+  id         String          @id @default(cuid())
   name       String
-  type       String   // text, number, date, select, etc.
-  formula    String?  // formula expression
-  position   Float    @default(0)
+  type       String // text, number, date, select, etc.
+  formula    String? // formula expression
+  position   Float           @default(0)
   databaseId String
-  database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  database   Database        @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   values     PropertyValue[]
-  createdAt  DateTime @default(now())
+  createdAt  DateTime        @default(now())
 
   @@index([databaseId, position])
 }
@@ -273,7 +291,7 @@ model PropertyValue {
   property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   pageId     String
   page       Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  value      Json     // the value, could be string, number, etc.
+  value      Json // the value, could be string, number, etc.
 
   @@unique([propertyId, pageId])
   @@index([pageId])
@@ -282,40 +300,41 @@ model PropertyValue {
 model View {
   id         String   @id @default(cuid())
   name       String
-  type       String   // table, gallery, list, etc.
+  type       String // table, gallery, list, etc.
   databaseId String
   database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
-  filters    Json?    // filter conditions
-  sorts      Json?    // sort conditions
-  grouping   Json?    // group-by config { propertyId }
+  filters    Json? // filter conditions
+  sorts      Json? // sort conditions
+  grouping   Json? // group-by config { propertyId }
   createdAt  DateTime @default(now())
 
   @@index([databaseId])
 }
 
 model Page {
-  id           String                  @id @default(cuid())
-  title        String                  @default("Untitled")
+  id           String                   @id @default(cuid())
+  title        String                   @default("Untitled")
   icon         String?
   cover        String?
   workspaceId  String
   searchVector Unsupported("tsvector")? @map("search_vector")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  databaseId  String?
-  database    Database? @relation(fields: [databaseId], references: [id], onDelete: SetNull)
-  parentId    String?
-  parent      Page?     @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Page[]    @relation("PageHierarchy")
-  authorId    String
-  author      User      @relation(fields: [authorId], references: [id])
-  blocks      Block[]
-  properties  PropertyValue[]
-  position    Float     @default(0)
-  isFavorite  Boolean   @default(false)
-  isArchived  Boolean   @default(false)
-  viewMode    String?   @default("document")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  workspace    Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  databaseId   String?
+  database     Database?                @relation(fields: [databaseId], references: [id], onDelete: SetNull)
+  parentId     String?
+  parent       Page?                    @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Page[]                   @relation("PageHierarchy")
+  authorId     String
+  author       User                     @relation(fields: [authorId], references: [id])
+  blocks       Block[]
+  properties   PropertyValue[]
+  journalEntry JournalEntry?
+  position     Float                    @default(0)
+  isFavorite   Boolean                  @default(false)
+  isArchived   Boolean                  @default(false)
+  viewMode     String?                  @default("document")
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
 
   @@index([workspaceId, parentId])
   @@index([databaseId])

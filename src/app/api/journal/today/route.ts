@@ -124,11 +124,19 @@ export async function GET(req: NextRequest) {
   const workspace = await getOrCreateJournalWorkspace(userId);
 
   // Idempotent: return existing page if today's journal already exists.
+  // Also ensure a JournalEntry index exists (backfill path for old entries).
   const existing = await prisma.page.findFirst({
     where: { workspaceId: workspace.id, title, isArchived: false },
     select: { id: true },
   });
   if (existing) {
+    // Upsert the JournalEntry index so old entries appear in the calendar.
+    const dateObj = new Date(dateParam + 'T00:00:00.000Z');
+    await prisma.journalEntry.upsert({
+      where: { userId_date: { userId, date: dateObj } },
+      update: { pageId: existing.id },
+      create: { userId, pageId: existing.id, date: dateObj },
+    });
     return NextResponse.json({ pageId: existing.id, created: false });
   }
 
@@ -149,6 +157,8 @@ export async function GET(req: NextRequest) {
     select: { position: true },
   });
 
+  const dateObj = new Date(dateParam + 'T00:00:00.000Z');
+
   const page = await prisma.$transaction(async (tx) => {
     const p = await tx.page.create({
       data: {
@@ -166,6 +176,9 @@ export async function GET(req: NextRequest) {
         position: 0,
         content: journalTemplate(carryTodos),
       },
+    });
+    await tx.journalEntry.create({
+      data: { userId, pageId: p.id, date: dateObj },
     });
     return p;
   });
