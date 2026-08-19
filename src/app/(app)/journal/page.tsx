@@ -57,10 +57,22 @@ export default function JournalPage() {
     setBlocks([]);
 
     try {
-      // Get or create the journal page for this date
-      const res = await fetch(`/api/journal/today?date=${date}`);
-      if (!res.ok) { setLoading(false); return; }
-      const { pageId: pid } = await res.json();
+      let pid: string | null = null;
+
+      if (date === today) {
+        // Today: create-or-get (idempotent)
+        const res = await fetch(`/api/journal/today?date=${date}`);
+        if (!res.ok) { setLoading(false); return; }
+        const data = await res.json();
+        pid = data.pageId ?? null;
+      } else {
+        // Past dates: lookup only — never auto-create
+        const res = await fetch(`/api/journal/entry?date=${date}`);
+        if (!res.ok) { setLoading(false); return; }
+        const data = await res.json();
+        pid = data.pageId ?? null;
+      }
+
       if (!pid) { setLoading(false); return; }
 
       // Load the page blocks
