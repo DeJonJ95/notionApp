@@ -293,7 +293,6 @@ export function JobCard({
               <CoverLetterSection
                 listingId={listing.id}
                 resumeId={resumeId}
-                initialText={app?.coverLetterR2Key ? undefined : undefined}
                 initialUrl={app?.coverLetterR2Key ? `/api/files/download?key=${encodeURIComponent(app.coverLetterR2Key)}` : null}
               />
             </div>
