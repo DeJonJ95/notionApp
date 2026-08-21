@@ -288,6 +288,14 @@ export function JobCard({
               {(tailorResult?.recruiterMessage ?? app?.recruiterMessage) && (
                 <RecruiterMessage text={(tailorResult?.recruiterMessage ?? app?.recruiterMessage)!} />
               )}
+
+              {/* Cover letter — generated per job + selected resume */}
+              <CoverLetterSection
+                listingId={listing.id}
+                resumeId={resumeId}
+                initialText={app?.coverLetterR2Key ? undefined : undefined}
+                initialUrl={app?.coverLetterR2Key ? `/api/files/download?key=${encodeURIComponent(app.coverLetterR2Key)}` : null}
+              />
             </div>
           )}
 
@@ -354,6 +362,80 @@ function RecruiterMessage({ text }: { text: string }) {
         </button>
       </div>
       <p className="text-sm whitespace-pre-wrap">{text}</p>
+    </div>
+  );
+}
+
+function CoverLetterSection({ listingId, resumeId, initialUrl }: { listingId: string; resumeId: string; initialUrl: string | null }) {
+  const [loading, setLoading] = useState(false);
+  const [letter, setLetter] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(initialUrl);
+  const [copied, setCopied] = useState(false);
+
+  const generate = async () => {
+    if (!resumeId) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/jobs/${listingId}/coverletter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeId }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? 'Cover letter generation failed');
+      setLetter(d.letterText ?? null);
+      setUrl(d.downloadUrl ?? null);
+    } catch (e: any) {
+      setLetter(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!letter) return;
+    try {
+      await navigator.clipboard.writeText(letter);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked */ }
+  };
+
+  return (
+    <div className="space-y-2">
+      {!letter && (
+        <button
+          onClick={generate}
+          disabled={loading || !resumeId}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-border text-sm hover:border-accent disabled:opacity-50"
+        >
+          {loading ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+          Generate cover letter
+        </button>
+      )}
+      {letter && (
+        <div className="border border-border rounded p-3 bg-bg space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-medium text-muted uppercase tracking-wide flex items-center gap-1">
+              <FileText size={12} /> Cover letter
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={copy} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
+                {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}
+              </button>
+              {url && (
+                <button
+                  onClick={() => downloadFile(url, 'cover-letter.txt')}
+                  className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+                >
+                  <Download size={12} /> Download
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="text-sm whitespace-pre-wrap max-h-64 overflow-auto">{letter}</p>
+        </div>
+      )}
     </div>
   );
 }

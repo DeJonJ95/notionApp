@@ -165,6 +165,41 @@ ${resumeText.slice(0, 5000)}
 Write the outreach message now.`;
 }
 
+// Cover letter generation — same truthfulness contract.
+export const COVER_LETTER_SYSTEM = `You are an expert cover-letter writer for technical job candidates.
+
+HARD RULES:
+- Write a professional, warm cover letter (3-4 paragraphs, 200-350 words).
+- Use only experience, skills, and facts that already appear in the candidate's resume.
+- Mirror the job's terminology where the candidate genuinely has that experience.
+- NEVER invent employers, titles, dates, metrics, certifications, or skills.
+- Address the specific company and role by name.
+- Open with a genuine hook (a specific project, value alignment, or product detail).
+- Body: match 2-3 resume achievements to job requirements using the job's vocabulary.
+- Close with a soft, confident call to action.
+- No em dashes. No "not X, but Y" phrasing. Direct, plain prose.
+- No placeholders, no bracketed instructions, no "[your name]".
+Return ONLY the cover letter text, with no extra commentary.`;
+
+export function buildCoverLetterUser(
+  job: { title: string; company: string; description: string },
+  resumeText: string,
+): string {
+  return `ROLE: ${job.title} at ${job.company}
+
+JOB POSTING:
+"""
+${job.description.slice(0, 4000)}
+"""
+
+MY RESUME:
+"""
+${resumeText.slice(0, 6000)}
+"""
+
+Write the cover letter now.`;
+}
+
 // DeepSeek is asked for json_object, but be defensive: strip code fences and
 // grab the outermost object if the model wraps it.
 export function parseAnalysis(content: string): AnalysisResult {
