@@ -50,7 +50,8 @@ export function JobCard({
     setErr(''); setAnalyzing(true);
     try {
       const r = await fetch(`/api/jobs/${listing.id}/analyze`, { method: 'POST' });
-      const d = await r.json();
+      let d: any;
+      try { d = await r.json(); } catch { throw new Error(r.status === 504 ? 'Server timed out — try again shortly' : 'Unexpected server response'); }
       if (!r.ok) throw new Error(d.error ?? 'Analysis failed');
       const a: Analysis = d.analysis;
       setApproved(new Set(a.suggestedTweaks.map((_, i) => i)));
@@ -72,7 +73,8 @@ export function JobCard({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resumeId, tweaks }),
       });
-      const d = await r.json();
+      let d: any;
+      try { d = await r.json(); } catch { throw new Error(r.status === 504 ? 'Server timed out — try again shortly' : 'Unexpected server response'); }
       if (!r.ok) throw new Error(d.error ?? 'Tailoring failed');
       setTailorResult({ url: d.downloadUrl ?? null, applied: d.applied, unmatched: d.unmatched ?? [], recruiterMessage: d.recruiterMessage ?? null, tailoredFile: !!d.tailoredFile });
       onChanged();
@@ -81,8 +83,16 @@ export function JobCard({
   };
 
   const markApplied = async () => {
-    await fetch(`/api/jobs/${listing.id}/apply`, { method: 'POST' });
-    onChanged();
+    setErr('');
+    try {
+      const r = await fetch(`/api/jobs/${listing.id}/apply`, { method: 'POST' });
+      if (!r.ok) {
+        let msg = 'Could not mark as applied';
+        try { const d = await r.json(); if (d.error) msg = d.error; } catch { /* ignore */ }
+        throw new Error(msg);
+      }
+      onChanged();
+    } catch (e: any) { setErr(e.message); }
   };
 
   const remove = async () => {

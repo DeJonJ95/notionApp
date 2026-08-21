@@ -6,32 +6,41 @@ const DS_URL = 'https://api.deepseek.com/chat/completions';
 
 export type DSUsage = { prompt_tokens: number; completion_tokens: number };
 
+const DS_TIMEOUT_MS = 25_000;
+
 export async function callDeepSeek(
   apiKey: string,
   system: string,
   user: string,
   opts?: { maxTokens?: number; json?: boolean; temperature?: number },
 ): Promise<{ content: string; usage?: DSUsage }> {
-  const r = await fetch(DS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: 'deepseek-chat',
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      temperature: opts?.temperature ?? 0.2,
-      max_tokens: opts?.maxTokens ?? 2000,
-      ...(opts?.json ? { response_format: { type: 'json_object' } } : {}),
-    }),
-  });
-  if (!r.ok) {
-    console.error('DeepSeek ApplyKit error:', await r.text());
-    throw new Error('DeepSeek request failed');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), DS_TIMEOUT_MS);
+  try {
+    const r = await fetch(DS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        temperature: opts?.temperature ?? 0.2,
+        max_tokens: opts?.maxTokens ?? 2000,
+        ...(opts?.json ? { response_format: { type: 'json_object' } } : {}),
+      }),
+      signal: ctrl.signal,
+    });
+    if (!r.ok) {
+      console.error('DeepSeek ApplyKit error:', await r.text());
+      throw new Error('DeepSeek request failed');
+    }
+    const j = await r.json();
+    return { content: (j.choices?.[0]?.message?.content ?? '').trim(), usage: j.usage };
+  } finally {
+    clearTimeout(timer);
   }
-  const j = await r.json();
-  return { content: (j.choices?.[0]?.message?.content ?? '').trim(), usage: j.usage };
 }
 
 // The anti-fabrication contract. This is the core safety property of the
