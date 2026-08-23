@@ -128,6 +128,7 @@ const VIEW_TYPE_LABELS: Record<string, string> = {
   list: 'List',
   board: 'Board',
   calendar: 'Calendar',
+  heatmap: 'Heatmap',
   'budget-summary': 'Budget',
   'spending-breakdown': 'Spending',
 };
@@ -193,6 +194,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [groupByPropertyId, setGroupByPropertyId] = useState<string | null>(null);
   const [calendarDatePropertyId, setCalendarDatePropertyId] = useState<string | null>(null);
+  const [heatmapValuePropId, setHeatmapValuePropId] = useState<string | null>(null);
   const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>('Monthly');
   const [budgetWindowDate, setBudgetWindowDate] = useState(() => new Date());
   // Which Budget Summary categories are expanded to show their transactions
@@ -1276,6 +1278,139 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     );
   };
 
+  const renderHeatmapView = () => {
+    if (!calendarDateProperty) {
+      return (
+        <div className="rounded-lg border border-border bg-surface p-8 text-center text-muted">
+          Heatmap view requires a <strong className="text-text">date</strong> property.
+          Add a date property first using "Add Property".
+        </div>
+      );
+    }
+
+    const heatValueProps = database.properties.filter((p) => p.type === 'checkbox' || p.type === 'number');
+    const valueProp = database.properties.find((p) => p.id === heatmapValuePropId) ?? null;
+
+    // Aggregate a value per calendar day: count of rows, sum of a number
+    // property, or count of checked rows for a checkbox property.
+    const byDay = new Map<string, number>();
+    for (const page of renderedPages) {
+      const dv = page.properties.find((v) => v.property.id === calendarDateProperty.id)?.value;
+      const dateStr = typeof dv === 'string' ? dv.slice(0, 10) : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+      let contribution = 1;
+      if (valueProp) {
+        const raw = page.properties.find((v) => v.property.id === valueProp.id)?.value;
+        if (valueProp.type === 'checkbox') contribution = raw ? 1 : 0;
+        else {
+          const n = Number(raw);
+          contribution = Number.isFinite(n) ? n : 0;
+        }
+      }
+      byDay.set(dateStr, (byDay.get(dateStr) ?? 0) + contribution);
+    }
+
+    const values = Array.from(byDay.values());
+    const max = Math.max(1, ...values);
+    const total = values.reduce((s, v) => s + v, 0);
+    const activeDays = values.filter((v) => v > 0).length;
+
+    const WEEKS = 53;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = new Date(today);
+    start.setDate(today.getDate() - today.getDay() - (WEEKS - 1) * 7);
+
+    const columns: { dateStr: string; value: number; future: boolean; monthStart: boolean }[][] = [];
+    const cursor = new Date(start);
+    for (let w = 0; w < WEEKS; w++) {
+      const col: { dateStr: string; value: number; future: boolean; monthStart: boolean }[] = [];
+      for (let d = 0; d < 7; d++) {
+        const y = cursor.getFullYear();
+        const m = cursor.getMonth() + 1;
+        const dd = cursor.getDate();
+        const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+        col.push({
+          dateStr,
+          value: byDay.get(dateStr) ?? 0,
+          future: cursor > today,
+          monthStart: dd <= 7 && d === 0,
+        });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      columns.push(col);
+    }
+
+    const LEVEL_CLASS = [
+      'bg-surface border border-border',
+      'bg-accent/25',
+      'bg-accent/45',
+      'bg-accent/70',
+      'bg-accent',
+    ];
+    const level = (v: number): number => {
+      if (v <= 0) return 0;
+      const r = v / max;
+      if (r > 0.75) return 4;
+      if (r > 0.5) return 3;
+      if (r > 0.25) return 2;
+      return 1;
+    };
+
+    return (
+      <div>
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          {dateProperties.length > 1 && (
+            <select
+              value={calendarDateProperty.id}
+              onChange={(e) => setCalendarDatePropertyId(e.target.value)}
+              className="bg-bg text-text border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              {dateProperties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
+          <select
+            value={heatmapValuePropId ?? ''}
+            onChange={(e) => setHeatmapValuePropId(e.target.value || null)}
+            className="bg-bg text-text border border-border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            <option value="">Count of entries</option>
+            {heatValueProps.map((p) => (
+              <option key={p.id} value={p.id}>{p.type === 'checkbox' ? `${p.name} (checked)` : `Sum of ${p.name}`}</option>
+            ))}
+          </select>
+          <span className="text-xs text-muted">
+            {activeDays} active {activeDays === 1 ? 'day' : 'days'} · {Math.round(total * 100) / 100} total
+          </span>
+        </div>
+
+        <div className="overflow-x-auto pb-2">
+          <div className="flex gap-[3px]">
+            {columns.map((col, ci) => (
+              <div key={ci} className="flex flex-col gap-[3px]">
+                {col.map((cell) => (
+                  <div
+                    key={cell.dateStr}
+                    title={cell.future ? '' : `${cell.dateStr}: ${Math.round(cell.value * 100) / 100}`}
+                    className={`w-3 h-3 rounded-sm ${cell.future ? 'opacity-0' : LEVEL_CLASS[level(cell.value)]}`}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 mt-3 text-xs text-muted">
+          <span>Less</span>
+          {LEVEL_CLASS.map((c, i) => (
+            <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
+          ))}
+          <span>More</span>
+        </div>
+      </div>
+    );
+  };
+
   const renderCalendarView = () => {
     if (!calendarDateProperty) {
       return (
@@ -1870,6 +2005,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
       case 'list': return renderListView();
       case 'board': return renderBoardView();
       case 'calendar': return renderCalendarView();
+      case 'heatmap': return renderHeatmapView();
       case 'budget-summary': return renderBudgetSummaryView();
       case 'spending-breakdown': return renderSpendingBreakdownView();
       default: return renderTableView();
@@ -2512,7 +2648,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
               <div>
                 <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Type</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['table', 'board', 'calendar', 'gallery', 'list', 'budget-summary', 'spending-breakdown'] as const).map((t) => (
+                  {(['table', 'board', 'calendar', 'heatmap', 'gallery', 'list', 'budget-summary', 'spending-breakdown'] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => setNewViewType(t)}

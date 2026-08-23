@@ -78,7 +78,8 @@ export default function DocsPage() {
       </Section>
 
       <Section title="Views, filters & grouping">
-        <Item name="View types">Table, board, gallery, list, calendar, plus budget-specific Budget Summary and Spending Breakdown.</Item>
+        <Item name="View types">Table, board, gallery, list, calendar, heatmap, plus budget-specific Budget Summary and Spending Breakdown.</Item>
+        <Item name="Heatmap">A GitHub-style year grid over a date property. Colour by count of entries, sum of a number property, or checked days of a checkbox property — great for habit or writing streaks.</Item>
         <Item name="Filter / Sort / Group">The config bar above table/list/gallery/board views: filter by any property (contains / is), sort asc/desc (numeric-aware), and group a table by a select property. All of it persists on the view.</Item>
         <Item name="Reordering rows">Desktop: drag a row. Mobile: long-press (~0.5s) a row, drag, release on the target.</Item>
       </Section>
