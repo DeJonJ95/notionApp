@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase, NotebookPen, CalendarDays } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase, NotebookPen, CalendarDays, Inbox } from 'lucide-react';
 import { useRecentPages } from '@/lib/recentPages';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
@@ -286,6 +286,14 @@ export function Sidebar() {
                 {reminderCount}
               </span>
             )}
+          </Link>
+
+          <Link
+            href="/inbox"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
+          >
+            <Inbox size={14} /> Inbox
           </Link>
 
           <Link

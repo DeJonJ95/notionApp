@@ -26,7 +26,7 @@ export default function DocsPage() {
     'Workspaces & pages', 'Canvas notes', 'Text formatting', 'Databases',
     'Views, filters & grouping', 'Relations & rollups', 'Budget', 'Recurring & forecast',
     'Goals, rules & trends', 'Transcripts & audio', 'Extract from notes',
-    'Gestures & shortcuts',
+    'Inbox & capture', 'Subscriptions', 'Gestures & shortcuts',
   ];
   return (
     <div className="max-w-3xl mx-auto px-6 md:px-12 py-12">
@@ -116,6 +116,21 @@ export default function DocsPage() {
       <Section title="Extract from notes">
         <Item name="What it does">Sidebar → Extract from notes. Pulls structured records out of free text and proposes create/update operations against your databases. Review each, then apply.</Item>
         <Item name="Sources">Paste text, pick a single page, or batch over recent pages. New rows can include an AI-written body summary.</Item>
+      </Section>
+
+      <Section title="Inbox & capture">
+        <Item name="Inbox">Sidebar → Inbox. A holding place for quick captures. Jot or paste anything, then Triage each item — AI suggests a title and the best workspace, and one click files it there.</Item>
+        <Item name="Voice notes">Home → Voice note (or the “Voice note” app shortcut). Record a thought; it’s transcribed, optionally tidied by AI, and appended to today’s journal.</Item>
+        <Item name="Capture from anywhere">
+          <span className="text-text font-medium">POST /api/capture</span> accepts a clipper token (from{' '}
+          <Link href="/clipper" className="text-accent hover:underline">Browser clipper</Link>) as a bearer header and a JSON body{' '}
+          <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">{'{ "text": "…", "url": "…" }'}</code>.
+          Wire it to an iOS Shortcut or “Hey Siri, add to Kove” to capture hands-free.
+        </Item>
+      </Section>
+
+      <Section title="Subscriptions">
+        <Item name="Subscription audit">Budget → Subscriptions. Detects recurring charges from your history, ranks them by yearly cost, flags price changes, and drafts a cancellation email for any one.</Item>
       </Section>
 
       <Section title="Gestures & shortcuts">
