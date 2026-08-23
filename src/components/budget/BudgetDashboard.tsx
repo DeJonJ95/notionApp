@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
-  Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X,
+  Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard,
 } from 'lucide-react';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
@@ -148,6 +148,13 @@ export function BudgetDashboard() {
         >
           <Repeat size={14} /> Recurring
         </button>
+        <Link
+          href="/budget/subscriptions"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm hover:bg-surface"
+          title="Audit recurring subscriptions by yearly cost"
+        >
+          <CreditCard size={14} /> Subscriptions
+        </Link>
         <button
           onClick={() => setImportOpen(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/80"
