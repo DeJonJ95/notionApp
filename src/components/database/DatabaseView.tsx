@@ -986,17 +986,22 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                       {!isTitle && !isNarrow && (
                         <>
                           <span className="text-xs text-muted capitalize shrink-0">({prop!.type})</span>
+                          {/* Touch devices never fire :hover, so these stay
+                              visible there and only hide-until-hover on
+                              pointer devices. */}
                           <button
                             onClick={() => openEditProperty(prop!)}
-                            className="ml-auto opacity-0 group-hover:opacity-100 text-muted hover:text-accent transition-opacity shrink-0"
+                            className="ml-auto opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 text-muted hover:text-accent transition-opacity shrink-0"
                             title="Edit property"
+                            aria-label={`Edit property ${prop!.name}`}
                           >
                             <Edit3 size={13} />
                           </button>
                           <button
                             onClick={() => deleteProperty(colId)}
-                            className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-500 transition-opacity shrink-0"
+                            className="opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 text-muted hover:text-red-500 transition-opacity shrink-0"
                             title="Delete property"
+                            aria-label={`Delete property ${prop!.name}`}
                           >
                             <Trash2 size={13} />
                           </button>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Trash2, ChevronRight, FolderOutput } from 'lucide-react';
+import { Trash2, ChevronRight, FolderOutput, Edit3, Check, X } from 'lucide-react';
 import { DatabaseView } from '@/components/database/DatabaseView';
 import { confirmDialog, toast } from '@/components/ui/feedback';
 import { EntityIcon } from '@/components/icons/registry';
@@ -61,6 +61,8 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [moveOpen, setMoveOpen] = useState(false);
   const moveRef = useRef<HTMLDivElement | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
   // Databases are dense; on a phone the default 1:1 scale is too close.
   // Back off to 0.75 there. CSS `zoom` (not transform) so layout/scroll
   // still reflow correctly. iOS Safari + Android Chrome both support it.
@@ -117,6 +119,35 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
     }
   };
 
+  const startRename = () => {
+    if (!database) return;
+    setRenameValue(database.name);
+    setRenaming(true);
+  };
+
+  const cancelRename = () => {
+    setRenaming(false);
+    setRenameValue('');
+  };
+
+  const saveRename = async () => {
+    if (!database) return;
+    const name = renameValue.trim();
+    if (!name || name === database.name) { cancelRename(); return; }
+    const res = await fetch(`/api/databases/${database.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      cancelRename();
+      fetchDatabase();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      toast.error(j.error ?? 'Failed to rename database');
+    }
+  };
+
   const deleteDatabase = async () => {
     if (!database) return;
     if (!(await confirmDialog({
@@ -150,8 +181,50 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4 gap-3">
-        <h1 className="text-2xl font-bold text-text truncate">🗂️ {database.name}</h1>
-        <div className="flex items-center gap-2 shrink-0">
+        {renaming ? (
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-2xl shrink-0">🗂️</span>
+            <input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveRename();
+                if (e.key === 'Escape') cancelRename();
+              }}
+              autoFocus
+              aria-label="Database name"
+              className="flex-1 min-w-0 bg-bg border border-border rounded px-2 py-1 text-2xl font-bold text-text"
+            />
+            <button
+              onClick={saveRename}
+              className="p-1.5 rounded hover:bg-surface text-muted hover:text-green-600 shrink-0"
+              aria-label="Save name"
+            >
+              <Check size={18} />
+            </button>
+            <button
+              onClick={cancelRename}
+              className="p-1.5 rounded hover:bg-surface text-muted hover:text-red-500 shrink-0"
+              aria-label="Cancel rename"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={startRename}
+            className="flex items-center gap-2 min-w-0 text-left group"
+            title="Rename database"
+          >
+            <h1 className="text-2xl font-bold text-text truncate">🗂️ {database.name}</h1>
+            {/* Touch devices never fire :hover, so this stays visible there. */}
+            <Edit3
+              size={15}
+              className="shrink-0 text-muted opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 transition-opacity"
+            />
+          </button>
+        )}
+        <div className={`flex items-center gap-2 shrink-0 ${renaming ? 'hidden sm:flex' : ''}`}>
           {/* Move to workspace */}
           <div className="relative" ref={moveRef}>
             <button
