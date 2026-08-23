@@ -1,18 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logDeepSeek } from '@/lib/logUsage';
+import { checkDailyBudget, budgetExceededResponse } from '@/lib/usageGuard';
+
+// Cap input size so a single request can't fan a huge prompt into DeepSeek.
+const MAX_CHARS = 240_000;
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!(session?.user as any)?.id) {
+  const userId = (session?.user as any)?.id;
+  if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const budget = await checkDailyBudget(userId);
+  if (!budget.ok) {
+    return NextResponse.json(budgetExceededResponse(budget.spentUsd, budget.capUsd), { status: 429 });
   }
 
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) return NextResponse.json({ error: 'DeepSeek API key not configured' }, { status: 500 });
 
-  const { text } = await req.json() as { text: string };
+  const body = await req.json().catch(() => null);
+  const text = body?.text;
   if (!text?.trim()) return NextResponse.json({ error: 'No content to organize' }, { status: 400 });
+  if (text.length > MAX_CHARS) {
+    return NextResponse.json({ error: 'Content too long to organize' }, { status: 413 });
+  }
 
   const systemPrompt = `You are a note-organizing assistant. Take raw stream-of-consciousness meeting notes and return them as clean, structured HTML for a rich text editor.
 
@@ -47,7 +61,6 @@ Rules:
   }
 
   const aiJson = await aiRes.json();
-  const userId = (session?.user as any)?.id;
   if (aiJson.usage) logDeepSeek('organize', aiJson.usage, userId);
   const html = (aiJson.choices?.[0]?.message?.content ?? '').trim();
 

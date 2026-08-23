@@ -21,6 +21,20 @@
       "purpose": "any maskable"
     }
   ],
+  "shortcuts": [
+    {
+      "name": "Voice note",
+      "short_name": "Voice note",
+      "description": "Record a voice note into today's journal",
+      "url": "/?voice=1"
+    },
+    {
+      "name": "Today's journal",
+      "short_name": "Journal",
+      "description": "Open today's journal entry",
+      "url": "/journal"
+    }
+  ],
   "share_target": {
     "action": "/api/clipper/share-target",
     "method": "POST",

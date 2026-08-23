@@ -5,6 +5,7 @@ import { BudgetReminders } from '@/components/budget/BudgetReminders';
 import { WelcomeCard } from '@/components/onboarding/WelcomeCard';
 import { EntityIcon } from '@/components/icons/registry';
 import { TodaysNoteButton } from '@/components/journal/TodaysNoteButton';
+import { VoiceCaptureButton } from '@/components/journal/VoiceCaptureButton';
 export default async function DashboardPage() {
   const session = await auth();
   const userId = (session?.user as any)?.id;
@@ -29,9 +30,10 @@ export default async function DashboardPage() {
       </h1>
       <p className="text-muted mb-6">Pick up where you left off.</p>
 
-      {/* Quick access to today's journal — saves a sidebar trip on mobile */}
-      <div className="mb-10">
+      {/* Quick access to today's journal + voice capture — saves a sidebar trip on mobile */}
+      <div className="mb-10 flex flex-wrap gap-3">
         <TodaysNoteButton />
+        <VoiceCaptureButton />
       </div>
 
       {/* First-run onboarding — dismissible, localStorage-gated */}
