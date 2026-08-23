@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { JournalCalendar } from '@/components/journal/JournalCalendar';
+import { EveningReviewButton } from '@/components/journal/EveningReviewButton';
 import { CanvasPageEditor } from '@/components/editor/CanvasPageEditor';
 import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
 
@@ -161,6 +162,15 @@ export default function JournalPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Evening review — only on today's entry, once it's loaded */}
+            {selectedDate === today && pageId && (
+              <EveningReviewButton
+                pageId={pageId}
+                date={selectedDate}
+                onDone={() => loadEntry(selectedDate)}
+              />
+            )}
+
             {/* Today button — only shown when not on today */}
             {selectedDate !== today && (
               <button
