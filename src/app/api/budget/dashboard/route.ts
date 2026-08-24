@@ -11,6 +11,9 @@ import {
   normalizeBudgetToMonthly,
   monthElapsedPercent,
   computeCategoryBudgets,
+  computeAccountBalancesFrom,
+  buildBalanceCurve,
+  type AccountBalance,
   type CategoryBudget,
   type ForecastItem,
   type PatternSuggestion,
@@ -24,6 +27,7 @@ export type Tx = {
   amount: number;       // signed: negative = expense, positive = income
   category: string;
   type: string;
+  account: string | null;
 };
 
 export type Subscription = {
@@ -69,6 +73,12 @@ export type DashboardPayload = {
   subscriptions: Subscription[];
   repeatVendors: RepeatVendor[];
   recentTransactions: Tx[];
+  // Account balances + forward-looking balance projection
+  accounts: AccountBalance[];
+  hasBalances: boolean;          // false until an import carries a closing balance
+  totalBalance: number;
+  balanceCurve: { date: string; balance: number }[];  // empty when hasBalances is false
+  negativeBalanceDate: string | null;
   // Recurring + forecast additions
   forecast: ForecastItem[];      // next 14 days of scheduled income/expense
   projectedMonthEnd: number;     // expected net = current + remaining scheduled this month
@@ -145,6 +155,7 @@ export async function GET() {
       amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
       category: String(vals['Category'] ?? 'Other'),
       type,
+      account: vals['Account'] == null ? null : String(vals['Account']),
     });
   }
 
@@ -328,10 +339,14 @@ export async function GET() {
 
   const recentTransactions = all.slice(0, 25);
 
-  // ── Forecast: next 14 days of scheduled income/expense ──────────────────
+  // ── Forecast ─────────────────────────────────────────────────────────────
+  // Pull 45 days for the balance curve; the "coming up" list shows 14.
   // Same fallback as above — graceful degradation before the migration runs.
-  let forecast: ForecastItem[] = [];
-  try { forecast = await forecastOccurrences(userId, 14, now); } catch {}
+  const BALANCE_CURVE_DAYS = 45;
+  let forecast45: ForecastItem[] = [];
+  try { forecast45 = await forecastOccurrences(userId, BALANCE_CURVE_DAYS, now); } catch {}
+  const day14 = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 14));
+  const forecast = forecast45.filter((f) => f.date <= day14);
 
   // Projected end-of-month net: current month's actual + every scheduled
   // occurrence whose date falls before the end of the displayed month.
@@ -339,12 +354,31 @@ export async function GET() {
   const monthEnd = thisM.length > 0 || all.length === 0
     ? new Date(nextMonthStart.getTime() - 1)
     : new Date(); // fallback — shouldn't matter, just a safety
-  const scheduledThisMonth = forecast.filter((f) => {
+  const scheduledThisMonth = forecast45.filter((f) => {
     const d = new Date(f.date + 'T00:00:00');
     return d >= now && d <= monthEnd;
   });
   const scheduledNet = scheduledThisMonth.reduce((s, f) => s + f.amount, 0);
   const projectedMonthEnd = (income - expenses) + scheduledNet;
+
+  // ── Account balances + projected balance curve ───────────────────────────
+  // Anchored on the closing balance of the latest statement per account, then
+  // rolled forward. Without a single statement balance we make no claim.
+  let accounts: AccountBalance[] = [];
+  try {
+    const importLogs = await prisma.importLog.findMany({
+      where: { userId },
+      select: { account: true, closingBalance: true, dateTo: true },
+    });
+    accounts = computeAccountBalancesFrom(importLogs, all);
+  } catch (e) {
+    console.warn('[budget-dashboard] account balances skipped:', (e as Error).message);
+  }
+  const hasBalances = accounts.some((a) => a.balance != null);
+  const totalBalance = Math.round(accounts.reduce((s, a) => s + (a.balance ?? 0), 0) * 100) / 100;
+  const { curve: balanceCurve, negativeOn: negativeBalanceDate } = hasBalances
+    ? buildBalanceCurve(totalBalance, forecast45, BALANCE_CURVE_DAYS, now)
+    : { curve: [] as { date: string; balance: number }[], negativeOn: null as string | null };
 
   // ── Pattern auto-detection (Feature 5) ───────────────────────────────────
   let patternSuggestions: PatternSuggestion[] = [];
@@ -529,6 +563,11 @@ export async function GET() {
     subscriptions,
     repeatVendors,
     recentTransactions,
+    accounts,
+    hasBalances,
+    totalBalance,
+    balanceCurve,
+    negativeBalanceDate,
     forecast,
     projectedMonthEnd,
     generatedThisLoad: generated,

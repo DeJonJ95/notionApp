@@ -689,6 +689,107 @@ export function computeCategoryBudgets(
   return rows;
 }
 
+// ── Account balances ─────────────────────────────────────────────────────
+
+/** Bucket for transactions whose account we don't know. Never carries a
+ *  balance claim — we have no statement to anchor it to. */
+export const UNASSIGNED_ACCOUNT = 'Unassigned';
+
+export type AccountBalance = {
+  account: string;
+  balance: number | null;   // null = no statement closing balance to anchor on
+  asOf: string | null;      // dateTo of the statement the balance came from
+  statementBalance: number | null;
+  sinceStatement: number;   // signed sum of transactions dated after asOf
+  txCount: number;          // transactions attributed to this account
+};
+
+const ymdOf = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Pure core of `computeAccountBalances`. For each account, anchor on the most
+ *  recent statement that stated a closing balance and roll forward every
+ *  transaction dated strictly after that statement's end date. Accounts with no
+ *  such statement are listed with a null balance rather than a guess. */
+export function computeAccountBalancesFrom(
+  imports: { account: string | null; closingBalance: number | null; dateTo: Date }[],
+  transactions: { account?: string | null; date: string; amount: number }[],
+): AccountBalance[] {
+  // Latest anchoring statement per account
+  const anchors = new Map<string, { closingBalance: number; dateTo: string }>();
+  for (const imp of imports) {
+    const account = (imp.account ?? '').trim();
+    if (!account) continue;
+    if (imp.closingBalance == null || !Number.isFinite(imp.closingBalance)) continue;
+    const dateTo = ymdOf(imp.dateTo);
+    const current = anchors.get(account);
+    if (!current || dateTo >= current.dateTo) {
+      anchors.set(account, { closingBalance: imp.closingBalance, dateTo });
+    }
+  }
+
+  const since = new Map<string, number>();
+  const counts = new Map<string, number>();
+  for (const tx of transactions) {
+    const account = (tx.account ?? '').trim() || UNASSIGNED_ACCOUNT;
+    counts.set(account, (counts.get(account) ?? 0) + 1);
+    const anchor = anchors.get(account);
+    if (anchor && tx.date > anchor.dateTo) {
+      since.set(account, (since.get(account) ?? 0) + tx.amount);
+    }
+  }
+
+  const rows: AccountBalance[] = [];
+  for (const account of new Set([...anchors.keys(), ...counts.keys()])) {
+    const anchor = anchors.get(account);
+    const sinceStatement = Math.round((since.get(account) ?? 0) * 100) / 100;
+    rows.push({
+      account,
+      balance: anchor ? Math.round((anchor.closingBalance + sinceStatement) * 100) / 100 : null,
+      asOf: anchor?.dateTo ?? null,
+      statementBalance: anchor?.closingBalance ?? null,
+      sinceStatement,
+      txCount: counts.get(account) ?? 0,
+    });
+  }
+
+  // Accounts with a real balance first (largest first), then unanchored ones,
+  // with the catch-all bucket always last.
+  rows.sort((a, b) => {
+    if (a.account === UNASSIGNED_ACCOUNT) return 1;
+    if (b.account === UNASSIGNED_ACCOUNT) return -1;
+    if ((a.balance == null) !== (b.balance == null)) return a.balance == null ? 1 : -1;
+    if (a.balance != null && b.balance != null) return b.balance - a.balance;
+    return a.account.localeCompare(b.account);
+  });
+  return rows;
+}
+
+/** Roll a starting balance forward through scheduled occurrences, one point
+ *  per day, starting today. Returns the curve and the first day it dips below
+ *  zero (null if it never does). */
+export function buildBalanceCurve(
+  startingBalance: number,
+  forecast: { date: string; amount: number }[],
+  days: number,
+  today: Date,
+): { curve: { date: string; balance: number }[]; negativeOn: string | null } {
+  const byDate = new Map<string, number>();
+  for (const f of forecast) byDate.set(f.date, (byDate.get(f.date) ?? 0) + f.amount);
+
+  const curve: { date: string; balance: number }[] = [];
+  let negativeOn: string | null = null;
+  let running = startingBalance;
+  for (let i = 0; i <= days; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+    const date = ymdOf(d);
+    running += byDate.get(date) ?? 0;
+    if (running < 0 && !negativeOn) negativeOn = date;
+    curve.push({ date, balance: Math.round(running * 100) / 100 });
+  }
+  return { curve, negativeOn };
+}
+
 // ── Coverage gap computation ─────────────────────────────────────────────
 
 export type CoverageGap = { from: string; to: string; days: number };

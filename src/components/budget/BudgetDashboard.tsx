@@ -5,6 +5,7 @@ import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
   Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard, Wallet,
+  Landmark,
 } from 'lucide-react';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
@@ -22,6 +23,8 @@ const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
 const fmt2 = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
+const fmtDay = (iso: string) =>
+  new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
 export function BudgetDashboard() {
   const [data, setData] = useState<DashboardPayload | null>(null);
@@ -187,6 +190,22 @@ export function BudgetDashboard() {
         onImport={() => setImportOpen(true)}
       />
 
+      {/* Headline warning: the projected balance dips below zero */}
+      {data.negativeBalanceDate && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 flex items-start gap-2.5">
+          <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-600">
+              Balance projected to go negative on {fmtDay(data.negativeBalanceDate)}
+            </p>
+            <p className="text-xs text-muted mt-0.5">
+              Starting from {fmt2(data.totalBalance)} across your accounts, then applying scheduled
+              income and bills. Move a bill or add income before then to stay clear.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Feature 3: Reconciliation button + results */}
       {importsData && importsData.imports.length > 0 && (
         <>
@@ -340,6 +359,100 @@ export function BudgetDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Accounts — balances anchored on the latest statement per account */}
+      {data.accounts && data.accounts.length > 0 && (
+        <Section
+          title="Accounts"
+          icon={<Landmark size={13} className="text-accent" />}
+          right={
+            data.hasBalances ? (
+              <span className="text-xs text-muted">Total {fmt2(data.totalBalance)}</span>
+            ) : null
+          }
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {data.accounts.map((a) => (
+              <div key={a.account} className="rounded-xl border border-border bg-surface p-3">
+                <div className="text-xs text-muted truncate" title={a.account}>{a.account}</div>
+                {a.balance != null ? (
+                  <>
+                    <div className={`text-xl font-bold ${a.balance >= 0 ? '' : 'text-red-500'}`}>
+                      {fmt2(a.balance)}
+                    </div>
+                    <div className="text-[10px] text-muted mt-0.5">
+                      Statement {a.asOf}
+                      {a.sinceStatement !== 0 && (
+                        <> · {a.sinceStatement > 0 ? '+' : '−'}{fmt2(Math.abs(a.sinceStatement))} since</>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xl font-bold text-muted">—</div>
+                    <div className="text-[10px] text-muted mt-0.5">
+                      {a.txCount} tx · no statement balance yet
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          {!data.hasBalances && (
+            <p className="text-xs text-muted mt-2">
+              Import a statement that shows a closing balance to project your balance forward.
+            </p>
+          )}
+        </Section>
+      )}
+
+      {/* Projected balance curve — next 45 days */}
+      {data.hasBalances && data.balanceCurve.length > 1 && (
+        <Section
+          title="Projected balance — next 45 days"
+          icon={<TrendingDown size={13} className={data.negativeBalanceDate ? 'text-red-500' : 'text-accent'} />}
+        >
+          {(() => {
+            const pts = data.balanceCurve;
+            const values = pts.map((p) => p.balance);
+            const min = Math.min(0, ...values);
+            const max = Math.max(0, ...values);
+            const span = max - min || 1;
+            const W = 600;
+            const H = 140;
+            const PAD = 8;
+            const px = (i: number) => (i / (pts.length - 1)) * W;
+            const py = (v: number) => PAD + (1 - (v - min) / span) * (H - PAD * 2);
+            const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(p.balance).toFixed(1)}`).join(' ');
+            const area = `${line} L${W},${(H - PAD).toFixed(1)} L0,${(H - PAD).toFixed(1)} Z`;
+            const zeroY = py(0);
+            const tone = data.negativeBalanceDate ? 'text-red-500' : 'text-accent';
+            const low = pts.reduce((lo, p) => (p.balance < lo.balance ? p : lo), pts[0]);
+            return (
+              <div className="rounded-xl border border-border bg-surface p-3">
+                <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className={`w-full h-36 ${tone}`}>
+                  <path d={area} fill="currentColor" opacity={0.12} />
+                  {min < 0 && (
+                    <line
+                      x1="0" x2={W} y1={zeroY} y2={zeroY}
+                      stroke="currentColor" strokeDasharray="4 4" opacity={0.5}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
+                  <path d={line} fill="none" stroke="currentColor" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                </svg>
+                <div className="flex items-center justify-between text-[11px] text-muted mt-1">
+                  <span>{pts[0].date}</span>
+                  <span>
+                    Low {fmt2(low.balance)} on {low.date}
+                  </span>
+                  <span>{pts[pts.length - 1].date}</span>
+                </div>
+              </div>
+            );
+          })()}
+        </Section>
+      )}
 
       {/* Expected vs Actual — income/expense from recurring rules compared to what's been imported */}
       {data.expectedVsActual && (data.expectedVsActual.incomeExpected > 0 || data.expectedVsActual.expenseExpected > 0) && (
