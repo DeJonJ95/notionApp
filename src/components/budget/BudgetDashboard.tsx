@@ -4,12 +4,13 @@ import Link from 'next/link';
 import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
-  Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard,
+  Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard, Wallet,
 } from 'lucide-react';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
 import { RecurringRulesModal } from './RecurringRulesModal';
 import { SavingsGoalsModal } from './SavingsGoalsModal';
+import { CategoryBudgetsModal } from './CategoryBudgetsModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
 import { ImportReminderBanner } from './ImportReminderBanner';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
@@ -31,6 +32,8 @@ export function BudgetDashboard() {
   const [recurringPrefill, setRecurringPrefill] = useState<{ name: string; amount: number; category: string; type?: 'income' | 'expense' } | null>(null);
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [budgetsOpen, setBudgetsOpen] = useState(false);
+  const [budgetFocusCategory, setBudgetFocusCategory] = useState<string | null>(null);
 
   // Feature 1: Import coverage
   const [importsData, setImportsData] = useState<ImportsPayload | null>(null);
@@ -107,6 +110,14 @@ export function BudgetDashboard() {
       {rulesOpen && (
         <CategorizationRulesModal onClose={() => setRulesOpen(false)} />
       )}
+      {budgetsOpen && (
+        <CategoryBudgetsModal
+          categoryOptions={data.categoryOptions ?? []}
+          focusCategory={budgetFocusCategory}
+          onChanged={load}
+          onClose={() => { setBudgetsOpen(false); setBudgetFocusCategory(null); }}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
@@ -126,6 +137,13 @@ export function BudgetDashboard() {
           title="Refresh"
         >
           <RefreshCw size={14} />
+        </button>
+        <button
+          onClick={() => { setBudgetFocusCategory(null); setBudgetsOpen(true); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm hover:bg-surface"
+          title="Set monthly budgets per category"
+        >
+          <Wallet size={14} /> Budgets
         </button>
         <button
           onClick={() => setGoalsOpen(true)}
@@ -602,22 +620,103 @@ export function BudgetDashboard() {
         </Section>
       )}
 
-      {/* Category breakdown */}
-      {data.byCategory.length > 0 && (
-        <Section title="Where the money went" icon={null}>
-          <div className="space-y-1.5">
-            {data.byCategory.map((c) => (
-              <div key={c.category}>
-                <div className="flex items-center justify-between text-xs mb-0.5">
-                  <span className="font-medium">{c.category}</span>
-                  <span className="text-muted">{fmt(c.spent)} · {c.pct.toFixed(0)}%</span>
-                </div>
-                <div className="h-1.5 bg-bg rounded-full overflow-hidden border border-border/40">
-                  <div className="h-full bg-accent rounded-full transition-all" style={{ width: `${c.pct}%` }} />
-                </div>
+      {/* Budgets — per-category envelope target vs this month's spend */}
+      {data.categoryBudgets && data.categoryBudgets.length > 0 && (
+        <Section
+          title="Budgets"
+          icon={<Wallet size={13} className="text-accent" />}
+          right={
+            <button
+              onClick={() => { setBudgetFocusCategory(null); setBudgetsOpen(true); }}
+              className="text-xs text-muted hover:text-accent"
+            >
+              Edit budgets
+            </button>
+          }
+        >
+          {(() => {
+            const budgeted = data.categoryBudgets.filter((c) => c.budgeted > 0);
+            const unbudgeted = data.categoryBudgets.filter((c) => c.budgeted <= 0);
+            const totalBudgeted = budgeted.reduce((s, c) => s + c.budgeted, 0);
+            const totalSpent = budgeted.reduce((s, c) => s + c.spent, 0);
+            const left = totalBudgeted - totalSpent;
+            const elapsed = data.categoryBudgets[0]?.pctOfMonthElapsed ?? 0;
+            return (
+              <div className="space-y-3">
+                {budgeted.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface px-3 py-2 text-xs">
+                    <span className="text-muted">Budgeted <strong className="text-text">{fmt(totalBudgeted)}</strong></span>
+                    <span className="text-muted">Spent <strong className="text-text">{fmt(totalSpent)}</strong></span>
+                    <span className={left >= 0 ? 'text-green-600' : 'text-red-500'}>
+                      {left >= 0 ? `${fmt(left)} left` : `${fmt(-left)} over`}
+                    </span>
+                    <div className="flex-1" />
+                    <span className="text-muted">{elapsed.toFixed(0)}% of month gone</span>
+                  </div>
+                )}
+
+                {budgeted.length > 0 && (
+                  <div className="space-y-2.5">
+                    {budgeted.map((c) => {
+                      const over = c.pctSpent > 100;
+                      const barCls = over ? 'bg-red-500' : c.pctSpent > 85 ? 'bg-amber-500' : 'bg-accent';
+                      return (
+                        <div key={c.category}>
+                          <div className="flex items-center justify-between gap-2 text-xs mb-1">
+                            <span className="font-medium truncate">{c.category}</span>
+                            <span className={over ? 'text-red-500' : 'text-muted'}>
+                              {fmt(c.spent)} of {fmt(c.budgeted)}
+                            </span>
+                          </div>
+                          <div className="relative h-2 bg-bg rounded-full overflow-hidden border border-border/40">
+                            <div
+                              className={`h-full rounded-full transition-all ${barCls}`}
+                              style={{ width: `${Math.min(100, c.pctSpent)}%` }}
+                            />
+                            {c.pctOfMonthElapsed > 0 && c.pctOfMonthElapsed < 100 && (
+                              <span
+                                className="absolute top-0 bottom-0 w-px bg-text/50"
+                                style={{ left: `${c.pctOfMonthElapsed}%` }}
+                                title="How much of the month has passed"
+                              />
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-muted mt-0.5">
+                            <span>{c.pctSpent.toFixed(0)}% spent, {c.pctOfMonthElapsed.toFixed(0)}% of month gone</span>
+                            <span className={c.remaining >= 0 ? '' : 'text-red-500'}>
+                              {c.remaining >= 0 ? `${fmt2(c.remaining)} left` : `${fmt2(-c.remaining)} over`}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {unbudgeted.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted mb-1.5">
+                      {budgeted.length > 0 ? 'Spending with no budget set' : 'No budgets set yet. Pick a category to start.'}
+                    </p>
+                    <div className="space-y-1">
+                      {unbudgeted.map((c) => (
+                        <div key={c.category} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                          <span className="flex-1 min-w-0 text-sm truncate">{c.category}</span>
+                          <span className="text-xs text-muted shrink-0">{fmt(c.spent)} spent</span>
+                          <button
+                            onClick={() => { setBudgetFocusCategory(c.category); setBudgetsOpen(true); }}
+                            className="px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text shrink-0"
+                          >
+                            Set budget
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </Section>
       )}
 

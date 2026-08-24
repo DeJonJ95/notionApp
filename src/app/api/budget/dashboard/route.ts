@@ -8,6 +8,10 @@ import {
   detectRecurringPatterns,
   computeRuleVariance,
   occurrencesBetween,
+  normalizeBudgetToMonthly,
+  monthElapsedPercent,
+  computeCategoryBudgets,
+  type CategoryBudget,
   type ForecastItem,
   type PatternSuggestion,
   type RuleVariance,
@@ -56,6 +60,11 @@ export type DashboardPayload = {
     rules: { ruleId: string; name: string; type: string; expectedAmt: number; expectedCount: number; matchedCount: number; matchedTotal: number }[];
   };
   byCategory: { category: string; spent: number; pct: number }[];
+  // Per-category envelope targets (Type=Budget rows) joined to this month's spend
+  categoryBudgets: CategoryBudget[];
+  // Every category the user can budget against: the DB's Category options
+  // plus anything already used by a transaction or envelope row
+  categoryOptions: string[];
   excesses: { category: string; spent: number; vsPrior: number; pctChange: number }[];
   subscriptions: Subscription[];
   repeatVendors: RepeatVendor[];
@@ -102,9 +111,6 @@ export async function GET() {
     console.warn('[budget-dashboard] recurring engine skipped:', (e as Error).message);
   }
 
-  const propId: Record<string, string> = {};
-  for (const p of db.properties) propId[p.name] = p.id;
-
   // Pull every transaction (joins property values keyed by name)
   const pages = await prisma.page.findMany({
     where: { databaseId: db.id, isArchived: false },
@@ -113,11 +119,23 @@ export async function GET() {
   });
 
   const all: Tx[] = [];
+  // Envelope targets: Type=Budget rows, normalized to a monthly figure.
+  const monthlyBudgets = new Map<string, number>();
   for (const p of pages) {
     const vals: Record<string, any> = {};
     for (const pv of p.properties) vals[pv.property.name] = pv.value;
     const type = String(vals['Type'] ?? '');
-    if (type === 'Budget') continue; // not a transaction
+    if (type === 'Budget') {
+      // Not a transaction — it defines a category envelope. Same semantics as
+      // the budget-summary view: prefer "Budgeted Amount", fall back to "Amount".
+      const cat = String(vals['Category'] ?? '').trim();
+      const raw = Math.abs(Number(vals['Budgeted Amount'] ?? 0)) || Math.abs(Number(vals['Amount'] ?? 0));
+      if (cat && raw > 0) {
+        const period = String(vals['Budget Period'] ?? '');
+        monthlyBudgets.set(cat, (monthlyBudgets.get(cat) ?? 0) + normalizeBudgetToMonthly(raw, period));
+      }
+      continue;
+    }
     const rawAmt = Number(vals['Amount'] ?? 0);
     if (!rawAmt) continue;
     all.push({
@@ -185,6 +203,34 @@ export async function GET() {
       pct: expenses > 0 ? (spent / expenses) * 100 : 0,
     }))
     .sort((a, b) => b.spent - a.spent);
+
+  // ── Per-category budgets: envelope target vs this month's spend ─────────
+  const categoryBudgets = computeCategoryBudgets(
+    Array.from(monthlyBudgets, ([category, monthlyAmount]) => ({ category, monthlyAmount })),
+    byCategory.map((c) => ({ category: c.category, spent: c.spent })),
+    monthElapsedPercent(displayMonthStart, displayMonthEnd, now),
+  );
+
+  // Category options the budget editor offers: the DB's own select options,
+  // plus anything already in use so nothing on the dashboard is unreachable.
+  const categoryOptionSet = new Set<string>();
+  try {
+    const catProp = await prisma.property.findFirst({
+      where: { databaseId: db.id, name: 'Category' },
+      select: { formula: true },
+    });
+    const parsed = JSON.parse(catProp?.formula || '[]');
+    if (Array.isArray(parsed)) {
+      for (const o of parsed) {
+        const s = String(o).trim();
+        if (s) categoryOptionSet.add(s);
+      }
+    }
+  } catch (e) {
+    console.warn('[budget-dashboard] category options skipped:', (e as Error).message);
+  }
+  for (const c of categoryBudgets) categoryOptionSet.add(c.category);
+  const categoryOptions = Array.from(categoryOptionSet).sort((a, b) => a.localeCompare(b));
 
   // "Excesses" — categories where spending grew >50% vs prior month
   const prevCat = new Map<string, number>();
@@ -359,15 +405,8 @@ export async function GET() {
     availableToBudget: 0,
   };
   try {
-    // Check if user has any manual Budget rows
-    const budgetPropId = propId['Type'];
-    const hasManualBudget = budgetPropId
-      ? pages.some((p) => {
-          const vals: Record<string, any> = {};
-          for (const pv of p.properties) vals[pv.property.name] = pv.value;
-          return String(vals['Type'] ?? '') === 'Budget';
-        })
-      : false;
+    // Manual budgeting is on once at least one envelope row carries an amount.
+    const hasManualBudget = monthlyBudgets.size > 0;
 
     // Monthly-normalize recurring rules
     const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
@@ -484,6 +523,8 @@ export async function GET() {
     prevMonth: { income: prevIncome, expenses: prevExpenses, net: prevIncome - prevExpenses },
     expectedVsActual,
     byCategory,
+    categoryBudgets,
+    categoryOptions,
     excesses,
     subscriptions,
     repeatVendors,

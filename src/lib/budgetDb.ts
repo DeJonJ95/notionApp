@@ -572,6 +572,103 @@ export function detectRecurringPatterns(
   return suggestions;
 }
 
+// ── Category budgets (Type=Budget envelope rows) ─────────────────────────
+
+// How many times a period occurs in a year. Mirrors the table used by
+// `normalizeBudgetAmount` in DatabaseView so the dashboard and the
+// budget-summary view read the same envelope rows the same way.
+const BUDGET_PERIOD_ANNUAL_FACTOR: Record<string, number> = {
+  'Weekly': 52,
+  'Bi-Weekly': 26,
+  'Biweekly': 26,
+  'Semi-Monthly': 24,
+  'Monthly': 12,
+  'Quarterly': 4,
+  'Annual': 1,
+  'Yearly': 1,
+};
+
+/** Convert a budget amount stated for `fromPeriod` into a monthly figure.
+ *  One-Time, blank, or unrecognized periods pass through unchanged. */
+export function normalizeBudgetToMonthly(amount: number, fromPeriod: string): number {
+  const factor = BUDGET_PERIOD_ANNUAL_FACTOR[fromPeriod.trim()];
+  if (!factor) return amount;
+  return (amount * factor) / 12;
+}
+
+/** Inverse of `normalizeBudgetToMonthly` — express a monthly figure in
+ *  `toPeriod` so an existing envelope row keeps the period the user chose. */
+export function denormalizeMonthlyBudget(monthlyAmount: number, toPeriod: string): number {
+  const factor = BUDGET_PERIOD_ANNUAL_FACTOR[toPeriod.trim()];
+  if (!factor) return monthlyAmount;
+  return (monthlyAmount * 12) / factor;
+}
+
+/** Share of the display month that has already passed, 0-100. Months entirely
+ *  in the past return 100, months entirely in the future return 0. `end` is
+ *  exclusive (the first instant of the following month). */
+export function monthElapsedPercent(start: Date, end: Date, now: Date): number {
+  const span = end.getTime() - start.getTime();
+  if (span <= 0) return 100;
+  const elapsed = now.getTime() - start.getTime();
+  if (elapsed <= 0) return 0;
+  if (elapsed >= span) return 100;
+  return Math.round((elapsed / span) * 1000) / 10;
+}
+
+export type CategoryBudget = {
+  category: string;
+  budgeted: number;          // monthly target, 0 when the category has no envelope
+  spent: number;
+  remaining: number;         // budgeted - spent (negative = overspent)
+  pctSpent: number;          // 0 when there is no budget to spend against
+  pctOfMonthElapsed: number;
+};
+
+/** Join monthly envelope targets to this month's spend. Categories with a
+ *  budget OR spend are included; budgeted categories sort first, by how much
+ *  of the envelope is used. */
+export function computeCategoryBudgets(
+  budgets: { category: string; monthlyAmount: number }[],
+  spendByCategory: { category: string; spent: number }[],
+  pctOfMonthElapsed: number,
+): CategoryBudget[] {
+  const budgeted = new Map<string, number>();
+  for (const b of budgets) {
+    const key = b.category.trim();
+    if (!key) continue;
+    budgeted.set(key, (budgeted.get(key) ?? 0) + b.monthlyAmount);
+  }
+  const spent = new Map<string, number>();
+  for (const s of spendByCategory) {
+    const key = s.category.trim();
+    if (!key) continue;
+    spent.set(key, (spent.get(key) ?? 0) + s.spent);
+  }
+
+  const rows: CategoryBudget[] = [];
+  for (const category of new Set([...budgeted.keys(), ...spent.keys()])) {
+    const b = Math.round((budgeted.get(category) ?? 0) * 100) / 100;
+    const s = Math.round((spent.get(category) ?? 0) * 100) / 100;
+    if (b <= 0 && s <= 0) continue;
+    rows.push({
+      category,
+      budgeted: b,
+      spent: s,
+      remaining: Math.round((b - s) * 100) / 100,
+      pctSpent: b > 0 ? Math.round((s / b) * 1000) / 10 : 0,
+      pctOfMonthElapsed,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (a.budgeted > 0 !== b.budgeted > 0) return a.budgeted > 0 ? -1 : 1;
+    if (a.budgeted > 0) return b.pctSpent - a.pctSpent;
+    return b.spent - a.spent;
+  });
+  return rows;
+}
+
 // ── Coverage gap computation ─────────────────────────────────────────────
 
 export type CoverageGap = { from: string; to: string; days: number };
