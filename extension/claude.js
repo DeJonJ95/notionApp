@@ -90,7 +90,7 @@
     return (document.title || '').replace(/\s*[-–|]\s*Claude\s*$/i, '').trim().slice(0, 200);
   }
 
-  function isConversation() {
+  function pathLooksLikeConversation() {
     return /^\/(chat|project\/[^/]+\/chat)\/[^/]+/.test(location.pathname);
   }
 
@@ -157,14 +157,20 @@
     return btn;
   }
 
+  // Show the button when the URL looks like a conversation OR when turns are
+  // actually on screen. The second half matters: if claude.ai changes its URL
+  // shape, a path-only gate would hide the button with no error anywhere.
+  let lastLogged = -1;
   function evaluate() {
     const b = ensureButton();
-    if (!isConversation()) {
-      b.style.display = 'none';
-      return;
-    }
     const count = collectTurns().length;
-    b.style.display = 'flex';
+    const show = pathLooksLikeConversation() || count > 0;
+    if (count !== lastLogged) {
+      lastLogged = count;
+      console.log('[Kove] claude.js — path', location.pathname, '· turns detected:', count,
+        count === 0 ? '(selectors found nothing; capture will fall back to one block)' : '');
+    }
+    b.style.display = show ? 'flex' : 'none';
     b.textContent = count > 0 ? '💬 Send ' + count + ' turns to Kove' : '💬 Send to Kove';
     b.title = count > 0
       ? 'Captures the ' + count + ' turns currently in the page. Scroll up first if the thread is long.'
@@ -174,6 +180,7 @@
   // Re-check on SPA navigation and as turns stream in / scroll into view.
   let timer = null;
   const debouncedEval = () => { clearTimeout(timer); timer = setTimeout(evaluate, 700); };
+  console.log('[Kove] claude.js loaded on', location.href);
   evaluate();
   new MutationObserver(debouncedEval).observe(document.documentElement, { childList: true, subtree: true });
   ['pushState', 'replaceState'].forEach((m) => {
