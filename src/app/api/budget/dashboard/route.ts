@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import {
@@ -13,6 +13,7 @@ import {
   computeCategoryBudgets,
   computeAccountBalancesFrom,
   buildBalanceCurve,
+  resolveDisplayMonth,
   type AccountBalance,
   type CategoryBudget,
   type ForecastItem,
@@ -52,6 +53,8 @@ export type DashboardPayload = {
   databaseId: string;
   databaseName: string;
   monthLabel: string;
+  month: string;         // the displayed month, YYYY-MM
+  currentMonth: string;  // "this" month, YYYY-MM — the forward-navigation limit
   income: number;
   expenses: number;
   net: number;
@@ -103,10 +106,14 @@ function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  // Optional ?month=YYYY-MM. Anything malformed is ignored by
+  // resolveDisplayMonth, so a bad param degrades to the default view.
+  const monthParam = req.nextUrl.searchParams.get('month');
 
   const db = await findOrCreateBudgetDb(userId);
   // Run the recurring engine BEFORE pulling transactions so any newly-due
@@ -162,39 +169,23 @@ export async function GET() {
   // Month windows
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  let displayMonthStart = thisMonthStart;
-  let displayMonthEnd = nextMonthStart;
 
   const inRange = (s: string, lo: Date, hi: Date) => {
     const d = new Date(s + 'T00:00:00');
     return d >= lo && d < hi;
   };
 
-  const thisM = all.filter((t) => inRange(t.date, thisMonthStart, nextMonthStart));
-  const prevM = all.filter((t) => inRange(t.date, prevMonthStart, thisMonthStart));
+  const { start: displayMonthStart, end: displayMonthEnd } = resolveDisplayMonth(
+    monthParam,
+    all.map((t) => t.date),
+    now,
+  );
+  const prevMonthStart = new Date(displayMonthStart.getFullYear(), displayMonthStart.getMonth() - 1, 1);
 
-  // If "this month" is empty (e.g. statements imported are older), use the
-  // most recent month that actually has data so the dashboard isn't blank.
-  let usedThis = thisM;
-  let usedPrev = prevM;
-  let monthLabel = thisMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  if (thisM.length === 0 && all.length > 0) {
-    const latestDate = all
-      .map((t) => t.date)
-      .sort()
-      .at(-1)!;
-    const [y, m] = latestDate.split('-').map(Number);
-    const start = new Date(y, m - 1, 1);
-    const end = new Date(y, m, 1);
-    const prevStart = new Date(y, m - 2, 1);
-    usedThis = all.filter((t) => inRange(t.date, start, end));
-    usedPrev = all.filter((t) => inRange(t.date, prevStart, start));
-    monthLabel = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    displayMonthStart = start;
-    displayMonthEnd = end;
-  }
+  const usedThis = all.filter((t) => inRange(t.date, displayMonthStart, displayMonthEnd));
+  const usedPrev = all.filter((t) => inRange(t.date, prevMonthStart, displayMonthStart));
+  const monthLabel = displayMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
   const income = usedThis.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const expenses = usedThis.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
@@ -348,12 +339,10 @@ export async function GET() {
   const day14 = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 14));
   const forecast = forecast45.filter((f) => f.date <= day14);
 
-  // Projected end-of-month net: current month's actual + every scheduled
-  // occurrence whose date falls before the end of the displayed month.
-  // (Uses the same month window we used for income/expenses above.)
-  const monthEnd = thisM.length > 0 || all.length === 0
-    ? new Date(nextMonthStart.getTime() - 1)
-    : new Date(); // fallback — shouldn't matter, just a safety
+  // Projected end-of-month net: the displayed month's actual + every scheduled
+  // occurrence still to come before that month ends. For a past month nothing
+  // is still to come, so this equals the actual net.
+  const monthEnd = new Date(displayMonthEnd.getTime() - 1);
   const scheduledThisMonth = forecast45.filter((f) => {
     const d = new Date(f.date + 'T00:00:00');
     return d >= now && d <= monthEnd;
@@ -551,6 +540,8 @@ export async function GET() {
     databaseId: db.id,
     databaseName: db.name,
     monthLabel,
+    month: ym(displayMonthStart),
+    currentMonth: ym(thisMonthStart),
     income,
     expenses,
     net: income - expenses,

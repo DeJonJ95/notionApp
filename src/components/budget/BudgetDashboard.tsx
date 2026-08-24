@@ -5,7 +5,7 @@ import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
   Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard, Wallet,
-  Landmark,
+  Landmark, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
@@ -26,6 +26,13 @@ const fmt2 = (n: number) =>
 const fmtDay = (iso: string) =>
   new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
+// Shift a YYYY-MM string by whole months.
+const shiftMonth = (ym: string, delta: number) => {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
 export function BudgetDashboard() {
   const [data, setData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,6 +44,8 @@ export function BudgetDashboard() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [budgetsOpen, setBudgetsOpen] = useState(false);
   const [budgetFocusCategory, setBudgetFocusCategory] = useState<string | null>(null);
+  // null = let the server pick (current month, or the latest month with data)
+  const [month, setMonth] = useState<string | null>(null);
 
   // Feature 1: Import coverage
   const [importsData, setImportsData] = useState<ImportsPayload | null>(null);
@@ -49,7 +58,7 @@ export function BudgetDashboard() {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch('/api/budget/dashboard')
+    fetch(`/api/budget/dashboard${month ? `?month=${month}` : ''}`)
       .then((r) => (r.ok ? r.json() : null))
       .then(setData)
       .catch(() => {})
@@ -59,11 +68,13 @@ export function BudgetDashboard() {
       .then((r) => (r.ok ? r.json() : null))
       .then(setImportsData)
       .catch(() => {});
-  }, []);
+  }, [month]);
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) {
+  // Full-page spinner only on the very first load — switching months keeps the
+  // current view on screen (dimmed) so the header controls don't jump.
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-20 text-muted">
         <Loader2 size={20} className="animate-spin" />
@@ -88,7 +99,7 @@ export function BudgetDashboard() {
   const expDelta = data.expenses - data.prevMonth.expenses;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 space-y-6">
+    <div className={`max-w-6xl mx-auto px-4 md:px-8 py-8 space-y-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
       {importOpen && (
         <ImportStatementModal onClose={() => setImportOpen(false)} onImported={load} />
       )}
@@ -126,8 +137,36 @@ export function BudgetDashboard() {
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold">Budget</h1>
-          <p className="text-xs text-muted mt-0.5">
-            {data.monthLabel} · saving to{' '}
+          <div className="flex items-center gap-1 mt-1">
+            <button
+              onClick={() => setMonth(shiftMonth(data.month, -1))}
+              className="p-2 rounded-lg border border-border text-muted hover:bg-surface hover:text-text"
+              title="Previous month"
+              aria-label="Previous month"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-sm font-medium min-w-[8.5rem] text-center">{data.monthLabel}</span>
+            <button
+              onClick={() => setMonth(shiftMonth(data.month, 1))}
+              disabled={data.month >= data.currentMonth}
+              className="p-2 rounded-lg border border-border text-muted hover:bg-surface hover:text-text disabled:opacity-30 disabled:hover:bg-transparent"
+              title="Next month"
+              aria-label="Next month"
+            >
+              <ChevronRight size={14} />
+            </button>
+            {data.month !== data.currentMonth && (
+              <button
+                onClick={() => setMonth(null)}
+                className="ml-1 px-2 py-2 rounded-lg text-xs text-accent hover:bg-surface"
+              >
+                Today
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-muted mt-1">
+            saving to{' '}
             <Link href={`/database/${data.databaseId}`} className="text-accent hover:underline">
               {data.databaseName}
             </Link>

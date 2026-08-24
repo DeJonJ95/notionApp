@@ -592,6 +592,42 @@ export function detectRecurringPatterns(
   return suggestions;
 }
 
+// ── Display month resolution ─────────────────────────────────────────────
+
+/** Pick the month the dashboard should show. An explicit `YYYY-MM` wins;
+ *  malformed values are ignored. Otherwise show the current month, unless it
+ *  has no transactions at all, in which case fall back to the most recent
+ *  month that does so a dashboard fed by older statements isn't blank.
+ *  `end` is exclusive (the first instant of the following month). */
+export function resolveDisplayMonth(
+  requestedMonth: string | null | undefined,
+  txDates: string[],
+  now: Date,
+): { start: Date; end: Date } {
+  const monthOf = (y: number, m: number) => ({
+    start: new Date(y, m, 1),
+    end: new Date(y, m + 1, 1),
+  });
+
+  if (requestedMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(requestedMonth)) {
+    const [y, m] = requestedMonth.split('-').map(Number);
+    return monthOf(y, m - 1);
+  }
+
+  const currentPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if (txDates.some((d) => d.startsWith(currentPrefix))) return monthOf(now.getFullYear(), now.getMonth());
+
+  let latest: string | null = null;
+  for (const d of txDates) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (latest === null || d > latest)) latest = d;
+  }
+  if (latest) {
+    const [y, m] = latest.split('-').map(Number);
+    return monthOf(y, m - 1);
+  }
+  return monthOf(now.getFullYear(), now.getMonth());
+}
+
 // ── Category budgets (Type=Budget envelope rows) ─────────────────────────
 
 // How many times a period occurs in a year. Mirrors the table used by
