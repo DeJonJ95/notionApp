@@ -8,7 +8,7 @@ import {
   Heart, Star, Calendar, Folder, FileText, Lightbulb, Music, Camera, Globe,
   Flag, Bookmark, Coffee, Plane, Car, Gift, Bell, Flame, Leaf, Sun, Moon,
   Cloud, Zap, Shield, Users, Mail, Building2, Store, GraduationCap, Dumbbell,
-  Utensils, Gamepad2, PenTool, Compass, Map, Aperture, type LucideIcon,
+  Utensils, Gamepad2, PenTool, Compass, Map, Aperture, MessageSquare, type LucideIcon,
 } from 'lucide-react';
 
 export const ICON_REGISTRY: Record<string, LucideIcon> = {
@@ -21,6 +21,7 @@ export const ICON_REGISTRY: Record<string, LucideIcon> = {
   zap: Zap, shield: Shield, users: Users, mail: Mail, building: Building2,
   store: Store, education: GraduationCap, fitness: Dumbbell, food: Utensils,
   game: Gamepad2, pen: PenTool, compass: Compass, map: Map, aperture: Aperture,
+  chat: MessageSquare,
 };
 
 export const ICON_NAMES = Object.keys(ICON_REGISTRY);

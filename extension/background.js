@@ -87,6 +87,20 @@ async function ingestJobText(payload) {
   return readJson(res, 'Capture job');
 }
 
+// Store a claude.ai conversation scraped by claude.js. The server upserts on
+// the conversation id in the source URL, so re-capturing a thread you've
+// added to updates the same page instead of duplicating it.
+async function captureConversation(payload) {
+  const token = await getToken();
+  if (!token) throw new Error('Not connected — open the extension popup to paste your token.');
+  const res = await fetch(`${API}/api/clipper/conversation`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return readJson(res, 'Capture conversation');
+}
+
 // ── Per-tab activation state ───────────────────────────────────────
 // Clipping is opt-in per tab: the content script ships dormant and only
 // shows hover buttons once the user activates the current tab from the
@@ -166,6 +180,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg?.type === 'ingestJobText') {
     ingestJobText(msg.payload)
+      .then((data) => sendResponse({ ok: true, ...data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true; // async
+  }
+  if (msg?.type === 'captureConversation') {
+    captureConversation(msg.payload)
       .then((data) => sendResponse({ ok: true, ...data }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // async

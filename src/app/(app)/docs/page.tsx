@@ -26,7 +26,8 @@ export default function DocsPage() {
     'Workspaces & pages', 'Canvas notes', 'Text formatting', 'Databases',
     'Views, filters & grouping', 'Relations & rollups', 'Budget', 'Recurring & forecast',
     'Goals, rules & trends', 'Transcripts & audio', 'Extract from notes',
-    'Inbox & capture', 'Bank alerts → budget', 'Subscriptions', 'Gestures & shortcuts',
+    'Claude conversations', 'Inbox & capture', 'Bank alerts → budget', 'Subscriptions',
+    'Gestures & shortcuts',
   ];
   return (
     <div className="max-w-3xl mx-auto px-6 md:px-12 py-12">
@@ -116,7 +117,15 @@ export default function DocsPage() {
 
       <Section title="Extract from notes">
         <Item name="What it does">Sidebar → Extract from notes. Pulls structured records out of free text and proposes create/update operations against your databases. Review each, then apply.</Item>
-        <Item name="Sources">Paste text, pick a single page, or batch over recent pages. New rows can include an AI-written body summary.</Item>
+        <Item name="Sources">Paste text, pick a single page, batch over recent pages, or pick captured Claude conversations. New rows can include an AI-written body summary.</Item>
+        <Item name="Recent batch">Sweeps several pages at once: tick any of your 30 most-recently-updated pages (or “Last 7”) and all of them are read together in a single pass, so one extraction can span a week of notes.</Item>
+      </Section>
+
+      <Section title="Claude conversations">
+        <Item name="Capturing">Open a chat on claude.ai with the browser extension installed and connected — a <span className="text-text font-medium">Send to Kove</span> button appears bottom-right, labelled with how many turns it can see. Click it and the transcript is saved to the <span className="text-text font-medium">Claude Chats</span> workspace, one page per conversation, one block per turn.</Item>
+        <Item name="Re-capturing">Sending the same conversation again replaces that page’s contents rather than making a second one, so carry on chatting and re-send to pull in the newer turns.</Item>
+        <Item name="Extracting">Extract from notes → <span className="text-text font-medium">Claude chat</span> lists your captured conversations; tick one or more and extract. The prompt switches to transcript mode: it keeps decisions, plans and action items and ignores greetings, discarded options, and the assistant’s own explanations.</Item>
+        <Item name="Long threads">Claude only keeps visible turns in the page, so scroll to the top of a long conversation before sending. The button’s turn count tells you what will actually be captured.</Item>
       </Section>
 
       <Section title="Inbox & capture">

@@ -80,6 +80,32 @@ Two extra buttons tailored to hiring.cafe:
 - **📥 Import all on page** — bulk-imports a structured summary of every result.
   Open any later and "Capture this job" to upgrade it to the full description.
 
+## Capturing Claude conversations
+
+Same token again. On any conversation at **claude.ai**, a **💬 Send N turns to
+Kove** button appears bottom-right. Click it and the transcript is saved to a
+**Claude Chats** workspace in the app — one page per conversation, one block
+per turn, speaker-labelled.
+
+Then in the app: **Extract from notes → Claude chat**, tick the conversations
+you want, pick the target databases, and it proposes rows the same way it does
+for meeting notes (with a prompt tuned for transcripts — it keeps decisions and
+action items and drops the chit-chat).
+
+Two things worth knowing:
+
+- **The button shows the turn count it can see.** claude.ai only keeps visible
+  turns in the DOM, so on a long thread scroll up to the beginning before
+  clicking, or you'll capture only the tail.
+- **Re-sending updates in place.** The server matches on the conversation id in
+  the URL, so chatting further and clicking again replaces the page's contents
+  instead of creating a duplicate.
+
+If claude.ai changes its markup, the button falls back to grabbing the whole
+readable thread as one block — you lose the speaker labels but not the content,
+and the toast tells you it happened. The selector list is at the top of
+`claude.js`.
+
 ## Troubleshooting
 
 - **"Not connected" error**: open the extension popup and paste your token again.
@@ -92,8 +118,10 @@ Two extra buttons tailored to hiring.cafe:
 
 ## Privacy notes
 
-- The extension only fires API requests when you click Save or open the picker.
-- It does NOT read or transmit any page content otherwise.
+- The extension only fires API requests when you click Save, Capture, Send to
+  Kove, or open the picker.
+- It does NOT read or transmit any page content otherwise. On claude.ai it
+  reads the conversation only at the moment you click the button.
 - Tokens are stored in `chrome.storage.local` (per-profile, per-browser).
 - All API traffic is HTTPS to your own notes app.
 

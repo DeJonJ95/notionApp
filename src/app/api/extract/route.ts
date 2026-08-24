@@ -88,11 +88,18 @@ export async function POST(req: NextRequest) {
     notes: rawNotes,
     databaseIds,
     pageIds,
+    sourceKind,
   } = (await req.json()) as {
     notes?: string;
     databaseIds: string[];
     pageIds?: string[];
+    sourceKind?: 'notes' | 'conversation';
   };
+
+  // A captured Claude conversation reads very differently from meeting notes:
+  // it's long, it's two-sided, and most of the assistant's words are
+  // explanation rather than fact. Frame the prompt accordingly.
+  const isConversation = sourceKind === 'conversation';
 
   if (!Array.isArray(databaseIds) || databaseIds.length === 0) {
     return NextResponse.json({ error: 'Select at least one database' }, { status: 400 });
@@ -153,7 +160,19 @@ export async function POST(req: NextRequest) {
     return `Database: "${db.name}"\nColumns: ${cols}\nRows:\n${rows.length ? rows.join('\n') : '  (empty)'}`;
   }).join('\n\n');
 
-  const systemPrompt = `You are a data extraction assistant. Analyze meeting notes and return ONLY a valid JSON array of database operations. No prose, no markdown fences, no keys outside the array.
+  const sourceNoun = isConversation ? 'a conversation transcript' : 'meeting notes';
+  const conversationRules = isConversation
+    ? `
+TRANSCRIPT HANDLING — the source is a chat between "You" (the user) and "Claude" (an AI assistant):
+- Extract only DECISIONS, FACTS, PLANS and ACTION ITEMS. Ignore greetings, thanks, clarifying questions, apologies, and the assistant's explanations of its own reasoning.
+- Something the user rejected, undid, or moved on from is NOT a row. When the conversation changes its mind, keep only the final state.
+- Options the assistant merely listed as possibilities are not decisions. Only capture a suggestion if the user accepted it.
+- Attribute ownership to the user, not to "Claude", unless the transcript names someone else.
+- Long code blocks and their explanations are context, not rows — capture what the code is FOR, not the code itself.
+`
+    : '';
+
+  const systemPrompt = `You are a data extraction assistant. Analyze ${sourceNoun} and return ONLY a valid JSON array of database operations. No prose, no markdown fences, no keys outside the array.
 
 ${dbContext}
 
@@ -165,9 +184,9 @@ Rules:
 - Each element must be one of:
   {"action":"update","database":"<name>","match":{"Name":"<row name>"},"changes":{"<col>":"<value>"},"newColumns":[{"name":"<col>","type":"text|number|date|select|checkbox"}],"body":"<optional>"}
   {"action":"create","database":"<name>","row":{"Name":"<title>","<col>":"<value>"},"newColumns":[...],"body":"<optional 1-3 sentence summary of what the notes said about this item — context the property columns can't capture>"}
-- "body" is OPTIONAL. Include it on create when the notes give meaningful narrative context that should live on the new page. Keep it factual and short.
-
-ACTION ITEMS — when the notes contain a task / to-do / commitment / follow-up, capture each one richly, not just a title:
+- "body" is OPTIONAL. Include it on create when the source gives meaningful narrative context that should live on the new page. Keep it factual and short.
+${conversationRules}
+ACTION ITEMS — when the source contains a task / to-do / commitment / follow-up, capture each one richly, not just a title:
 - Emit a SEPARATE "create" operation for EVERY distinct action item. Never combine multiple action items into one row or one body — N action items means N create elements in the array.
 - Put WHO is responsible into an owner/assignee column if one exists; otherwise propose one.
 - Put any deadline into a date column (ISO YYYY-MM-DD); resolve relative dates ("next Friday") against today = ${new Date().toISOString().slice(0, 10)}.
@@ -177,7 +196,7 @@ ACTION ITEMS — when the notes contain a task / to-do / commitment / follow-up,
 NEW COLUMNS — "newColumns" is OPTIONAL. If the notes contain a meaningful attribute that NO existing column captures (e.g. an owner, a due date, an amount, a status), you MAY propose a new column: add it to "newColumns" with a sensible type AND put the value in changes/row under that column name. Only propose columns that add real structured value — prefer existing columns; never propose a column just to restate the title or body.
 - Values must match the column type: numbers for number columns, strings for text/select, ISO dates for date columns, true/false for checkbox.`;
 
-  const userPrompt = `Meeting notes:\n"""\n${notes.trim()}\n"""`;
+  const userPrompt = `${isConversation ? 'Conversation transcript' : 'Meeting notes'}:\n"""\n${notes.trim()}\n"""`;
 
   // Call DeepSeek
   const aiRes = await fetch('https://api.deepseek.com/chat/completions', {

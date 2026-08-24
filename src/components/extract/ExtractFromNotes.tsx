@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Check, AlertCircle, ChevronRight, FileText, Layers, ClipboardPaste, Pencil } from 'lucide-react';
+import { X, Sparkles, Check, AlertCircle, ChevronRight, FileText, Layers, ClipboardPaste, Pencil, MessageSquare } from 'lucide-react';
 import { EntityIcon } from '@/components/icons/registry';
 import type { ResolvedChange } from '@/app/api/extract/route';
 
@@ -9,7 +9,13 @@ type Database = { id: string; name: string };
 type Workspace = { id: string; name: string; slug: string; icon: string | null; databases: Database[] };
 type Page = { id: string; title: string; icon: string | null; updatedAt: string; workspaceId: string };
 type ApplyResult = { ok: boolean; action: string; detail: string };
-type SourceMode = 'paste' | 'page' | 'recent';
+type SourceMode = 'paste' | 'page' | 'recent' | 'claude';
+
+// Conversations captured from claude.ai by the browser extension live in this
+// workspace (see src/lib/claudeChats.ts). They're ordinary pages, so the
+// "Claude chat" source is just a filtered page picker feeding the same
+// pageIds path as the other two page modes.
+const CLAUDE_CHATS_SLUG = 'claude-chats';
 
 type Props = {
   onClose: () => void;
@@ -25,6 +31,8 @@ export function ExtractFromNotes({ onClose }: Props) {
   const [pickedPageId, setPickedPageId] = useState<string | null>(null);
   const [pageSearch, setPageSearch] = useState('');
   const [recentPageIds, setRecentPageIds] = useState<Set<string>>(new Set());
+  const [claudeChatIds, setClaudeChatIds] = useState<Set<string>>(new Set());
+  const [claudeSearch, setClaudeSearch] = useState('');
   const [step, setStep] = useState<'input' | 'preview' | 'done'>('input');
   const [changes, setChanges] = useState<ResolvedChange[]>([]);
   const [enabledIdx, setEnabledIdx] = useState<Set<number>>(new Set());
@@ -90,6 +98,17 @@ export function ExtractFromNotes({ onClose }: Props) {
   }, [pages]);
   const top30Recent = useMemo(() => pagesByRecent.slice(0, 30), [pagesByRecent]);
 
+  // Captured Claude conversations, newest first, filtered by the search box.
+  const claudeChats = useMemo(() => {
+    const wsId = workspaces.find((w) => w.slug === CLAUDE_CHATS_SLUG)?.id;
+    if (!wsId) return [];
+    const q = claudeSearch.trim().toLowerCase();
+    return pagesByRecent
+      .filter((p) => p.workspaceId === wsId)
+      .filter((p) => !q || p.title.toLowerCase().includes(q))
+      .slice(0, 50);
+  }, [workspaces, pagesByRecent, claudeSearch]);
+
   const filteredPages = useMemo(() => {
     const q = pageSearch.trim().toLowerCase();
     if (!q) return pagesByRecent.slice(0, 12);
@@ -133,6 +152,9 @@ export function ExtractFromNotes({ onClose }: Props) {
     } else if (sourceMode === 'recent') {
       if (recentPageIds.size === 0) { setError('Select at least one recent page.'); return; }
       pageIdsPart = [...recentPageIds];
+    } else if (sourceMode === 'claude') {
+      if (claudeChatIds.size === 0) { setError('Select at least one conversation.'); return; }
+      pageIdsPart = [...claudeChatIds];
     }
     if (selectedDbIds.size === 0) { setError('Select at least one database.'); return; }
     setError('');
@@ -145,6 +167,7 @@ export function ExtractFromNotes({ onClose }: Props) {
           notes: notesPart,
           pageIds: pageIdsPart,
           databaseIds: [...selectedDbIds],
+          sourceKind: sourceMode === 'claude' ? 'conversation' : 'notes',
         }),
       });
       const data = await res.json();
@@ -172,11 +195,20 @@ export function ExtractFromNotes({ onClose }: Props) {
     });
   }
 
+  function toggleClaudeChat(id: string) {
+    setClaudeChatIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
   // Disable the Extract button if the current source mode has no input
   const canExtract = !loading && selectedDbIds.size > 0 && (
     (sourceMode === 'paste' && notes.trim().length > 0) ||
     (sourceMode === 'page' && pickedPageId !== null) ||
-    (sourceMode === 'recent' && recentPageIds.size > 0)
+    (sourceMode === 'recent' && recentPageIds.size > 0) ||
+    (sourceMode === 'claude' && claudeChatIds.size > 0)
   );
 
   async function handleApply() {
@@ -259,11 +291,12 @@ export function ExtractFromNotes({ onClose }: Props) {
                 <label className="block text-xs text-muted mb-1.5 font-medium uppercase tracking-wide">
                   Source
                 </label>
-                <div className="grid grid-cols-3 gap-1 bg-bg border border-border rounded-lg p-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 bg-bg border border-border rounded-lg p-1">
                   {[
                     { id: 'paste' as const,  icon: ClipboardPaste, label: 'Paste text' },
                     { id: 'page' as const,   icon: FileText,       label: 'From a page' },
                     { id: 'recent' as const, icon: Layers,         label: 'Recent batch' },
+                    { id: 'claude' as const, icon: MessageSquare,  label: 'Claude chat' },
                   ].map(({ id, icon: Icon, label }) => (
                     <button
                       key={id}
@@ -375,6 +408,64 @@ export function ExtractFromNotes({ onClose }: Props) {
                       ))
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Claude chat mode — conversations captured from claude.ai */}
+              {sourceMode === 'claude' && (
+                <div className="space-y-2">
+                  <input
+                    autoFocus
+                    value={claudeSearch}
+                    onChange={(e) => setClaudeSearch(e.target.value)}
+                    placeholder="Search conversations…"
+                    className="w-full px-3 py-2 rounded-lg border border-border bg-bg text-text text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  />
+                  <div className="max-h-56 overflow-y-auto space-y-1 border border-border rounded-lg bg-bg p-1">
+                    {claudeChats.length === 0 ? (
+                      <div className="text-xs text-muted text-center py-6 px-4 leading-relaxed">
+                        {claudeSearch.trim() ? (
+                          <>No conversations match.</>
+                        ) : (
+                          <>
+                            No captured conversations yet. Open a chat on{' '}
+                            <span className="text-text">claude.ai</span> and click{' '}
+                            <span className="text-text">Send to Kove</span> in the browser
+                            extension — see{' '}
+                            <a href="/clipper" className="text-accent underline">
+                              Browser clipper
+                            </a>{' '}
+                            for setup.
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      claudeChats.map((p) => (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 px-2.5 py-1.5 rounded cursor-pointer hover:bg-surface text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={claudeChatIds.has(p.id)}
+                            onChange={() => toggleClaudeChat(p.id)}
+                            className="accent-accent"
+                          />
+                          <EntityIcon icon={p.icon} size={15} className="shrink-0 text-muted" />
+                          <span className="truncate flex-1 text-text">{p.title || 'Untitled'}</span>
+                          <span className="text-xs text-muted shrink-0">
+                            {new Date(p.updatedAt).toLocaleDateString()}
+                          </span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                  {claudeChats.length > 0 && (
+                    <p className="text-xs text-muted">
+                      {claudeChatIds.size} selected · re-capture a chat in the extension to pull in
+                      newer turns before extracting.
+                    </p>
+                  )}
                 </div>
               )}
 

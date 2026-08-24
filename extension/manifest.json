@@ -35,8 +35,13 @@
       "run_at": "document_idle"
     },
     {
+      "matches": ["https://claude.ai/*"],
+      "js": ["claude.js"],
+      "run_at": "document_idle"
+    },
+    {
       "matches": ["http://*/*", "https://*/*"],
-      "exclude_matches": ["https://hiring.cafe/*"],
+      "exclude_matches": ["https://hiring.cafe/*", "https://claude.ai/*"],
       "js": ["jobcapture.js"],
       "run_at": "document_idle"
     }
