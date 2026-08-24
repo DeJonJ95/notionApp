@@ -4,27 +4,105 @@ import { prisma } from '@/lib/prisma';
 import { logDeepSeek } from '@/lib/logUsage';
 import { findOrCreateBudgetDb, getBudgetCategories } from '@/lib/budgetDb';
 import { fallbackCategory } from '@/lib/budgetCategories';
+import { looksLikePdf, describePdfFailure } from '@/lib/budgetImportFile';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+
+/** Error carrying a user-facing message plus the library's own wording. */
+class FileReadError extends Error {
+  detail?: string;
+  constructor(message: string, detail?: string) {
+    super(message);
+    this.detail = detail;
+  }
+}
+
+// pdf.js versions bundled with pdf-parse, newest first after the default.
+// Their XRef recovery differs, so a file one build gives up on can still parse
+// with another. Cheap to retry: it's the same already-installed dependency.
+const PDFJS_VERSIONS = ['v1.10.100', 'v2.0.550', 'v1.10.88'];
+
+/** pdf-parse can reject page-level promises AFTER its own promise resolves.
+ *  Node 20 treats those as unhandled and kills the process, which turns a
+ *  damaged PDF into a dead serverless invocation instead of an error message.
+ *  Absorb them for the duration of the parse (plus a short drain), so a bad
+ *  file fails as a 400 rather than a 500. */
+async function withRejectionGuard<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const swallowed: unknown[] = [];
+  const onRejection = (reason: unknown) => swallowed.push(reason);
+  process.on('unhandledRejection', onRejection);
+  try {
+    return await fn();
+  } finally {
+    // Late rejections land a few ticks after the main promise settles.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    process.off('unhandledRejection', onRejection);
+    if (swallowed.length > 0) {
+      console.warn(
+        `[budget-import] ${label}: absorbed ${swallowed.length} late pdf-parse rejection(s):`,
+        swallowed.map((r) => (r as Error)?.message ?? String(r)).join('; '),
+      );
+    }
+  }
+}
+
+async function extractPdfText(buf: Buffer, filename: string): Promise<string> {
+  // pdf-parse's index.js tries to load a test PDF on import — bypass it
+  // by importing the implementation file directly. No types ship for the
+  // subpath, so cast through any.
+  const mod = (await import('pdf-parse/lib/pdf-parse.js' as any)) as any;
+  const pdfParse = (mod.default ?? mod) as (
+    b: Buffer,
+    opts?: { version?: string },
+  ) => Promise<{ text: string }>;
+
+  let lastMessage = 'Unknown PDF error';
+  for (const version of PDFJS_VERSIONS) {
+    try {
+      const result = await withRejectionGuard(`${filename} (${version})`, () =>
+        pdfParse(buf, { version }),
+      );
+      if (result.text.trim()) return result.text;
+      lastMessage = 'No text layer found';
+    } catch (e: any) {
+      lastMessage = e?.message ?? String(e);
+      console.warn(`[budget-import] ${filename}: pdf.js ${version} failed: ${lastMessage}`);
+    }
+  }
+
+  if (lastMessage === 'No text layer found') {
+    throw new FileReadError(
+      `"${filename}" has no readable text — it's probably a scanned image. ` +
+        `Export the statement as CSV, or use a text-based PDF.`,
+      lastMessage,
+    );
+  }
+  const { error, detail } = describePdfFailure(filename, lastMessage);
+  throw new FileReadError(error, detail);
+}
 
 async function extractText(file: File): Promise<string> {
   const name = file.name.toLowerCase();
   const buf = Buffer.from(await file.arrayBuffer());
 
+  if (buf.length === 0) throw new FileReadError(`"${file.name}" is empty.`);
+
+  // Sniff the bytes before trusting the name or MIME type. A PDF handed over
+  // with a text/* content type would otherwise be UTF-8 decoded into garbage
+  // and sent to the AI as if it were a CSV.
+  if (looksLikePdf(buf)) return extractPdfText(buf, file.name);
+
+  if (name.endsWith('.pdf') || file.type === 'application/pdf') {
+    throw new FileReadError(
+      `"${file.name}" is named like a PDF but doesn't contain PDF data. ` +
+        `The download may have failed — try downloading it from your bank again.`,
+    );
+  }
   if (name.endsWith('.csv') || name.endsWith('.txt') || file.type.startsWith('text/')) {
     return buf.toString('utf-8');
   }
-  if (name.endsWith('.pdf') || file.type === 'application/pdf') {
-    // pdf-parse's index.js tries to load a test PDF on import — bypass it
-    // by importing the implementation file directly. No types ship for the
-    // subpath, so cast through any.
-    const mod = (await import('pdf-parse/lib/pdf-parse.js' as any)) as any;
-    const pdfParse = (mod.default ?? mod) as (b: Buffer) => Promise<{ text: string }>;
-    const result = await pdfParse(buf);
-    return result.text;
-  }
-  throw new Error('Unsupported file type — upload CSV or PDF');
+  throw new FileReadError('Unsupported file type — upload CSV or PDF');
 }
 
 type CompactTx = [string, string, string, number, string];
@@ -240,7 +318,14 @@ export async function POST(req: NextRequest) {
     filename = file.name;
     text = await extractText(file);
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? 'Failed to read file' }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: e?.message ?? 'Failed to read file',
+        // The library's own wording, kept for bug reports.
+        ...(e?.detail ? { detail: e.detail } : {}),
+      },
+      { status: 400 },
+    );
   }
 
   if (!text.trim()) {

@@ -38,6 +38,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
   const [categories, setCategories] = useState<string[]>([]);
   const [stage, setStage] = useState<'upload' | 'preview' | 'saving' | 'done' | 'duplicates'>('upload');
   const [error, setError] = useState('');
+  const [errorDetail, setErrorDetail] = useState('');
   const [progress, setProgress] = useState('');
   const [truncated, setTruncated] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateInfo[]>([]);
@@ -45,7 +46,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
   const [account, setAccount] = useState('');
 
   const upload = async (file: File) => {
-    setError('');
+    setError(''); setErrorDetail('');
     setProgress(`Reading ${file.name}…`);
     setStage('upload');
     const fd = new FormData();
@@ -55,6 +56,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
       const json = await res.json();
       if (!res.ok) {
         setError(json.error ?? 'Import failed');
+        setErrorDetail(json.detail ?? '');
         return;
       }
       if (!json.transactions?.length) {
@@ -109,7 +111,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
     if (!databaseId || txs.length === 0) return;
     const skipDuplicates = overrides?.skipDuplicates ?? false;
     setStage('saving');
-    setError('');
+    setError(''); setErrorDetail('');
     try {
       const res = await fetch('/api/budget/import/confirm', {
         method: 'POST',
@@ -177,9 +179,14 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {error && (
-            <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-500 flex items-center gap-2">
-              <AlertCircle size={14} />
-              {error}
+            <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-500 flex items-start gap-2">
+              <AlertCircle size={14} className="shrink-0 mt-0.5" />
+              <div>
+                <p>{error}</p>
+                {errorDetail && (
+                  <p className="text-xs text-muted mt-1 font-mono">Technical detail: {errorDetail}</p>
+                )}
+              </div>
             </div>
           )}
 
