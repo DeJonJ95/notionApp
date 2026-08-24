@@ -28,10 +28,25 @@ export async function findOrCreateBudgetDb(userId: string): Promise<BudgetDb> {
   });
 
   if (existing) {
+    let properties = existing.properties;
+    // "Account" was added to the template after these databases were created,
+    // so backfill it lazily. Optional everywhere — nothing breaks without it.
+    if (!properties.some((p) => p.name === 'Account')) {
+      const maxPosition = properties.reduce((m, p) => Math.max(m, p.position), 0);
+      const created = await prisma.property.create({
+        data: {
+          name: 'Account',
+          type: 'text',
+          position: maxPosition + 1024,
+          databaseId: existing.id,
+        },
+      });
+      properties = [...properties, created];
+    }
     return {
       id: existing.id,
       name: existing.name,
-      properties: existing.properties.map((p) => ({ id: p.id, name: p.name, type: p.type })),
+      properties: properties.map((p) => ({ id: p.id, name: p.name, type: p.type })),
     };
   }
 
@@ -249,6 +264,7 @@ export type ParsedTransaction = {
   description: string;
   amount: number;      // negative = expense, positive = income
   category: string;    // one of DB Category options
+  account?: string;    // which account this came from, when known
 };
 
 // Bulk-write transactions as pages with property values.
@@ -294,6 +310,10 @@ export async function writeTransactions(
     ];
     if (propId['Notes'] && tx.description !== tx.vendor) {
       writes.push({ propertyId: propId['Notes'], value: tx.description });
+    }
+    // Optional, like Notes — older budget DBs may not have the property yet.
+    if (propId['Account'] && tx.account?.trim()) {
+      writes.push({ propertyId: propId['Account'], value: tx.account.trim() });
     }
     await prisma.propertyValue.createMany({
       data: writes.map((w) => ({ ...w, pageId: page.id })),

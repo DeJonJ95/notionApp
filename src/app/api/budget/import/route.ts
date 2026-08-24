@@ -45,9 +45,18 @@ const I_CAT = 4;
 const systemPrompt = `You extract financial transactions from bank statements (any format: Chase, BofA, Wells Fargo, Michigan First, credit unions, credit cards, CSVs).
 
 Return ONLY a JSON object with this exact compact shape — no prose, no markdown fences:
-{ "t": [ ["YYYY-MM-DD","Vendor","short desc",-15.89,"Category"], ... ] }
+{ "meta": { "account": "Checking 1234", "openingBalance": 1450.22, "closingBalance": 1187.65 },
+  "t": [ ["YYYY-MM-DD","Vendor","short desc",-15.89,"Category"], ... ] }
 
-Each array element fields, in order:
+"meta" describes the statement itself, read from its header/summary:
+  account — the account label as printed, e.g. "Checking ...1234" or "Freedom Unlimited". null if not shown.
+  openingBalance — the beginning/previous balance for the period. null if not shown.
+  closingBalance — the ending/new balance for the period. null if not shown.
+Meta rules:
+- Use null for anything the statement does not state. NEVER derive a balance by adding up transactions — report only printed figures.
+- For a CREDIT CARD statement, report balances as NEGATIVE numbers, because the balance is money owed.
+
+Each element of "t", in order:
   0: date — ISO YYYY-MM-DD
   1: vendor — cleaned merchant name (strip codes, merchant numbers, address)
   2: description — original short description (keep it brief — under 60 chars)
@@ -55,7 +64,7 @@ Each array element fields, in order:
   4: category — MUST be exactly one of: ${CATEGORIES.join(', ')}
 
 Rules:
-- Skip non-transaction lines: balance forwards, running balances, statement headers, fees summaries, totals, page numbers, bank-disclosure footer text.
+- Keep "t" to real transactions only: no balance forwards, running balances, statement headers, fees summaries, totals, page numbers, or bank-disclosure footer text. Balances belong in "meta", never in "t".
 - If the statement only shows "Apr 03" without a year, infer the year from the statement header (e.g. "Apr 01, 2026 thru Apr 30, 2026" → 2026).
 - Strip codes from vendors. E.g. "55432866091200231491715 00089047 AMAZON PRIME*JH5BA8CS3 440 Terry Ave N SEATTLE WA" → "Amazon Prime".
 - Map intuitively: McDonald's/restaurants/groceries → Food & Dining; gas/Uber/Lyft/parking → Transport; Apple/Netflix/Spotify/Claude.ai/Prime Video/Google One → Subscriptions; clothing/Amazon (non-Prime) → Shopping; direct deposits/refunds → Other; Verizon/Comcast/water/electric → Utilities; insurance → Insurance; PayPal/Zelle/Apple Cash transfers → Other.
@@ -166,7 +175,32 @@ async function callDeepSeek(apiKey: string, userText: string) {
   };
 }
 
-function parseTransactions(rawText: string): CompactTx[] {
+export type StatementMeta = {
+  account: string | null;
+  openingBalance: number | null;
+  closingBalance: number | null;
+};
+
+const EMPTY_META: StatementMeta = { account: null, openingBalance: null, closingBalance: null };
+
+function num(v: any): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseMeta(parsed: any): StatementMeta {
+  const m = parsed?.meta;
+  if (!m || typeof m !== 'object') return EMPTY_META;
+  const account = String(m.account ?? '').trim().slice(0, 80);
+  return {
+    account: account || null,
+    openingBalance: num(m.openingBalance),
+    closingBalance: num(m.closingBalance),
+  };
+}
+
+function parseStatement(rawText: string): { meta: StatementMeta; rows: CompactTx[] } {
   const stripped = stripFences(rawText);
   let parsed: any = null;
   try { parsed = JSON.parse(stripped); } catch {}
@@ -176,10 +210,10 @@ function parseTransactions(rawText: string): CompactTx[] {
       try { parsed = JSON.parse(salvaged); } catch {}
     }
   }
-  if (!parsed) return [];
+  if (!parsed) return { meta: EMPTY_META, rows: [] };
   const arr = parsed.t ?? parsed.transactions ?? [];
-  if (!Array.isArray(arr)) return [];
-  return arr
+  if (!Array.isArray(arr)) return { meta: parseMeta(parsed), rows: [] };
+  const rows = arr
     .map((row: any): CompactTx | null => {
       // Accept either compact array or legacy object shape
       if (Array.isArray(row) && row.length >= 5) {
@@ -191,6 +225,7 @@ function parseTransactions(rawText: string): CompactTx[] {
       return null;
     })
     .filter((r): r is CompactTx => r !== null);
+  return { meta: parseMeta(parsed), rows };
 }
 
 export async function POST(req: NextRequest) {
@@ -227,10 +262,15 @@ export async function POST(req: NextRequest) {
   let totalIn = 0;
   let totalOut = 0;
   let anyTruncated = false;
+  // Statement headers live at the top of the file, so only the first chunk can
+  // speak to the account and its balances.
+  let meta: StatementMeta = EMPTY_META;
 
   for (let i = 0; i < chunks.length; i++) {
     let chunk = chunks[i];
-    if (i > 0) chunk = `(continuation of bank statement — same date format applies)\n\n${chunk}`;
+    if (i > 0) {
+      chunk = `(continuation of bank statement — same date format applies; the header is not in this part, so set every "meta" field to null)\n\n${chunk}`;
+    }
     try {
       const r = await callDeepSeek(apiKey, chunk);
       if (r.usage) {
@@ -238,9 +278,10 @@ export async function POST(req: NextRequest) {
         totalOut += r.usage.completion_tokens;
       }
       if (r.finishReason === 'length') anyTruncated = true;
-      const rows = parseTransactions(r.text);
-      console.log(`[budget-import] chunk ${i + 1}/${chunks.length}: ${rows.length} rows (finish=${r.finishReason})`);
-      allRows.push(...rows);
+      const parsed = parseStatement(r.text);
+      if (i === 0) meta = parsed.meta;
+      console.log(`[budget-import] chunk ${i + 1}/${chunks.length}: ${parsed.rows.length} rows (finish=${r.finishReason})`);
+      allRows.push(...parsed.rows);
     } catch (e: any) {
       return NextResponse.json({ error: e?.message ?? 'AI request failed' }, { status: 502 });
     }
@@ -309,6 +350,7 @@ export async function POST(req: NextRequest) {
     databaseName: budgetDb.name,
     filename,
     transactions: cleaned,
+    meta,
     categories: CATEGORIES,
     truncated: anyTruncated, // hint for the UI in case results look short
   });

@@ -67,6 +67,7 @@ export const DB_TEMPLATES: DbTemplate[] = [
       { name: 'Date', type: 'date' },
       { name: 'Due Date', type: 'date' },
       { name: 'Vendor', type: 'text' },
+      { name: 'Account', type: 'text' },
       {
         name: 'Payment Method',
         type: 'select',

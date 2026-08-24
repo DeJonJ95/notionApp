@@ -8,15 +8,28 @@ export async function POST(req: NextRequest) {
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { databaseId, transactions, force } = (await req.json()) as {
+  const { databaseId, transactions, force, account, meta } = (await req.json()) as {
     databaseId: string;
     transactions: ParsedTransaction[];
     force?: boolean;
+    account?: string;
+    meta?: { account?: string | null; openingBalance?: number | null; closingBalance?: number | null };
   };
 
   if (!databaseId || !Array.isArray(transactions) || transactions.length === 0) {
     return NextResponse.json({ error: 'databaseId and transactions required' }, { status: 400 });
   }
+
+  // The account the user confirmed in the preview wins over what the AI read.
+  const accountName = String(account ?? meta?.account ?? '').trim().slice(0, 80);
+  const numOrNull = (v: unknown) => {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const stamped: ParsedTransaction[] = accountName
+    ? transactions.map((t) => ({ ...t, account: accountName }))
+    : transactions;
 
   try {
     // ── Cross-import dedup check ───────────────────────────────────────────
@@ -53,7 +66,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Write transactions ─────────────────────────────────────────────────
-    const result = await writeTransactions(userId, databaseId, transactions);
+    const result = await writeTransactions(userId, databaseId, stamped);
 
     // ── Create ImportLog entry ─────────────────────────────────────────────
     const dates = transactions
@@ -69,6 +82,9 @@ export async function POST(req: NextRequest) {
           dateFrom: dates[0],
           dateTo: dates[dates.length - 1],
           txCount: transactions.length,
+          account: accountName || null,
+          openingBalance: numOrNull(meta?.openingBalance),
+          closingBalance: numOrNull(meta?.closingBalance),
         },
       });
     }

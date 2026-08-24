@@ -15,6 +15,15 @@ type DuplicateInfo = {
   matched: { date: string; vendor: string; amount: number };
 };
 
+type StatementMeta = {
+  account: string | null;
+  openingBalance: number | null;
+  closingBalance: number | null;
+};
+
+const money = (n: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
+
 interface Props {
   onClose: () => void;
   onImported: () => void;
@@ -32,6 +41,8 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
   const [progress, setProgress] = useState('');
   const [truncated, setTruncated] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateInfo[]>([]);
+  const [meta, setMeta] = useState<StatementMeta | null>(null);
+  const [account, setAccount] = useState('');
 
   const upload = async (file: File) => {
     setError('');
@@ -55,6 +66,8 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
       setDatabaseName(json.databaseName);
       setTxs(json.transactions);
       setCategories(json.categories);
+      setMeta(json.meta ?? null);
+      setAccount(json.meta?.account ?? '');
       setTruncated(Boolean(json.truncated));
       setStage('preview');
     } catch (e: any) {
@@ -105,6 +118,8 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
           databaseId,
           transactions: skipDuplicates ? txs : txs,
           force: !skipDuplicates && overrides === undefined ? false : overrides !== undefined,
+          account: account.trim(),
+          meta,
         }),
       });
       const json = await res.json();
@@ -208,6 +223,38 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
               <div className="mb-3 text-xs text-muted">
                 Will save to <strong className="text-text">{databaseName}</strong>. Edit anything below, then confirm.
                 Click the <X size={11} className="inline -mt-px" /> on a row to skip it.
+              </div>
+              {/* Account + statement balances — what powers the balance curve
+                  on the dashboard. Editable because the AI reads the header. */}
+              <div className="mb-3 rounded-lg border border-border bg-surface px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+                <label className="flex items-center gap-2 text-xs">
+                  <span className="text-muted">Account</span>
+                  <input
+                    value={account}
+                    onChange={(e) => setAccount(e.target.value)}
+                    placeholder="e.g. Checking 1234"
+                    className="bg-bg border border-border rounded px-2 py-1.5 text-sm text-text w-48"
+                  />
+                </label>
+                {meta?.openingBalance != null && (
+                  <span className="text-xs text-muted">
+                    Opening <strong className="text-text">{money(meta.openingBalance)}</strong>
+                  </span>
+                )}
+                {meta?.closingBalance != null ? (
+                  <span className="text-xs text-muted">
+                    Closing <strong className="text-text">{money(meta.closingBalance)}</strong>
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted">
+                    No closing balance found in this statement, so it won&apos;t feed the balance projection.
+                  </span>
+                )}
+                {!account.trim() && (
+                  <span className="text-xs text-yellow-600">
+                    Name the account to track its balance.
+                  </span>
+                )}
               </div>
               {truncated && (
                 <div className="mb-3 p-2.5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-700 flex items-start gap-2">

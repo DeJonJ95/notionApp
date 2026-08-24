@@ -220,6 +220,11 @@ model ImportLog {
   dateFrom  DateTime
   dateTo    DateTime
   txCount   Int
+  // Statement header facts, when the file stated them. Nullable so old rows
+  // and statements without a header still import.
+  account        String?
+  openingBalance Float?
+  closingBalance Float?
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
