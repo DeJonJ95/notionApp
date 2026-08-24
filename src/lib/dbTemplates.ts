@@ -59,7 +59,7 @@ export const DB_TEMPLATES: DbTemplate[] = [
           'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
           'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
           'Subscriptions', 'Investments', 'Debt', 'Gifts & Donations',
-          'Emergency Fund', 'Other',
+          'Emergency Fund', 'Transfers', 'Other',
         ],
       },
       { name: 'Amount', type: 'number' },

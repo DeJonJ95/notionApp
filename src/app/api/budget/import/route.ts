@@ -62,7 +62,7 @@ Rules:
 - Keep "t" to real transactions only: no balance forwards, running balances, statement headers, fees summaries, totals, page numbers, or bank-disclosure footer text. Balances belong in "meta", never in "t".
 - If the statement only shows "Apr 03" without a year, infer the year from the statement header (e.g. "Apr 01, 2026 thru Apr 30, 2026" → 2026).
 - Strip codes from vendors. E.g. "55432866091200231491715 00089047 AMAZON PRIME*JH5BA8CS3 440 Terry Ave N SEATTLE WA" → "Amazon Prime".
-- Map intuitively, but only to categories that appear in the list above; if one of these targets isn't listed, pick the closest option that is. McDonald's/restaurants/groceries → Food & Dining; gas/Uber/Lyft/parking → Transport; Apple/Netflix/Spotify/Claude.ai/Prime Video/Google One → Subscriptions; clothing/Amazon (non-Prime) → Shopping; direct deposits/refunds → Other; Verizon/Comcast/water/electric → Utilities; insurance → Insurance; PayPal/Zelle/Apple Cash transfers → Other.
+- Map intuitively, but only to categories that appear in the list above; if one of these targets isn't listed, pick the closest option that is. McDonald's/restaurants/groceries → Food & Dining; gas/Uber/Lyft/parking → Transport; Apple/Netflix/Spotify/Claude.ai/Prime Video/Google One → Subscriptions; clothing/Amazon (non-Prime) → Shopping; direct deposits/refunds → Other; Verizon/Comcast/water/electric → Utilities; insurance → Insurance; credit card payments, Zelle/PayPal/Apple Cash/wire moves between your own accounts → Transfers.
 - Output ONLY the JSON object. No \`\`\` fences, no prose.`;
 
 // Strip markdown fences if DeepSeek wraps the JSON despite response_format.

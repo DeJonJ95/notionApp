@@ -1,8 +1,13 @@
 import { prisma } from './prisma';
 import { DB_TEMPLATES } from './dbTemplates';
-import { DEFAULT_CATEGORIES, parseCategoryOptions } from './budgetCategories';
+import { DEFAULT_CATEGORIES, TRANSFERS_CATEGORY, parseCategoryOptions } from './budgetCategories';
 
-export { DEFAULT_CATEGORIES, parseCategoryOptions, fallbackCategory } from './budgetCategories';
+export {
+  DEFAULT_CATEGORIES,
+  TRANSFERS_CATEGORY,
+  parseCategoryOptions,
+  fallbackCategory,
+} from './budgetCategories';
 
 // The Personal Budget feature works against the user's "Personal Budget"
 // database (built from the template). This module finds or creates it.
@@ -55,6 +60,26 @@ export async function findOrCreateBudgetDb(userId: string): Promise<BudgetDb> {
         },
       });
       properties = [...properties, created];
+    }
+    // 'Transfers' is how the dashboard keeps money moved between the user's own
+    // accounts out of spending totals, so older databases need the option.
+    // Only touched when Category is a select with readable options.
+    const categoryProp = properties.find((p) => p.name === 'Category');
+    if (categoryProp?.type === 'select' && categoryProp.formula) {
+      let options: string[] | null = null;
+      try {
+        const parsed = JSON.parse(categoryProp.formula);
+        if (Array.isArray(parsed)) options = parsed.map((o) => String(o));
+      } catch {
+        options = null;
+      }
+      if (options && !options.includes(TRANSFERS_CATEGORY)) {
+        const updated = await prisma.property.update({
+          where: { id: categoryProp.id },
+          data: { formula: JSON.stringify([...options, TRANSFERS_CATEGORY]) },
+        });
+        properties = properties.map((p) => (p.id === updated.id ? updated : p));
+      }
     }
     return {
       id: existing.id,

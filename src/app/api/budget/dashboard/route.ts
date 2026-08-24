@@ -18,6 +18,7 @@ import {
   vendorsMatch,
   monthlySavingsContribution,
   goalLedgerAmounts,
+  TRANSFERS_CATEGORY,
   type AccountBalance,
   type CategoryBudget,
   type ForecastItem,
@@ -194,8 +195,14 @@ export async function GET(req: NextRequest) {
   );
   const prevMonthStart = new Date(displayMonthStart.getFullYear(), displayMonthStart.getMonth() - 1, 1);
 
-  const usedThis = all.filter((t) => inRange(t.date, displayMonthStart, displayMonthEnd));
-  const usedPrev = all.filter((t) => inRange(t.date, prevMonthStart, displayMonthStart));
+  // Transfers move money between the user's own accounts, so counting them
+  // would double up a credit-card payment (once as the charge, once as the
+  // payment). They stay in `all` — recent transactions still list them, and
+  // account balances genuinely change when money moves.
+  const spendable = all.filter((t) => t.category !== TRANSFERS_CATEGORY);
+
+  const usedThis = spendable.filter((t) => inRange(t.date, displayMonthStart, displayMonthEnd));
+  const usedPrev = spendable.filter((t) => inRange(t.date, prevMonthStart, displayMonthStart));
   const monthLabel = displayMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
@@ -313,7 +320,7 @@ export async function GET(req: NextRequest) {
     const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
     let inc = 0;
     let exp = 0;
-    for (const t of all) {
+    for (const t of spendable) {
       if (!inRange(t.date, start, end)) continue;
       if (t.amount > 0) inc += t.amount;
       else exp += Math.abs(t.amount);

@@ -2,13 +2,18 @@
 // own options. Deliberately free of server-only imports (no prisma) so client
 // components can import DEFAULT_CATEGORIES too.
 
+/** Money moving between the user's own accounts. Excluded from spending and
+ *  income totals so a credit-card payment isn't counted twice: once as the
+ *  card charge and again as the payment out of checking. */
+export const TRANSFERS_CATEGORY = 'Transfers';
+
 /** Fallback list, used when a budget database has no readable Category
  *  options. Matches the `personal-budget` template in `dbTemplates.ts`. */
 export const DEFAULT_CATEGORIES = [
   'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
   'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
   'Subscriptions', 'Investments', 'Debt', 'Gifts & Donations',
-  'Emergency Fund', 'Other',
+  'Emergency Fund', TRANSFERS_CATEGORY, 'Other',
 ];
 
 /** Read a select property's options out of `Property.formula`, which holds a
