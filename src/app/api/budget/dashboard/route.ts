@@ -17,6 +17,7 @@ import {
   getBudgetCategories,
   vendorsMatch,
   monthlySavingsContribution,
+  goalLedgerAmounts,
   type AccountBalance,
   type CategoryBudget,
   type ForecastItem,
@@ -141,6 +142,8 @@ export async function GET(req: NextRequest) {
   const all: Tx[] = [];
   // Envelope targets: Type=Budget rows, normalized to a monthly figure.
   const monthlyBudgets = new Map<string, number>();
+  // Type=Savings rows, matched to goals by name further down.
+  const savingsRows: { text: string; amount: number }[] = [];
   for (const p of pages) {
     const vals: Record<string, any> = {};
     for (const pv of p.properties) vals[pv.property.name] = pv.value;
@@ -158,6 +161,12 @@ export async function GET(req: NextRequest) {
     }
     const rawAmt = Number(vals['Amount'] ?? 0);
     if (!rawAmt) continue;
+    if (type === 'Savings') {
+      savingsRows.push({
+        text: `${vals['Vendor'] ?? p.title ?? ''} ${vals['Notes'] ?? ''}`,
+        amount: rawAmt,
+      });
+    }
     all.push({
       pageId: p.id,
       date: String(vals['Date'] ?? '').slice(0, 10),
@@ -436,7 +445,13 @@ export async function GET(req: NextRequest) {
     // What the goals actually cost per month: remaining amount spread over the
     // months left before each deadline (a year when there is no deadline).
     const goals = await prisma.savingsGoal.findMany({ where: { userId } });
-    const monthlySavings = monthlySavingsContribution(goals, now);
+    // Savings-type transactions naming a goal count toward it, same as in the
+    // goals modal, so a goal already funded from the ledger costs nothing more.
+    const ledger = goalLedgerAmounts(goals, savingsRows);
+    const monthlySavings = monthlySavingsContribution(
+      goals.map((g) => ({ ...g, currentAmount: g.currentAmount + (ledger[g.id] ?? 0) })),
+      now,
+    );
 
     autoBudget = {
       hasManualBudget,

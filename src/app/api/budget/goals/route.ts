@@ -1,9 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { findOrCreateBudgetDb, goalLedgerAmounts } from '@/lib/budgetDb';
 
 function tableMissing(e: any) {
   return e?.message?.includes('does not exist') || e?.code === 'P2021';
+}
+
+/** Sum each goal's Type='Savings' transactions. Best-effort: a failure here
+ *  must not stop the goals list from loading. */
+async function loadGoalLedger(
+  userId: string,
+  goals: { id: string; name: string }[],
+): Promise<Record<string, number>> {
+  if (goals.length === 0) return {};
+  try {
+    const db = await findOrCreateBudgetDb(userId);
+    const pages = await prisma.page.findMany({
+      where: { databaseId: db.id, isArchived: false },
+      include: { properties: { include: { property: { select: { name: true } } } } },
+    });
+    const savings: { text: string; amount: number }[] = [];
+    for (const p of pages) {
+      const vals: Record<string, any> = {};
+      for (const pv of p.properties) vals[pv.property.name] = pv.value;
+      if (String(vals['Type'] ?? '') !== 'Savings') continue;
+      const amount = Number(vals['Amount'] ?? 0);
+      if (!amount) continue;
+      savings.push({
+        text: `${vals['Vendor'] ?? p.title ?? ''} ${vals['Notes'] ?? ''}`,
+        amount,
+      });
+    }
+    return goalLedgerAmounts(goals, savings);
+  } catch (e) {
+    console.warn('[budget-goals] ledger progress skipped:', (e as Error).message);
+    return {};
+  }
 }
 
 export async function GET() {
@@ -15,7 +48,10 @@ export async function GET() {
       where: { userId },
       orderBy: { createdAt: 'asc' },
     });
-    return NextResponse.json(goals);
+    // Money already moved in the ledger counts too. `currentAmount` stays the
+    // user's own manual figure; `ledgerAmount` is reported alongside it.
+    const ledger = await loadGoalLedger(userId, goals);
+    return NextResponse.json(goals.map((g) => ({ ...g, ledgerAmount: ledger[g.id] ?? 0 })));
   } catch (e: any) {
     if (tableMissing(e)) return NextResponse.json({ error: 'SavingsGoal table missing — run migration SQL.' }, { status: 503 });
     return NextResponse.json({ error: e?.message ?? 'Failed' }, { status: 500 });

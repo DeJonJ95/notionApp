@@ -349,6 +349,33 @@ export function monthsUntil(deadline: Date, now: Date): number {
   return Math.max(1, months + partial);
 }
 
+/** Money already put toward each goal by Type='Savings' transactions, keyed by
+ *  goal id. A transaction counts toward a goal when the goal's name appears in
+ *  its vendor or notes (normalized, so casing and punctuation don't matter).
+ *  Goal names under 3 characters are ignored — too weak to match on. */
+export function goalLedgerAmounts(
+  goals: { id: string; name: string }[],
+  savingsTransactions: { text: string; amount: number }[],
+): Record<string, number> {
+  const normalizedTxs = savingsTransactions.map((t) => ({
+    text: normalizeVendor(t.text),
+    amount: t.amount,
+  }));
+
+  const out: Record<string, number> = {};
+  for (const goal of goals) {
+    const needle = normalizeVendor(goal.name);
+    let total = 0;
+    if (needle.length >= 3) {
+      for (const t of normalizedTxs) {
+        if (t.text && t.text.includes(needle)) total += t.amount;
+      }
+    }
+    out[goal.id] = Math.round(total * 100) / 100;
+  }
+  return out;
+}
+
 /** What the user must set aside per month to hit their goals: each goal's
  *  REMAINING amount spread over the months left before its deadline. A goal
  *  with no deadline is spread over a year. Already-funded goals cost nothing.

@@ -9,6 +9,9 @@ type Goal = {
   targetAmount: number;
   currentAmount: number;
   deadline: string | null;
+  // Sum of Type='Savings' transactions naming this goal. Reported by the API,
+  // never folded into currentAmount.
+  ledgerAmount?: number;
 };
 
 const fmt = (n: number) =>
@@ -101,18 +104,19 @@ export function SavingsGoalsModal({ onClose, onChanged }: { onClose: () => void;
             <p className="text-sm text-muted text-center py-6">No goals yet.</p>
           ) : (
             goals.map((g) => {
-              const pct = g.targetAmount > 0 ? Math.min((g.currentAmount / g.targetAmount) * 100, 100) : 0;
-              const done = g.currentAmount >= g.targetAmount;
-              // On-track check: linear pace vs elapsed time toward deadline
+              const ledger = g.ledgerAmount ?? 0;
+              const saved = g.currentAmount + ledger;
+              const pct = g.targetAmount > 0 ? Math.min((saved / g.targetAmount) * 100, 100) : 0;
+              const done = saved >= g.targetAmount;
+              const remaining = Math.max(0, g.targetAmount - saved);
+              // On-track check: what's still needed per month to hit the deadline
               let pace: string | null = null;
               if (g.deadline) {
-                const created = new Date();
                 const due = new Date(g.deadline);
                 const now = Date.now();
-                const totalMs = due.getTime() - created.getTime();
                 if (due.getTime() > now) {
-                  const needRate = g.targetAmount / Math.max(1, (due.getTime() - now) / (1000 * 60 * 60 * 24 * 30));
-                  pace = `~${fmt(needRate)}/mo to hit by ${due.toLocaleDateString()}`;
+                  const monthsLeft = Math.max(1, (due.getTime() - now) / (1000 * 60 * 60 * 24 * 30));
+                  pace = `~${fmt(remaining / monthsLeft)}/mo to hit by ${due.toLocaleDateString()}`;
                 } else if (!done) {
                   pace = `past deadline (${due.toLocaleDateString()})`;
                 }
@@ -123,7 +127,7 @@ export function SavingsGoalsModal({ onClose, onChanged }: { onClose: () => void;
                     <span className="text-sm font-medium">{g.name}</span>
                     <div className="flex items-center gap-2">
                       <span className={`text-xs ${done ? 'text-green-600' : 'text-muted'}`}>
-                        {fmt(g.currentAmount)} / {fmt(g.targetAmount)}
+                        {fmt(saved)} / {fmt(g.targetAmount)}
                       </span>
                       <button onClick={() => del(g.id)} className="text-muted hover:text-red-500"><Trash2 size={13} /></button>
                     </div>
@@ -131,6 +135,11 @@ export function SavingsGoalsModal({ onClose, onChanged }: { onClose: () => void;
                   <div className="h-2 bg-bg rounded-full overflow-hidden border border-border/50">
                     <div className={`h-full rounded-full ${done ? 'bg-green-500' : 'bg-accent'}`} style={{ width: `${pct}%` }} />
                   </div>
+                  {ledger !== 0 && (
+                    <div className="text-[11px] text-muted mt-1">
+                      {fmt(g.currentAmount)} tracked here + {fmt(ledger)} from Savings transactions
+                    </div>
+                  )}
                   <div className="flex items-center justify-between mt-1.5">
                     <span className="text-[11px] text-muted">
                       {done ? '🎉 Reached!' : pace ?? `${pct.toFixed(0)}% there`}
