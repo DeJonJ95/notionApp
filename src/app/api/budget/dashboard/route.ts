@@ -16,6 +16,7 @@ import {
   resolveDisplayMonth,
   getBudgetCategories,
   vendorsMatch,
+  monthlySavingsContribution,
   type AccountBalance,
   type CategoryBudget,
   type ForecastItem,
@@ -432,9 +433,10 @@ export async function GET(req: NextRequest) {
       else monthlyExpenses += monthly;
     }
 
-    // Sum savings goals (use targetAmount as a rough monthly proxy)
+    // What the goals actually cost per month: remaining amount spread over the
+    // months left before each deadline (a year when there is no deadline).
     const goals = await prisma.savingsGoal.findMany({ where: { userId } });
-    const monthlySavings = goals.reduce((s, g) => s + g.targetAmount, 0);
+    const monthlySavings = monthlySavingsContribution(goals, now);
 
     autoBudget = {
       hasManualBudget,

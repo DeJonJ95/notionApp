@@ -592,7 +592,7 @@ export function BudgetDashboard() {
             <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Savings goals</div>
             <div className="text-lg font-bold text-blue-600">{fmt(data.autoBudget.monthlySavingsTotal)}</div>
             <div className="text-[10px] text-muted">
-              {data.autoBudget.monthlySavingsTotal > 0 ? '/mo in goals' : 'No goals set'}
+              {data.autoBudget.monthlySavingsTotal > 0 ? 'Needed /mo to hit goals' : 'No goals set'}
             </div>
           </div>
           <div>

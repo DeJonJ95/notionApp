@@ -336,6 +336,39 @@ export async function writeTransactions(
   return { created };
 }
 
+// ── Savings goals ───────────────────────────────────────────────────────
+
+/** Whole months left before `deadline`, rounded up, never less than 1.
+ *  Calendar arithmetic rather than average-day division, which would read two
+ *  long months (61 days) as 2.004 and round them up to 3. */
+export function monthsUntil(deadline: Date, now: Date): number {
+  const months =
+    (deadline.getFullYear() - now.getFullYear()) * 12 + (deadline.getMonth() - now.getMonth());
+  // A deadline falling later in its month needs one more month of saving.
+  const partial = deadline.getDate() > now.getDate() ? 1 : 0;
+  return Math.max(1, months + partial);
+}
+
+/** What the user must set aside per month to hit their goals: each goal's
+ *  REMAINING amount spread over the months left before its deadline. A goal
+ *  with no deadline is spread over a year. Already-funded goals cost nothing.
+ *
+ *  This replaced summing `targetAmount`, which treated a goal's lifetime total
+ *  as a monthly cost and made "available to budget" wildly pessimistic. */
+export function monthlySavingsContribution(
+  goals: { targetAmount: number; currentAmount: number; deadline: Date | null }[],
+  now: Date = new Date(),
+): number {
+  let total = 0;
+  for (const g of goals) {
+    const remaining = Math.max(0, g.targetAmount - g.currentAmount);
+    if (remaining === 0) continue;
+    const months = g.deadline ? monthsUntil(g.deadline, now) : 12;
+    total += remaining / months;
+  }
+  return Math.round(total * 100) / 100;
+}
+
 // ── Vendor name matching ────────────────────────────────────────────────
 
 // Words that carry no identity and only get in the way of matching.
