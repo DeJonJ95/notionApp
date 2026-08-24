@@ -15,6 +15,7 @@ import {
   buildBalanceCurve,
   resolveDisplayMonth,
   getBudgetCategories,
+  vendorsMatch,
   type AccountBalance,
   type CategoryBudget,
   type ForecastItem,
@@ -377,11 +378,8 @@ export async function GET(req: NextRequest) {
     ruleVariance = rules.map((r) => {
       const matchedTxs = all
         .filter((t) => {
-          const rn = r.name.toLowerCase().trim();
-          const tn = t.vendor.toLowerCase().trim();
-          const vendorMatch = tn.includes(rn) || rn.includes(tn);
           const amtMatch = Math.abs(Math.abs(t.amount) - r.amount) / r.amount < 0.3;
-          return vendorMatch && amtMatch;
+          return amtMatch && vendorsMatch(t.vendor, r.name);
         })
         .map((t) => ({
           date: t.date,
@@ -478,13 +476,9 @@ export async function GET(req: NextRequest) {
       // Match each expected occurrence against actual transactions
       let matchedCount = 0;
       let matchedTotal = 0;
-      const ruleNorm = rule.name.trim().toLowerCase();
       for (const due of dueDates) {
-        const dueStr = due.toISOString().slice(0, 10);
         const match = usedThis.find((t) => {
-          const tNorm = t.vendor.trim().toLowerCase();
-          const vendorMatch = tNorm.includes(ruleNorm) || ruleNorm.includes(tNorm);
-          if (!vendorMatch) return false;
+          if (!vendorsMatch(t.vendor, rule.name)) return false;
           const tAbs = Math.abs(t.amount);
           if (Math.abs(tAbs - rule.amount) / rule.amount > 0.3) return false;
           const threeDays = 3 * 24 * 60 * 60 * 1000;

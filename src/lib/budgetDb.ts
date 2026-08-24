@@ -336,6 +336,37 @@ export async function writeTransactions(
   return { created };
 }
 
+// ── Vendor name matching ────────────────────────────────────────────────
+
+// Words that carry no identity and only get in the way of matching.
+const VENDOR_NOISE_WORDS = new Set(['inc', 'llc', 'llp', 'ltd', 'co', 'corp', 'the']);
+
+/** Reduce a raw statement vendor to its identifying words: lowercase, strip
+ *  punctuation and store/reference numbers, drop legal-suffix noise.
+ *  "AMAZON PRIME*JH5BA8CS3 440" and "Amazon Prime, Inc." both become
+ *  "amazon prime jh5ba8cs3" / "amazon prime". */
+export function normalizeVendor(s: string): string {
+  return String(s ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w && !/^\d{3,}$/.test(w) && !VENDOR_NOISE_WORDS.has(w))
+    .join(' ')
+    .trim();
+}
+
+/** Two-way containment on normalized names. The shorter side must be at least
+ *  4 characters, so a stray fragment can't match half the ledger. */
+export function vendorsMatch(a: string, b: string): boolean {
+  const na = normalizeVendor(a);
+  const nb = normalizeVendor(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  const [shorter, longer] = na.length <= nb.length ? [na, nb] : [nb, na];
+  if (shorter.length < 4) return false;
+  return longer.includes(shorter);
+}
+
 // ── Cross-import duplicate detection ────────────────────────────────────
 
 export type DuplicateMatch = {
@@ -355,12 +386,8 @@ export function findDuplicateTransactions(
     const absAmt = Math.abs(tx.amount);
     const txDate = new Date(tx.date + 'T00:00:00');
     const threeDays = 3 * 24 * 60 * 60 * 1000;
-    const vendorNorm = tx.vendor.trim().toLowerCase();
     const match = existing.find((e) => {
-      // Vendor: case-insensitive contains
-      const eVendor = e.vendor.trim().toLowerCase();
-      const vendorMatch = eVendor.includes(vendorNorm) || vendorNorm.includes(eVendor);
-      if (!vendorMatch) return false;
+      if (!vendorsMatch(e.vendor, tx.vendor)) return false;
       // Amount: absolute value match
       if (Math.abs(Math.abs(e.amount) - absAmt) > 0.01) return false;
       // Date: within ±3 days
@@ -410,11 +437,8 @@ export function reconcileTransactions(
       const expectedAbs = rule.amount;
 
       // Look for a matching imported transaction
-      const ruleVendorNorm = rule.name.trim().toLowerCase();
       const found = importedTransactions.find((tx) => {
-        const txVendorNorm = tx.vendor.trim().toLowerCase();
-        const vendorMatch = txVendorNorm.includes(ruleVendorNorm) || ruleVendorNorm.includes(txVendorNorm);
-        if (!vendorMatch) return false;
+        if (!vendorsMatch(tx.vendor, rule.name)) return false;
         const txAbs = Math.abs(tx.amount);
         if (Math.abs(txAbs - expectedAbs) / expectedAbs > 0.3) return false; // >30% difference
         const txDate = new Date(tx.date + 'T00:00:00');
@@ -447,12 +471,9 @@ export function reconcileTransactions(
     matched.map((m) => `${m.ruleName}|${Math.abs(m.amount)}`),
   );
   for (const tx of importedTransactions) {
-    const txVendorNorm = tx.vendor.trim().toLowerCase();
     const isExpected = rules.some((r) => {
-      const rn = r.name.trim().toLowerCase();
-      const vendorMatch = txVendorNorm.includes(rn) || rn.includes(txVendorNorm);
       const amtMatch = Math.abs(Math.abs(tx.amount) - r.amount) / r.amount <= 0.3;
-      return vendorMatch && amtMatch;
+      return amtMatch && vendorsMatch(tx.vendor, r.name);
     });
     if (!isExpected) {
       unexpected.push(tx);
