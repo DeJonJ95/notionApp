@@ -209,15 +209,30 @@ export function nextOccurrenceAfter(anchor: Date, frequency: RuleFrequency, afte
 // up through today, advance the anchor, and update lastGeneratedDate.
 export async function runRecurringEngine(userId: string, today: Date = new Date()): Promise<{
   generated: number;
+  skipped: number;
 }> {
   const rules = await prisma.recurringRule.findMany({
     where: { userId, isActive: true },
   });
-  if (rules.length === 0) return { generated: 0 };
+  if (rules.length === 0) return { generated: 0, skipped: 0 };
 
   const db = await findOrCreateBudgetDb(userId);
 
+  // Periods already covered by an imported statement. The statement is the
+  // record of what actually happened there, so forecasting into it would
+  // double-count the real transaction the import brings in.
+  let coverage: { dateFrom: Date; dateTo: Date }[] = [];
+  try {
+    coverage = await prisma.importLog.findMany({
+      where: { userId },
+      select: { dateFrom: true, dateTo: true },
+    });
+  } catch (e) {
+    console.warn('[recurring-engine] import coverage unavailable:', (e as Error).message);
+  }
+
   let generated = 0;
+  let skipped = 0;
   const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 
   for (const rule of rules) {
@@ -237,13 +252,22 @@ export async function runRecurringEngine(userId: string, today: Date = new Date(
       return {
         date: iso,
         vendor: rule.name,
-        description: `Recurring ${rule.type}: ${rule.name}`,
+        description: recurringNote(rule.type, rule.name),
         amount: signed,
         category: rule.category,
+        // A forecast, not money the bank has confirmed. Marking it 'Planned'
+        // is what lets an import supersede it later.
+        status: 'Planned',
       };
     });
-    await writeTransactions(userId, db.id, transactions);
-    generated += transactions.length;
+    // Drop occurrences inside an imported statement's range — the real
+    // transaction is already in the ledger from that import.
+    const toWrite = transactions.filter((t) => !isDateCovered(t.date, coverage));
+    skipped += transactions.length - toWrite.length;
+    if (toWrite.length > 0) {
+      await writeTransactions(userId, db.id, toWrite);
+      generated += toWrite.length;
+    }
 
     // Advance anchor + lastGeneratedDate
     const lastDue = due[due.length - 1];
@@ -257,7 +281,10 @@ export async function runRecurringEngine(userId: string, today: Date = new Date(
     });
   }
 
-  return { generated };
+  if (skipped > 0) {
+    console.log(`[recurring-engine] skipped ${skipped} occurrence(s) already covered by an import`);
+  }
+  return { generated, skipped };
 }
 
 export type ForecastItem = {
@@ -303,7 +330,31 @@ export type ParsedTransaction = {
   amount: number;      // negative = expense, positive = income
   category: string;    // one of DB Category options
   account?: string;    // which account this came from, when known
+  status?: string;     // 'Cleared' (real money) or 'Planned' (forecast). Default 'Cleared'.
 };
+
+// ── Recurring-generated rows ────────────────────────────────────────────
+
+/** Notes text stamped on every row the recurring engine creates. It is the
+ *  only marker distinguishing a forecast row from one the user or an import
+ *  put there, so both the engine and the import cleanup key off it. */
+export function recurringNote(type: string, name: string): string {
+  return `Recurring ${type}: ${name}`;
+}
+
+export function isRecurringGeneratedNote(note: unknown): boolean {
+  return /^Recurring (income|expense): /.test(String(note ?? ''));
+}
+
+/** Is `date` inside any imported statement's coverage? A statement is the
+ *  authoritative record for its period, so the engine must not invent a
+ *  transaction there and an import supersedes any forecast already written. */
+export function isDateCovered(
+  date: string,
+  ranges: { dateFrom: Date; dateTo: Date }[],
+): boolean {
+  return ranges.some((r) => date >= ymdOf(r.dateFrom) && date <= ymdOf(r.dateTo));
+}
 
 // Bulk-write transactions as pages with property values.
 export async function writeTransactions(
@@ -343,8 +394,8 @@ export async function writeTransactions(
       { propertyId: propId['Category'], value: tx.category },
       { propertyId: propId['Amount'],   value: Math.abs(tx.amount) },
       { propertyId: propId['Date'],     value: tx.date },
+      { propertyId: propId['Status'],   value: tx.status ?? 'Cleared' },
       { propertyId: propId['Vendor'],   value: tx.vendor },
-      { propertyId: propId['Status'],   value: 'Cleared' },
     ];
     if (propId['Notes'] && tx.description !== tx.vendor) {
       writes.push({ propertyId: propId['Notes'], value: tx.description });

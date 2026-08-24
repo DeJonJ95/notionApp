@@ -44,6 +44,8 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
   const [duplicates, setDuplicates] = useState<DuplicateInfo[]>([]);
   const [meta, setMeta] = useState<StatementMeta | null>(null);
   const [account, setAccount] = useState('');
+  // Recurring forecasts this statement replaced, so the user sees the cleanup.
+  const [superseded, setSuperseded] = useState(0);
 
   const upload = async (file: File) => {
     setError(''); setErrorDetail('');
@@ -130,6 +132,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
         setStage('preview');
         return;
       }
+      if (typeof json.superseded === 'number') setSuperseded(json.superseded);
 
       // Handle duplicates
       if (json.duplicates && json.duplicates.length > 0) {
@@ -344,6 +347,12 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-green-600">
               <Check size={28} />
               <p className="text-sm font-medium">Imported {txs.length} transactions</p>
+              {superseded > 0 && (
+                <p className="text-xs text-muted text-center max-w-sm">
+                  Replaced {superseded} predicted recurring {superseded === 1 ? 'entry' : 'entries'} in
+                  this date range with the real ones from your statement, so nothing is counted twice.
+                </p>
+              )}
             </div>
           )}
 
@@ -356,6 +365,13 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
                 </div>
                 <p className="text-xs text-muted mb-3">
                   These appear to already exist in your budget database.
+                  {superseded > 0 && (
+                    <>
+                      {' '}Separately, {superseded} predicted recurring{' '}
+                      {superseded === 1 ? 'entry was' : 'entries were'} removed from this date range,
+                      since your statement is the real record for it.
+                    </>
+                  )}
                 </p>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {duplicates.map((d, i) => (
