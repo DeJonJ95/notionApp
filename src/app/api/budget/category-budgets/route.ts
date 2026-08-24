@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import {
   findOrCreateBudgetDb,
+  getBudgetCategories,
   normalizeBudgetToMonthly,
   denormalizeMonthlyBudget,
 } from '@/lib/budgetDb';
@@ -34,26 +35,19 @@ async function loadContext(userId: string): Promise<BudgetContext> {
   const db = await findOrCreateBudgetDb(userId);
   const record = await prisma.database.findFirst({
     where: { id: db.id, workspace: { ownerId: userId } },
-    select: { workspaceId: true, properties: { select: { id: true, name: true, formula: true } } },
+    select: { workspaceId: true },
   });
   if (!record) throw new Error('Budget database not found');
 
   const propId: Record<string, string> = {};
-  let categoryOptions: string[] = [];
-  for (const p of record.properties) {
-    propId[p.name] = p.id;
-    if (p.name === 'Category') {
-      try {
-        const parsed = JSON.parse(p.formula || '[]');
-        if (Array.isArray(parsed)) {
-          categoryOptions = parsed.map((o: unknown) => String(o).trim()).filter(Boolean);
-        }
-      } catch {
-        categoryOptions = [];
-      }
-    }
-  }
-  return { databaseId: db.id, workspaceId: record.workspaceId, propId, categoryOptions };
+  for (const p of db.properties) propId[p.name] = p.id;
+
+  return {
+    databaseId: db.id,
+    workspaceId: record.workspaceId,
+    propId,
+    categoryOptions: getBudgetCategories(db),
+  };
 }
 
 async function loadBudgetRows(databaseId: string): Promise<CategoryBudgetRow[]> {

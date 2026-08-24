@@ -1,22 +1,24 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { X, Plus, Trash2, Tag, Loader2 } from 'lucide-react';
+import { DEFAULT_CATEGORIES, fallbackCategory } from '@/lib/budgetCategories';
 
 type Rule = { id: string; match: string; category: string };
 
-const CATEGORIES = [
-  'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
-  'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
-  'Subscriptions', 'Investments', 'Debt', 'Gifts & Donations',
-  'Emergency Fund', 'Other',
-];
-
-export function CategorizationRulesModal({ onClose }: { onClose: () => void }) {
+export function CategorizationRulesModal({
+  onClose,
+  categories,
+}: {
+  onClose: () => void;
+  // The budget database's own Category options; falls back to the standard list.
+  categories?: string[];
+}) {
+  const CATEGORIES = categories?.length ? categories : DEFAULT_CATEGORIES;
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [match, setMatch] = useState('');
-  const [category, setCategory] = useState('Other');
+  const [category, setCategory] = useState(fallbackCategory(CATEGORIES));
 
   const load = useCallback(() => {
     setLoading(true);
@@ -42,7 +44,7 @@ export function CategorizationRulesModal({ onClose }: { onClose: () => void }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ match: match.trim(), category }),
     });
-    if (res.ok) { setMatch(''); setCategory('Other'); load(); }
+    if (res.ok) { setMatch(''); setCategory(fallbackCategory(CATEGORIES)); load(); }
     else { const j = await res.json().catch(() => ({})); setError(j.error ?? 'Failed'); }
   };
 

@@ -114,6 +114,7 @@ export function BudgetDashboard() {
       {recurringOpen && (
         <RecurringRulesModal
           prefill={recurringPrefill ?? undefined}
+          categories={data.categoryOptions}
           onChanged={load}
           onClose={() => { setRecurringOpen(false); setRecurringPrefill(null); }}
         />
@@ -122,7 +123,7 @@ export function BudgetDashboard() {
         <SavingsGoalsModal onChanged={load} onClose={() => setGoalsOpen(false)} />
       )}
       {rulesOpen && (
-        <CategorizationRulesModal onClose={() => setRulesOpen(false)} />
+        <CategorizationRulesModal categories={data.categoryOptions} onClose={() => setRulesOpen(false)} />
       )}
       {budgetsOpen && (
         <CategoryBudgetsModal

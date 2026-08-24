@@ -2,18 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { logDeepSeek } from '@/lib/logUsage';
-import { findOrCreateBudgetDb } from '@/lib/budgetDb';
+import { findOrCreateBudgetDb, getBudgetCategories } from '@/lib/budgetDb';
+import { fallbackCategory } from '@/lib/budgetCategories';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
-
-// Category options must match the Personal Budget template.
-const CATEGORIES = [
-  'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
-  'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
-  'Subscriptions', 'Investments', 'Debt', 'Gifts & Donations',
-  'Emergency Fund', 'Other',
-];
 
 async function extractText(file: File): Promise<string> {
   const name = file.name.toLowerCase();
@@ -42,7 +35,9 @@ const I_DESC = 2;
 const I_AMT = 3;
 const I_CAT = 4;
 
-const systemPrompt = `You extract financial transactions from bank statements (any format: Chase, BofA, Wells Fargo, Michigan First, credit unions, credit cards, CSVs).
+// Built per request so the category list comes from the user's own Category
+// options rather than a hard-coded copy.
+const buildSystemPrompt = (categories: string[]) => `You extract financial transactions from bank statements (any format: Chase, BofA, Wells Fargo, Michigan First, credit unions, credit cards, CSVs).
 
 Return ONLY a JSON object with this exact compact shape — no prose, no markdown fences:
 { "meta": { "account": "Checking 1234", "openingBalance": 1450.22, "closingBalance": 1187.65 },
@@ -61,13 +56,13 @@ Each element of "t", in order:
   1: vendor — cleaned merchant name (strip codes, merchant numbers, address)
   2: description — original short description (keep it brief — under 60 chars)
   3: amount — NEGATIVE for expenses, POSITIVE for income/deposits/refunds
-  4: category — MUST be exactly one of: ${CATEGORIES.join(', ')}
+  4: category — MUST be exactly one of: ${categories.join(', ')}
 
 Rules:
 - Keep "t" to real transactions only: no balance forwards, running balances, statement headers, fees summaries, totals, page numbers, or bank-disclosure footer text. Balances belong in "meta", never in "t".
 - If the statement only shows "Apr 03" without a year, infer the year from the statement header (e.g. "Apr 01, 2026 thru Apr 30, 2026" → 2026).
 - Strip codes from vendors. E.g. "55432866091200231491715 00089047 AMAZON PRIME*JH5BA8CS3 440 Terry Ave N SEATTLE WA" → "Amazon Prime".
-- Map intuitively: McDonald's/restaurants/groceries → Food & Dining; gas/Uber/Lyft/parking → Transport; Apple/Netflix/Spotify/Claude.ai/Prime Video/Google One → Subscriptions; clothing/Amazon (non-Prime) → Shopping; direct deposits/refunds → Other; Verizon/Comcast/water/electric → Utilities; insurance → Insurance; PayPal/Zelle/Apple Cash transfers → Other.
+- Map intuitively, but only to categories that appear in the list above; if one of these targets isn't listed, pick the closest option that is. McDonald's/restaurants/groceries → Food & Dining; gas/Uber/Lyft/parking → Transport; Apple/Netflix/Spotify/Claude.ai/Prime Video/Google One → Subscriptions; clothing/Amazon (non-Prime) → Shopping; direct deposits/refunds → Other; Verizon/Comcast/water/electric → Utilities; insurance → Insurance; PayPal/Zelle/Apple Cash transfers → Other.
 - Output ONLY the JSON object. No \`\`\` fences, no prose.`;
 
 // Strip markdown fences if DeepSeek wraps the JSON despite response_format.
@@ -147,7 +142,7 @@ function chunkText(text: string, maxChars: number): string[] {
   return chunks;
 }
 
-async function callDeepSeek(apiKey: string, userText: string) {
+async function callDeepSeek(apiKey: string, systemPrompt: string, userText: string) {
   const aiRes = await fetch('https://api.deepseek.com/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
@@ -252,6 +247,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No text found in file' }, { status: 400 });
   }
 
+  // Resolve the budget DB first — its Category options define the list the AI
+  // is allowed to use, so any option the user added is honoured.
+  const budgetDb = await findOrCreateBudgetDb(userId);
+  const categories = getBudgetCategories(budgetDb);
+  const systemPrompt = buildSystemPrompt(categories);
+  const otherCategory = fallbackCategory(categories);
+
   // Chunk if needed so we don't exceed DeepSeek's 8K output cap on long
   // statements. ~20K input chars yields ~30–40 transactions, well within
   // the 8K-token output budget when using the compact array format.
@@ -272,7 +274,7 @@ export async function POST(req: NextRequest) {
       chunk = `(continuation of bank statement — same date format applies; the header is not in this part, so set every "meta" field to null)\n\n${chunk}`;
     }
     try {
-      const r = await callDeepSeek(apiKey, chunk);
+      const r = await callDeepSeek(apiKey, systemPrompt, chunk);
       if (r.usage) {
         totalIn += r.usage.prompt_tokens;
         totalOut += r.usage.completion_tokens;
@@ -305,8 +307,8 @@ export async function POST(req: NextRequest) {
       if (isNaN(amount) || amount === 0) return null;
       const date = String(r[I_DATE] ?? '').slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-      let category = String(r[I_CAT] ?? 'Other');
-      if (!CATEGORIES.includes(category)) category = 'Other';
+      let category = String(r[I_CAT] ?? otherCategory);
+      if (!categories.includes(category)) category = otherCategory;
       return {
         date,
         vendor: String(r[I_VENDOR] ?? '').slice(0, 100),
@@ -342,16 +344,13 @@ export async function POST(req: NextRequest) {
     console.warn('[budget-import] categorization rules skipped:', (e as Error).message);
   }
 
-  // Find/create the user's budget DB so the client knows where to confirm to
-  const budgetDb = await findOrCreateBudgetDb(userId);
-
   return NextResponse.json({
     databaseId: budgetDb.id,
     databaseName: budgetDb.name,
     filename,
     transactions: cleaned,
     meta,
-    categories: CATEGORIES,
+    categories,
     truncated: anyTruncated, // hint for the UI in case results look short
   });
 }

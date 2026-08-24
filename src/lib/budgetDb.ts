@@ -1,5 +1,8 @@
 import { prisma } from './prisma';
 import { DB_TEMPLATES } from './dbTemplates';
+import { DEFAULT_CATEGORIES, parseCategoryOptions } from './budgetCategories';
+
+export { DEFAULT_CATEGORIES, parseCategoryOptions, fallbackCategory } from './budgetCategories';
 
 // The Personal Budget feature works against the user's "Personal Budget"
 // database (built from the template). This module finds or creates it.
@@ -7,8 +10,18 @@ import { DB_TEMPLATES } from './dbTemplates';
 export type BudgetDb = {
   id: string;
   name: string;
-  properties: { id: string; name: string; type: string }[];
+  // `formula` carries select options as JSON for `type='select'` (gotcha 21).
+  properties: { id: string; name: string; type: string; formula: string | null }[];
 };
+
+/** The user's own Category options, falling back to DEFAULT_CATEGORIES when the
+ *  property is missing or its options can't be read. This is what imports and
+ *  every category picker should use, so options the user added are honoured. */
+export function getBudgetCategories(db: BudgetDb): string[] {
+  const prop = db.properties.find((p) => p.name === 'Category');
+  if (!prop) return DEFAULT_CATEGORIES;
+  return parseCategoryOptions(prop.formula);
+}
 
 export async function findOrCreateBudgetDb(userId: string): Promise<BudgetDb> {
   // 1. Look for an existing database the user owns whose schema matches the
@@ -46,7 +59,7 @@ export async function findOrCreateBudgetDb(userId: string): Promise<BudgetDb> {
     return {
       id: existing.id,
       name: existing.name,
-      properties: properties.map((p) => ({ id: p.id, name: p.name, type: p.type })),
+      properties: properties.map((p) => ({ id: p.id, name: p.name, type: p.type, formula: p.formula })),
     };
   }
 
@@ -87,7 +100,7 @@ export async function findOrCreateBudgetDb(userId: string): Promise<BudgetDb> {
   return {
     id: created!.id,
     name: created!.name,
-    properties: created!.properties.map((p) => ({ id: p.id, name: p.name, type: p.type })),
+    properties: created!.properties.map((p) => ({ id: p.id, name: p.name, type: p.type, formula: p.formula })),
   };
 }
 

@@ -2,13 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { X, Plus, Trash2, Edit3, RefreshCw, Loader2 } from 'lucide-react';
 import { confirmDialog } from '@/components/ui/feedback';
-
-const CATEGORIES = [
-  'Housing', 'Food & Dining', 'Transport', 'Utilities', 'Healthcare',
-  'Insurance', 'Entertainment', 'Shopping', 'Education', 'Personal Care',
-  'Subscriptions', 'Investments', 'Debt', 'Gifts & Donations',
-  'Emergency Fund', 'Other',
-];
+import { DEFAULT_CATEGORIES, fallbackCategory } from '@/lib/budgetCategories';
 
 const FREQUENCY_LABELS: Record<string, string> = {
   weekly: 'Weekly',
@@ -33,12 +27,16 @@ interface Props {
   onChanged: () => void;
   // Optional prefill from a "Make recurring" / "Track" button
   prefill?: { name: string; amount: number; category: string; type?: 'income' | 'expense' };
+  // The budget database's own Category options; falls back to the standard list.
+  categories?: string[];
 }
 
 const isoDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
+export function RecurringRulesModal({ onClose, onChanged, prefill, categories }: Props) {
+  const CATEGORIES = categories?.length ? categories : DEFAULT_CATEGORIES;
+  const defaultCategory = fallbackCategory(CATEGORIES);
   const [rules, setRules] = useState<Rule[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null); // 'new' for add form
@@ -79,7 +77,7 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
     const payload = {
       type: editing.type ?? 'income',
       name: editing.name ?? '',
-      category: editing.category ?? 'Other',
+      category: editing.category ?? defaultCategory,
       amount: editing.amount ?? 0,
       frequency: editing.frequency ?? 'biweekly',
       anchorDate: editing.anchorDate ?? isoDate(new Date()),
@@ -237,7 +235,7 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
                 <label className="text-xs text-muted">
                   Category
                   <select
-                    value={editing.category ?? 'Other'}
+                    value={editing.category ?? defaultCategory}
                     onChange={(e) => setEditing({ ...editing, category: e.target.value })}
                     className="mt-0.5 w-full bg-bg border border-border rounded px-2 py-1 text-sm text-text"
                   >
@@ -289,7 +287,7 @@ export function RecurringRulesModal({ onClose, onChanged, prefill }: Props) {
               onClick={() => setEditing({
                 type: 'income',
                 name: '',
-                category: 'Other',
+                category: defaultCategory,
                 amount: 0,
                 frequency: 'biweekly',
                 anchorDate: isoDate(new Date()),

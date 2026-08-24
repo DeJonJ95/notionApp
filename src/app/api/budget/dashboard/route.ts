@@ -14,6 +14,7 @@ import {
   computeAccountBalancesFrom,
   buildBalanceCurve,
   resolveDisplayMonth,
+  getBudgetCategories,
   type AccountBalance,
   type CategoryBudget,
   type ForecastItem,
@@ -213,24 +214,9 @@ export async function GET(req: NextRequest) {
     monthElapsedPercent(displayMonthStart, displayMonthEnd, now),
   );
 
-  // Category options the budget editor offers: the DB's own select options,
-  // plus anything already in use so nothing on the dashboard is unreachable.
-  const categoryOptionSet = new Set<string>();
-  try {
-    const catProp = await prisma.property.findFirst({
-      where: { databaseId: db.id, name: 'Category' },
-      select: { formula: true },
-    });
-    const parsed = JSON.parse(catProp?.formula || '[]');
-    if (Array.isArray(parsed)) {
-      for (const o of parsed) {
-        const s = String(o).trim();
-        if (s) categoryOptionSet.add(s);
-      }
-    }
-  } catch (e) {
-    console.warn('[budget-dashboard] category options skipped:', (e as Error).message);
-  }
+  // Category options every picker offers: the DB's own select options, plus
+  // anything already in use so nothing on the dashboard is unreachable.
+  const categoryOptionSet = new Set(getBudgetCategories(db));
   for (const c of categoryBudgets) categoryOptionSet.add(c.category);
   const categoryOptions = Array.from(categoryOptionSet).sort((a, b) => a.localeCompare(b));
 
