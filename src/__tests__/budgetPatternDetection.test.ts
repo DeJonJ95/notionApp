@@ -87,6 +87,31 @@ describe('detectRecurringPatterns', () => {
     expect(match!.type).toBe('income');
   });
 
+  it('classifies as expense when amounts are negative', () => {
+    const transactions = [
+      TX('Netflix', -15.99, '2026-01-15', 'Subscriptions'),
+      TX('Netflix', -15.99, '2026-02-15', 'Subscriptions'),
+      TX('Netflix', -15.99, '2026-03-15', 'Subscriptions'),
+    ];
+    const result = detectRecurringPatterns(transactions, []);
+    const match = result.find((r) => r.vendor === 'Netflix');
+    expect(match).toBeDefined();
+    expect(match!.type).toBe('expense');
+    // Amount is still reported absolute, as callers expect.
+    expect(match!.averageAmount).toBe(15.99);
+  });
+
+  it('classifies as expense when only a minority of amounts are positive', () => {
+    const transactions = [
+      TX('Utility Co', -80, '2026-01-15', 'Utilities'),
+      TX('Utility Co', -85, '2026-02-15', 'Utilities'),
+      TX('Utility Co', -90, '2026-03-15', 'Utilities'),
+      TX('Utility Co', 20, '2026-04-15', 'Utilities'), // one refund
+    ];
+    const result = detectRecurringPatterns(transactions, []);
+    expect(result.find((r) => r.vendor === 'Utility Co')!.type).toBe('expense');
+  });
+
   it('returns empty array for empty transactions', () => {
     const result = detectRecurringPatterns([], []);
     expect(result).toEqual([]);

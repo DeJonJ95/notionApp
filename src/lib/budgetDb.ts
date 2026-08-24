@@ -650,16 +650,23 @@ export function detectRecurringPatterns(
 
     let bestFreq: RuleFrequency | null = null;
     let bestConfidence = 0;
+    let bestDistance = Infinity;
 
     for (const { freq, target, tolerance } of frequencies) {
       const withinTolerance = intervals.filter((i) => Math.abs(i - target) <= tolerance);
       const ratio = withinTolerance.length / intervals.length;
+      if (ratio < 0.5) continue;
       // Bonus for exact matches
       const exactBonus = withinTolerance.filter((i) => i === target).length / intervals.length * 0.2;
       const confidence = Math.min(1, ratio + exactBonus);
+      // Confidence saturates at 1, so biweekly (14) and semimonthly (15) both
+      // score 1 on a 1st-and-15th schedule. Break the tie on whichever target
+      // the actual average interval sits closest to.
+      const distance = Math.abs(avgInterval - target);
 
-      if (confidence > bestConfidence && ratio >= 0.5) {
+      if (confidence > bestConfidence || (confidence === bestConfidence && distance < bestDistance)) {
         bestConfidence = confidence;
+        bestDistance = distance;
         bestFreq = freq;
       }
     }
@@ -668,7 +675,9 @@ export function detectRecurringPatterns(
 
     const amounts = txs.map((t) => Math.abs(t.amount));
     const avgAmount = amounts.reduce((s, a) => s + a, 0) / amounts.length;
-    const isIncome = amounts.some((a) => a > 0) && amounts.filter((a) => a > 0).length >= amounts.length * 0.5;
+    // Direction has to come from the RAW signed amounts. Deriving it from
+    // `amounts` (already absolute) made every suggestion look like income.
+    const isIncome = txs.filter((t) => t.amount > 0).length >= txs.length / 2;
 
     suggestions.push({
       vendor: txs[0].vendor, // original casing
