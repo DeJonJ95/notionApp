@@ -23,6 +23,27 @@ const ROLE_LABEL: Record<ConversationTurn['role'], string> = {
   assistant: 'Claude',
 };
 
+// Canvas coordinates, matching CanvasPageEditor's document-reflow constants
+// (DOC_X 80, DOC_W_TEXT 720, BLOCK_GAP 18). Document view sorts by `position`
+// and ignores these, but a block written with a null canvasY loads as
+// `canvasY ?? 60` — so without them every turn would stack on the same spot
+// the moment the page is switched to canvas view.
+const DOC_X = 80;
+const DOC_W_TEXT = 720;
+const BLOCK_GAP = 18;
+const LINE_H = 26;
+
+/** Rough rendered height of a turn, so stacked blocks don't overlap on canvas. */
+function estimateHeight(doc: TipTapDoc): number {
+  let lines = 0;
+  for (const node of doc.content) {
+    const text = (node.content ?? []).map((c) => c.text ?? '').join('');
+    // ~90 characters per rendered line at DOC_W_TEXT.
+    lines += Math.max(1, Math.ceil(text.length / 90));
+  }
+  return Math.max(48, lines * LINE_H + 16);
+}
+
 export async function findOrCreateClaudeChatsWorkspace(userId: string): Promise<{ id: string }> {
   const existing = await prisma.workspace.findFirst({
     where: { ownerId: userId, slug: CLAUDE_CHATS_SLUG },
@@ -164,16 +185,22 @@ export async function saveClaudeConversation(
     pageId = page.id;
   }
 
+  const docs = [sourceDoc(sourceUrl, turns.length), ...turns.map(turnDoc)];
+  let y = 60;
   await prisma.block.createMany({
-    data: [
-      { pageId, type: 'text', content: sourceDoc(sourceUrl, turns.length) as any, position: 0 },
-      ...turns.map((turn, i) => ({
+    data: docs.map((content, i) => {
+      const block = {
         pageId,
         type: 'text',
-        content: turnDoc(turn) as any,
-        position: i + 1,
-      })),
-    ],
+        content: content as any,
+        position: i,
+        canvasX: DOC_X,
+        canvasY: y,
+        canvasWidth: DOC_W_TEXT,
+      };
+      y += estimateHeight(content) + BLOCK_GAP;
+      return block;
+    }),
   });
 
   return { pageId, created: !existingId, turnCount: turns.length };
