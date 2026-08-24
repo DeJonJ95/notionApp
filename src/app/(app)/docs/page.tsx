@@ -26,7 +26,7 @@ export default function DocsPage() {
     'Workspaces & pages', 'Canvas notes', 'Text formatting', 'Databases',
     'Views, filters & grouping', 'Relations & rollups', 'Budget', 'Recurring & forecast',
     'Goals, rules & trends', 'Transcripts & audio', 'Extract from notes',
-    'Inbox & capture', 'Subscriptions', 'Gestures & shortcuts',
+    'Inbox & capture', 'Bank alerts → budget', 'Subscriptions', 'Gestures & shortcuts',
   ];
   return (
     <div className="max-w-3xl mx-auto px-6 md:px-12 py-12">
@@ -127,6 +127,41 @@ export default function DocsPage() {
           <Link href="/clipper" className="text-accent hover:underline">Browser clipper</Link>) as a bearer header and a JSON body{' '}
           <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">{'{ "text": "…", "url": "…" }'}</code>.
           Wire it to an iOS Shortcut or “Hey Siri, add to Kove” to capture hands-free.
+        </Item>
+      </Section>
+
+      <Section title="Bank alerts → budget">
+        <Item name="What it does">
+          <span className="text-text font-medium">POST /api/budget/capture-tx</span> files a single
+          transaction into your budget database the moment your bank pings you, so the dashboard
+          isn&apos;t waiting on your next statement import. Categorization rules apply, and anything
+          that looks like a transaction you already have is skipped rather than double-counted.
+        </Item>
+        <Item name="Auth">
+          Same as capture: a clipper token (from{' '}
+          <Link href="/clipper" className="text-accent hover:underline">Browser clipper</Link>) as
+          an <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">Authorization: Bearer …</code>{' '}
+          header, or a signed-in session.
+        </Item>
+        <Item name="Body">
+          Either the raw alert text{' '}
+          <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">{'{ "text": "Your card was charged $14.52 at STARBUCKS 8/23" }'}</code>{' '}
+          which costs one small AI call to read, or a structured body with no AI at all{' '}
+          <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">{'{ "amount": 14.52, "vendor": "Starbucks" }'}</code>.
+          Optional: <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">date</code>,{' '}
+          <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">category</code>,{' '}
+          <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">account</code>,{' '}
+          <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">note</code>. Amounts count as
+          spending by default; add <code className="text-xs bg-surface border border-border rounded px-1 py-0.5">&quot;type&quot;: &quot;income&quot;</code>{' '}
+          for a deposit or refund.
+        </Item>
+        <Item name="iOS Shortcut recipe">
+          Automation → When I get a notification from your bank app → Get Contents of URL →
+          <span className="text-text"> https://notionlikeapp.vercel.app/api/budget/capture-tx</span>,
+          method POST, header <span className="text-text">Authorization: Bearer &lt;clipper token&gt;</span>,
+          request body JSON with one field <span className="text-text">text</span> set to the
+          Shortcut Input. The response echoes the parsed transaction, so add a Show Notification
+          step to confirm what was filed.
         </Item>
       </Section>
 
