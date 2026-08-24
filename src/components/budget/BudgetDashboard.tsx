@@ -53,6 +53,20 @@ export function BudgetDashboard() {
   // Feature 3: Reconciliation
   const [reconciliation, setReconciliation] = useState<ReconciliationPayload | null>(null);
   const [reconLoading, setReconLoading] = useState(false);
+  // Which import chip is currently being reconciled, so only it spins.
+  const [reconTarget, setReconTarget] = useState<string | null>(null);
+
+  const runReconciliation = useCallback(async (from: string, to: string, importId: string) => {
+    setReconTarget(importId);
+    setReconLoading(true);
+    try {
+      const res = await fetch(`/api/budget/reconciliation?from=${from}&to=${to}`);
+      if (res.ok) setReconciliation(await res.json());
+    } finally {
+      setReconLoading(false);
+      setReconTarget(null);
+    }
+  }, []);
 
   // Feature 5: Pattern suggestions (from dashboard payload)
 
@@ -291,17 +305,9 @@ export function BudgetDashboard() {
             </div>
           )}
           <button
-            onClick={async () => {
-              if (!importsData.imports[0]) return;
-              setReconLoading(true);
-              try {
-                const res = await fetch(`/api/budget/reconciliation?from=${importsData.imports[0].dateFrom}&to=${importsData.imports[0].dateTo}`);
-                if (res.ok) {
-                  setReconciliation(await res.json());
-                }
-              } finally {
-                setReconLoading(false);
-              }
+            onClick={() => {
+              const latest = importsData.imports[0];
+              if (latest) runReconciliation(latest.dateFrom, latest.dateTo, latest.id);
             }}
             disabled={reconLoading}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs hover:bg-surface text-muted hover:text-text transition-colors"
@@ -326,18 +332,24 @@ export function BudgetDashboard() {
             {/* Timeline of imports */}
             <div className="flex flex-wrap gap-2">
               {importsData.imports.slice(0, 10).map((imp) => (
-                <div
+                <button
                   key={imp.id}
-                  className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs"
-                  title={`${imp.filename}: ${imp.txCount} transactions`}
+                  onClick={() => runReconciliation(imp.dateFrom, imp.dateTo, imp.id)}
+                  disabled={reconLoading}
+                  className="rounded-lg border border-border bg-surface px-2.5 py-2 text-xs text-left hover:border-accent/50 hover:bg-bg disabled:opacity-60"
+                  title={`${imp.filename}: ${imp.txCount} transactions. Tap to reconcile this range.`}
                 >
                   <span className="text-muted">{imp.dateFrom}</span>
                   <span className="text-muted mx-1">→</span>
                   <span className="text-muted">{imp.dateTo}</span>
                   <span className="ml-1.5 text-accent">{imp.txCount} tx</span>
-                </div>
+                  {reconTarget === imp.id && (
+                    <Loader2 size={10} className="inline animate-spin ml-1.5 text-accent" />
+                  )}
+                </button>
               ))}
             </div>
+            <p className="text-xs text-muted">Tap an import to reconcile that date range.</p>
             {/* Gaps */}
             {importsData.gaps.length > 0 && (
               <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
