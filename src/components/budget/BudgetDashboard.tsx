@@ -16,6 +16,7 @@ import { CategorizationRulesModal } from './CategorizationRulesModal';
 import { ImportReminderBanner } from './ImportReminderBanner';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
 import type { ImportsPayload } from '@/app/api/budget/imports/route';
+import type { ForecastCollisionsPayload } from '@/app/api/budget/forecast-collisions/route';
 import type { ReconciliationPayload } from '@/app/api/budget/reconciliation/route';
 import type { PatternSuggestion } from '@/lib/budgetDb';
 
@@ -50,6 +51,10 @@ export function BudgetDashboard() {
   // Feature 1: Import coverage
   const [importsData, setImportsData] = useState<ImportsPayload | null>(null);
 
+  // Recurring forecasts the real transaction has already landed on top of.
+  const [collisions, setCollisions] = useState<ForecastCollisionsPayload | null>(null);
+  const [removingCollisions, setRemovingCollisions] = useState(false);
+
   // Feature 3: Reconciliation
   const [reconciliation, setReconciliation] = useState<ReconciliationPayload | null>(null);
   const [reconLoading, setReconLoading] = useState(false);
@@ -81,6 +86,10 @@ export function BudgetDashboard() {
     fetch('/api/budget/imports')
       .then((r) => (r.ok ? r.json() : null))
       .then(setImportsData)
+      .catch(() => {});
+    fetch('/api/budget/forecast-collisions')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setCollisions)
       .catch(() => {});
   }, [month]);
 
@@ -243,6 +252,62 @@ export function BudgetDashboard() {
         daysSinceLastImport={importsData?.daysSinceLastImport ?? null}
         onImport={() => setImportOpen(true)}
       />
+
+      {/* Recurring forecasts the real transaction has already superseded */}
+      {collisions && collisions.collisions.length > 0 && (
+        <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle size={16} className="text-yellow-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-yellow-700">
+                {collisions.collisions.length} predicted recurring{' '}
+                {collisions.collisions.length === 1 ? 'entry is' : 'entries are'} double-counting a real transaction
+              </p>
+              <p className="text-xs text-muted mt-0.5">
+                These were forecast from your recurring rules, then the actual transaction arrived in an
+                import. Removing the forecasts leaves the real ones untouched.
+              </p>
+              <div className="mt-2 space-y-1">
+                {collisions.collisions.slice(0, 8).map((c) => (
+                  <div key={c.pageId} className="flex flex-wrap items-center gap-x-2 text-xs bg-bg rounded px-2 py-1">
+                    <span className="text-muted">{c.date}</span>
+                    <span className="truncate">{c.vendor}</span>
+                    <span className="font-mono">{fmt2(Math.abs(c.amount))}</span>
+                    <span className="text-muted">↔ real:</span>
+                    <span className="truncate text-muted">{c.matched.vendor}</span>
+                    <span className="font-mono text-muted">{fmt2(Math.abs(c.matched.amount))}</span>
+                  </div>
+                ))}
+                {collisions.collisions.length > 8 && (
+                  <p className="text-xs text-muted">and {collisions.collisions.length - 8} more.</p>
+                )}
+              </div>
+              <button
+                onClick={async () => {
+                  setRemovingCollisions(true);
+                  try {
+                    const res = await fetch('/api/budget/forecast-collisions', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ pageIds: collisions.collisions.map((c) => c.pageId) }),
+                    });
+                    if (res.ok) { setCollisions({ collisions: [] }); load(); }
+                  } finally {
+                    setRemovingCollisions(false);
+                  }
+                }}
+                disabled={removingCollisions}
+                className="mt-2 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-yellow-600 text-white text-xs font-medium hover:bg-yellow-600/80 disabled:opacity-60"
+              >
+                {removingCollisions && <Loader2 size={12} className="animate-spin" />}
+                {removingCollisions
+                  ? 'Removing…'
+                  : `Remove ${collisions.collisions.length} predicted ${collisions.collisions.length === 1 ? 'entry' : 'entries'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Headline warning: the projected balance dips below zero */}
       {data.negativeBalanceDate && (

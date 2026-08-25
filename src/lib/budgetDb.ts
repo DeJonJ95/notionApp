@@ -346,6 +346,59 @@ export function isRecurringGeneratedNote(note: unknown): boolean {
   return /^Recurring (income|expense): /.test(String(note ?? ''));
 }
 
+export type ForecastCollision = {
+  pageId: string;   // the forecast row to remove
+  date: string;
+  vendor: string;
+  amount: number;
+  matched: { date: string; vendor: string; amount: number };  // the real transaction
+};
+
+/** Find recurring forecast rows that the real transaction has since landed on
+ *  top of. Amount is deliberately NOT compared: the whole reason these survive
+ *  normal dedup is that a rule's fixed amount rarely equals the real paycheck
+ *  or a variable bill. Instead: a similar vendor, the same direction of money,
+ *  and a nearby date.
+ *
+ *  Only rows flagged `isGenerated` are ever proposed for removal, and only when
+ *  a NON-generated row corroborates them, so two forecasts can't cancel out. */
+export function findForecastCollisions(
+  rows: { pageId: string; date: string; vendor: string; amount: number; isGenerated: boolean }[],
+  windowDays = 4,
+): ForecastCollision[] {
+  const real = rows.filter((r) => !r.isGenerated);
+  const windowMs = windowDays * 86_400_000;
+  const time = (d: string) => new Date(d + 'T00:00:00').getTime();
+
+  const out: ForecastCollision[] = [];
+  const claimed = new Set<string>();
+
+  for (const forecast of rows) {
+    if (!forecast.isGenerated) continue;
+    const t = time(forecast.date);
+    if (Number.isNaN(t)) continue;
+
+    const hit = real.find((r) => {
+      if (claimed.has(r.pageId)) return false;              // one real row settles one forecast
+      if (Math.sign(r.amount) !== Math.sign(forecast.amount)) return false;
+      const rt = time(r.date);
+      if (Number.isNaN(rt) || Math.abs(rt - t) > windowMs) return false;
+      return vendorsSimilar(r.vendor, forecast.vendor);
+    });
+    if (!hit) continue;
+
+    claimed.add(hit.pageId);
+    out.push({
+      pageId: forecast.pageId,
+      date: forecast.date,
+      vendor: forecast.vendor,
+      amount: forecast.amount,
+      matched: { date: hit.date, vendor: hit.vendor, amount: hit.amount },
+    });
+  }
+  return out;
+}
+
 /** Is `date` inside any imported statement's coverage? A statement is the
  *  authoritative record for its period, so the engine must not invent a
  *  transaction there and an import supersedes any forecast already written. */
