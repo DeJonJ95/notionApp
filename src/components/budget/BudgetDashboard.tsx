@@ -19,6 +19,7 @@ import { ImportReminderBanner } from './ImportReminderBanner';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
 import type { ImportsPayload } from '@/app/api/budget/imports/route';
 import type { ForecastCollisionsPayload } from '@/app/api/budget/forecast-collisions/route';
+import type { WastePayload } from '@/app/api/budget/waste/route';
 import type { ReconciliationPayload } from '@/app/api/budget/reconciliation/route';
 import type { PatternSuggestion } from '@/lib/budgetDb';
 
@@ -58,6 +59,10 @@ export function BudgetDashboard() {
   const [collisions, setCollisions] = useState<ForecastCollisionsPayload | null>(null);
   const [removingCollisions, setRemovingCollisions] = useState(false);
 
+  // Waste findings, loaded alongside the dashboard.
+  const [waste, setWaste] = useState<WastePayload | null>(null);
+  const [expandedWaste, setExpandedWaste] = useState<Set<string>>(new Set());
+
   // Feature 3: Reconciliation
   const [reconciliation, setReconciliation] = useState<ReconciliationPayload | null>(null);
   const [reconLoading, setReconLoading] = useState(false);
@@ -89,6 +94,10 @@ export function BudgetDashboard() {
     fetch('/api/budget/imports')
       .then((r) => (r.ok ? r.json() : null))
       .then(setImportsData)
+      .catch(() => {});
+    fetch('/api/budget/waste')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setWaste)
       .catch(() => {});
     fetch('/api/budget/forecast-collisions')
       .then((r) => (r.ok ? r.json() : null))
@@ -878,6 +887,82 @@ export function BudgetDashboard() {
                 </div>
               </div>
             ))}
+          </div>
+        </Section>
+      )}
+
+      {/* Where money is leaking */}
+      {waste && waste.findings.length > 0 && (
+        <Section
+          title="Where the waste is"
+          icon={<Sparkles size={13} className="text-accent" />}
+          right={
+            waste.totalAnnualImpact > 0 ? (
+              <span className="text-xs text-muted">
+                Up to <strong className="text-text">{fmt(waste.totalAnnualImpact)}/yr</strong> recoverable
+              </span>
+            ) : null
+          }
+        >
+          <p className="text-xs text-muted mb-2">
+            From {waste.transactionsAnalyzed} transactions across {waste.monthsAnalyzed} month
+            {waste.monthsAnalyzed === 1 ? '' : 's'}. Every figure is backed by the charges listed under it —
+            expand one to check the reasoning. Subscriptions are listed but left out of the headline,
+            since many are worth keeping.
+          </p>
+          <div className="space-y-1.5">
+            {waste.findings.map((f) => {
+              const open = expandedWaste.has(f.id);
+              const tone =
+                f.kind === 'fee' ? 'text-red-500 bg-red-500/10'
+                : f.kind === 'price-creep' ? 'text-orange-600 bg-orange-500/10'
+                : f.kind === 'category-drift' ? 'text-yellow-600 bg-yellow-500/10'
+                : 'text-blue-600 bg-blue-500/10';
+              const label =
+                f.kind === 'fee' ? 'fees'
+                : f.kind === 'price-creep' ? 'price rise'
+                : f.kind === 'category-drift' ? 'over normal'
+                : 'subscription';
+              return (
+                <div key={f.id} className="rounded-lg border border-border bg-surface overflow-hidden">
+                  <button
+                    onClick={() =>
+                      setExpandedWaste((prev) => {
+                        const next = new Set(prev);
+                        next.has(f.id) ? next.delete(f.id) : next.add(f.id);
+                        return next;
+                      })
+                    }
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg/50"
+                  >
+                    <ChevronRight
+                      size={12}
+                      className={`text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+                    />
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${tone}`}>{label}</span>
+                    <span className="flex-1 min-w-0 text-sm truncate">{f.title}</span>
+                    <span className="text-xs font-mono text-muted shrink-0">{fmt(f.annualImpact)}/yr</span>
+                  </button>
+                  {open && (
+                    <div className="border-t border-border/60 px-3 py-2 space-y-1.5">
+                      <p className="text-xs text-muted">{f.detail}</p>
+                      {f.evidence.length > 0 && (
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] uppercase tracking-wide text-muted">Charges behind this</p>
+                          {f.evidence.map((e, i) => (
+                            <div key={`${f.id}-${i}`} className="flex items-center gap-2 text-xs bg-bg rounded px-2 py-1">
+                              <span className="text-muted w-20 shrink-0 font-mono">{e.date}</span>
+                              <span className="flex-1 truncate">{e.vendor}</span>
+                              <span className="font-mono shrink-0">{fmt2(Math.abs(e.amount))}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </Section>
       )}
