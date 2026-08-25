@@ -55,7 +55,12 @@ export async function analyzeImage(
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
     },
   });
-  if (!imgRes.ok) throw new Error(`Could not fetch image for analysis (${imgRes.status})`);
+  if (!imgRes.ok) {
+    throw new Error(
+      `Could not fetch the image for analysis (${imgRes.status}). ` +
+        `The stored copy must be publicly readable: ${imageUrl.slice(0, 120)}`,
+    );
+  }
   const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
   const b64 = imgBuffer.toString('base64');
   const mime = imgRes.headers.get('content-type') || 'image/jpeg';
@@ -110,16 +115,43 @@ export async function analyzeImage(
   }
 
   if (!res) {
+    // Google's own message is far more specific than any status mapping we
+    // could write ("API has not been used in project X", "API key not valid",
+    // quota details), so pass it through instead of swallowing it.
+    let detail = '';
+    try {
+      detail = JSON.parse(lastBody)?.error?.message ?? '';
+    } catch {
+      detail = lastBody.slice(0, 200);
+    }
+
     if (lastStatus === 404) {
       throw new Error(
-        `No usable Gemini model. Tried: ${MODEL_CANDIDATES.join(', ')}. ` +
-          `Set GEMINI_MODEL to a current model ID.`,
+        `No usable Gemini model. Tried: ${MODEL_CANDIDATES.join(', ')}.` +
+          (detail ? ` Google said: ${detail}` : ''),
       );
     }
-    if (lastStatus === 400 || lastStatus === 403) {
-      throw new Error(`Gemini rejected the API key (${lastStatus}). Check GEMINI_API_KEY.`);
+    if (lastStatus === 403) {
+      throw new Error(
+        `Gemini refused the request (403). This is usually the Generative Language ` +
+          `API not being enabled for the key's Google Cloud project.` +
+          (detail ? ` Google said: ${detail}` : ''),
+      );
     }
-    throw new Error(`Gemini vision request failed (${lastStatus})`);
+    if (lastStatus === 400) {
+      throw new Error(
+        `Gemini rejected the request (400), usually an invalid API key.` +
+          (detail ? ` Google said: ${detail}` : ''),
+      );
+    }
+    if (lastStatus === 429) {
+      throw new Error(
+        `Gemini rate limit or quota exceeded (429).` + (detail ? ` Google said: ${detail}` : ''),
+      );
+    }
+    throw new Error(
+      `Gemini vision request failed (${lastStatus}).` + (detail ? ` Google said: ${detail}` : ''),
+    );
   }
 
   const json = await res.json();
