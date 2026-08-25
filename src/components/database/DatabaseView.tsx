@@ -108,6 +108,45 @@ function CategoryPicker({
   );
 }
 
+export type FilterCondition = {
+  propertyId: string;
+  op: 'contains' | 'eq' | 'gte' | 'lte';
+  value: string;
+};
+
+/** Views persisted a single `{propertyId, op, value}` before filters could be
+ *  combined. Accept that, an array, or nothing. */
+export function normalizeFilters(raw: unknown): FilterCondition[] {
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list
+    .filter((f: any) => f && typeof f === 'object' && f.propertyId)
+    .map((f: any) => ({
+      propertyId: String(f.propertyId),
+      op: (['contains', 'eq', 'gte', 'lte'].includes(f.op) ? f.op : 'contains') as FilterCondition['op'],
+      value: String(f.value ?? ''),
+    }));
+}
+
+/** Does one cell satisfy one condition? `gte`/`lte` compare numerically when
+ *  both sides are numbers and lexically otherwise, which is what makes them
+ *  work on ISO dates as well as amounts. An empty value matches everything, so
+ *  a half-typed condition doesn't blank the table. */
+export function matchesCondition(rawCell: unknown, cond: FilterCondition): boolean {
+  const needle = String(cond.value ?? '').trim();
+  if (!needle) return true;
+  const cell = String(rawCell ?? '');
+
+  if (cond.op === 'contains') return cell.toLowerCase().includes(needle.toLowerCase());
+  if (cond.op === 'eq') return cell.toLowerCase() === needle.toLowerCase();
+
+  const cn = Number(cell);
+  const nn = Number(needle);
+  const numeric = cell !== '' && needle !== '' && !isNaN(cn) && !isNaN(nn);
+  const cmp = numeric ? cn - nn : cell.localeCompare(needle);
+  return cond.op === 'gte' ? cmp >= 0 : cmp <= 0;
+}
+
 function getSelectOptions(property: Property): string[] {
   if (property.type !== 'select') return [];
   try {
@@ -325,10 +364,13 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
   }, [database.pages, database.properties]);
 
   // ── Per-view filter / sort (persisted on the View row) ─────────────────
-  const viewFilter = (selectedView as any).filters as
-    | { propertyId: string; op: 'eq' | 'contains'; value: string }
-    | null
-    | undefined;
+  // `filters` was a single condition originally and is still stored that way on
+  // existing views, so normalize both shapes. New writes are always an array.
+  const viewFilters = useMemo<FilterCondition[]>(
+    () => normalizeFilters((selectedView as any).filters),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify((selectedView as any).filters)],
+  );
   const viewSort = (selectedView as any).sorts as
     | { propertyId: string; dir: 'asc' | 'desc' }
     | null
@@ -345,12 +387,10 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
 
   const viewedPages = useMemo(() => {
     let rows = renderedPages;
-    if (viewFilter && viewFilter.propertyId) {
-      const needle = String(viewFilter.value ?? '').toLowerCase();
-      rows = rows.filter((p) => {
-        const v = String(cellValue(p, viewFilter.propertyId) ?? '').toLowerCase();
-        return viewFilter.op === 'contains' ? v.includes(needle) : v === needle;
-      });
+    // Every condition must hold, so "Type is Income" and "Date is in August"
+    // narrow together instead of replacing one another.
+    for (const cond of viewFilters) {
+      rows = rows.filter((p) => matchesCondition(cellValue(p, cond.propertyId), cond));
     }
     if (viewSort && viewSort.propertyId) {
       rows = [...rows].sort((a, b) => {
@@ -366,7 +406,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     }
     return rows;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderedPages, JSON.stringify(viewFilter), JSON.stringify(viewSort)]);
+  }, [renderedPages, JSON.stringify(viewFilters), JSON.stringify(viewSort)]);
 
 
   const visibleProperties = useMemo(
@@ -2135,7 +2175,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
   const renderViewConfigBar = (view: View) => {
     // Only the generic record views support filter/sort/group
     if (!['table', 'list', 'gallery', 'board'].includes(view.type)) return null;
-    const f = (view as any).filters as { propertyId: string; op: string; value: string } | null;
+    const conds = normalizeFilters((view as any).filters);
     const s = (view as any).sorts as { propertyId: string; dir: string } | null;
     const g = (view as any).grouping as { propertyId: string } | null;
     const patch = (p: any) => {
@@ -2161,36 +2201,77 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     const selectProps = props.filter((p) => p.type === 'select');
     return (
       <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
-        {/* Filter */}
-        <div className="flex items-center gap-1 border border-border rounded-lg px-2 py-1 bg-bg">
+        {/* Filter — any number of conditions, all of which must hold */}
+        <div className="flex flex-wrap items-center gap-1 border border-border rounded-lg px-2 py-1 bg-bg">
           <span className="text-muted">Filter</span>
-          <select
-            value={f?.propertyId ?? ''}
-            onChange={(e) => patch({ filters: e.target.value ? { propertyId: e.target.value, op: f?.op ?? 'contains', value: f?.value ?? '' } : null })}
-            className="bg-transparent text-text focus:outline-none"
+          {conds.map((c, i) => {
+            const prop = props.find((p) => p.id === c.propertyId);
+            const opts = prop ? getSelectOptions(prop) : [];
+            const setCond = (next: Partial<FilterCondition>) =>
+              patch({ filters: conds.map((x, j) => (j === i ? { ...x, ...next } : x)) });
+            return (
+              <span key={i} className="flex items-center gap-1">
+                {i > 0 && <span className="text-muted/70">and</span>}
+                <select
+                  value={c.propertyId}
+                  onChange={(e) => setCond({ propertyId: e.target.value, value: '' })}
+                  className="bg-transparent text-text focus:outline-none"
+                >
+                  <option value="__title__">Name</option>
+                  {props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <select
+                  value={c.op}
+                  onChange={(e) => setCond({ op: e.target.value as FilterCondition['op'] })}
+                  className="bg-transparent text-text focus:outline-none"
+                >
+                  <option value="contains">contains</option>
+                  <option value="eq">is</option>
+                  <option value="gte">{prop?.type === 'date' ? 'on or after' : '≥'}</option>
+                  <option value="lte">{prop?.type === 'date' ? 'on or before' : '≤'}</option>
+                </select>
+                {/* A select property gets its own options rather than making
+                    the user recall the exact spelling. */}
+                {opts.length > 0 && (c.op === 'eq' || c.op === 'contains') ? (
+                  <select
+                    value={c.value}
+                    onChange={(e) => setCond({ value: e.target.value })}
+                    className="bg-surface border border-border rounded px-1 py-0.5 text-text focus:outline-none"
+                  >
+                    <option value="">any</option>
+                    {opts.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    key={`${c.propertyId}-${c.op}`}
+                    type={prop?.type === 'date' ? 'date' : 'text'}
+                    defaultValue={c.value}
+                    onBlur={(e) => setCond({ value: e.target.value })}
+                    placeholder="value"
+                    className="w-28 bg-surface border border-border rounded px-1 py-0.5 text-text focus:outline-none"
+                  />
+                )}
+                <button
+                  onClick={() => patch({ filters: conds.filter((_, j) => j !== i) })}
+                  className="text-muted hover:text-red-500"
+                  title="Remove this condition"
+                  aria-label="Remove filter condition"
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            );
+          })}
+          <button
+            onClick={() =>
+              patch({
+                filters: [...conds, { propertyId: props[0]?.id ?? '__title__', op: 'contains', value: '' }],
+              })
+            }
+            className="flex items-center gap-0.5 text-accent hover:underline"
           >
-            <option value="">—</option>
-            <option value="__title__">Name</option>
-            {props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-          {f?.propertyId && (
-            <>
-              <select
-                value={f.op}
-                onChange={(e) => patch({ filters: { ...f, op: e.target.value } })}
-                className="bg-transparent text-text focus:outline-none"
-              >
-                <option value="contains">contains</option>
-                <option value="eq">is</option>
-              </select>
-              <input
-                defaultValue={f.value}
-                onBlur={(e) => patch({ filters: { ...f, value: e.target.value } })}
-                placeholder="value"
-                className="w-24 bg-surface border border-border rounded px-1 py-0.5 text-text focus:outline-none"
-              />
-            </>
-          )}
+            <Plus size={11} /> {conds.length === 0 ? 'Add filter' : 'and'}
+          </button>
         </div>
         {/* Sort */}
         <div className="flex items-center gap-1 border border-border rounded-lg px-2 py-1 bg-bg">
@@ -2228,7 +2309,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
             </select>
           </div>
         )}
-        {(f || s || g) && (
+        {(conds.length > 0 || s || g) && (
           <button
             onClick={() => patch({ filters: null, sorts: null, grouping: null })}
             className="text-muted hover:text-red-500 underline"
