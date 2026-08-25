@@ -15,7 +15,7 @@ import {
   buildBalanceCurve,
   resolveDisplayMonth,
   getBudgetCategories,
-  vendorsMatch,
+  vendorsSimilar,
   monthlySavingsContribution,
   goalLedgerAmounts,
   TRANSFERS_CATEGORY,
@@ -396,7 +396,7 @@ export async function GET(req: NextRequest) {
       const matchedTxs = all
         .filter((t) => {
           const amtMatch = Math.abs(Math.abs(t.amount) - r.amount) / r.amount < 0.3;
-          return amtMatch && vendorsMatch(t.vendor, r.name);
+          return amtMatch && vendorsSimilar(t.vendor, r.name);
         })
         .map((t) => ({
           date: t.date,
@@ -502,7 +502,7 @@ export async function GET(req: NextRequest) {
       let matchedTotal = 0;
       for (const due of dueDates) {
         const match = usedThis.find((t) => {
-          if (!vendorsMatch(t.vendor, rule.name)) return false;
+          if (!vendorsSimilar(t.vendor, rule.name)) return false;
           const tAbs = Math.abs(t.amount);
           if (Math.abs(tAbs - rule.amount) / rule.amount > 0.3) return false;
           const threeDays = 3 * 24 * 60 * 60 * 1000;

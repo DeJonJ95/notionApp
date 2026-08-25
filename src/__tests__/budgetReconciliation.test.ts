@@ -20,15 +20,22 @@ const rules = [
   },
 ];
 
+// A biweekly rule anchored at the start of January is due TWICE inside
+// Jan 1-31, so a single imported paycheck legitimately leaves one occurrence
+// outstanding. The counts below reflect that rather than assuming one.
 describe('reconcileTransactions', () => {
-  it('matches all expected transactions in range', () => {
+  it('matches a paycheck whose statement wording differs from the rule name', () => {
     const imported: ParsedTransaction[] = [
       { date: '2026-01-15', vendor: 'Netflix', description: '', amount: -15.99, category: 'Subscriptions' },
+      // "Payroll Dept" vs the rule's "Paycheck" — only token overlap catches this.
       { date: '2026-01-15', vendor: 'City of Detroit Payroll Dept', description: '', amount: 1759.44, category: 'Income' },
     ];
     const result = reconcileTransactions(rules, imported, '2026-01-01', '2026-01-31');
     expect(result.matched).toHaveLength(2);
-    expect(result.missing).toHaveLength(0);
+    expect(result.matched.map((m) => m.ruleName).sort()).toEqual(['City of Detroit Paycheck', 'Netflix']);
+    // The second biweekly payday in January was not in this statement.
+    expect(result.missing).toHaveLength(1);
+    expect(result.missing[0].ruleName).toBe('City of Detroit Paycheck');
     expect(result.unexpected).toHaveLength(0);
   });
 
@@ -39,8 +46,9 @@ describe('reconcileTransactions', () => {
     const result = reconcileTransactions(rules, imported, '2026-01-01', '2026-01-31');
     expect(result.matched).toHaveLength(1);
     expect(result.matched[0].ruleName).toBe('Netflix');
-    expect(result.missing).toHaveLength(1);
-    expect(result.missing[0].ruleName).toBe('City of Detroit Paycheck');
+    // Both biweekly paydays are outstanding.
+    expect(result.missing).toHaveLength(2);
+    expect(result.missing.every((m) => m.ruleName === 'City of Detroit Paycheck')).toBe(true);
   });
 
   it('flags unexpected transactions', () => {
@@ -76,9 +84,10 @@ describe('reconcileTransactions', () => {
   it('handles empty imported transactions', () => {
     const result = reconcileTransactions(rules, [], '2026-01-01', '2026-01-31');
     expect(result.matched).toHaveLength(0);
-    expect(result.missing).toHaveLength(1); // Netflix in range
-    // Second rule (biweekly starting Jan 1) — occurrences on Jan 1, 15, 29
-    expect(result.missing.length).toBeGreaterThanOrEqual(1);
+    // Everything scheduled in January is outstanding: 2 biweekly paydays + 1 Netflix.
+    expect(result.missing).toHaveLength(3);
+    expect(result.missing.filter((m) => m.ruleName === 'City of Detroit Paycheck')).toHaveLength(2);
+    expect(result.missing.filter((m) => m.ruleName === 'Netflix')).toHaveLength(1);
   });
 
   it('matches despite minor amount variance (<30%)', () => {

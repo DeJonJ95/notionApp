@@ -491,6 +491,41 @@ export function normalizeVendor(s: string): string {
     .trim();
 }
 
+// Connector words that say nothing about identity. Ignored when scoring token
+// overlap, so "City of Detroit" doesn't get credit for matching on "of".
+const VENDOR_CONNECTORS = new Set(['of', 'and', 'for', 'to', 'at', 'in', 'on', 'a']);
+
+function vendorTokens(s: string): string[] {
+  return normalizeVendor(s)
+    .split(' ')
+    .filter((t) => t && !VENDOR_CONNECTORS.has(t));
+}
+
+/** Looser match for correlating a RECURRING RULE's name against a statement's
+ *  vendor wording. Those come from different vocabularies — a rule called
+ *  "City of Detroit Paycheck" has to line up with "CITY OF DETROIT PAYROLL
+ *  2606231026" — so containment alone never fires. Falls back to token
+ *  overlap: at least 2 shared identifying words, covering at least half of the
+ *  shorter name.
+ *
+ *  Deliberately NOT used by `findDuplicateTransactions`: there a false
+ *  positive silently discards a real transaction. Every caller of this pairs
+ *  it with an amount check (within 30%), which is what separates, say, a
+ *  "City of Detroit Paycheck" rule from a "City of Detroit Water" charge. */
+export function vendorsSimilar(a: string, b: string): boolean {
+  if (vendorsMatch(a, b)) return true;
+
+  const ta = vendorTokens(a);
+  const tb = vendorTokens(b);
+  if (ta.length < 2 || tb.length < 2) return false;
+
+  const setB = new Set(tb);
+  const shared = new Set(ta.filter((t) => setB.has(t))).size;
+  if (shared < 2) return false;
+
+  return shared / Math.min(ta.length, tb.length) >= 0.5;
+}
+
 /** Two-way containment on normalized names. The shorter side must be at least
  *  4 characters, so a stray fragment can't match half the ledger. */
 export function vendorsMatch(a: string, b: string): boolean {
@@ -569,12 +604,15 @@ export function reconcileTransactions(
       toDate,
     );
     for (const dueDate of dueDates) {
-      const dueStr = dueDate.toISOString().slice(0, 10);
+      // Local formatting, not toISOString(): occurrence dates are built as
+      // local midnight, so UTC conversion reports the previous day for anyone
+      // west of Greenwich and the "missing on <date>" line reads a day off.
+      const dueStr = ymdOf(dueDate);
       const expectedAbs = rule.amount;
 
       // Look for a matching imported transaction
       const found = importedTransactions.find((tx) => {
-        if (!vendorsMatch(tx.vendor, rule.name)) return false;
+        if (!vendorsSimilar(tx.vendor, rule.name)) return false;
         const txAbs = Math.abs(tx.amount);
         if (Math.abs(txAbs - expectedAbs) / expectedAbs > 0.3) return false; // >30% difference
         const txDate = new Date(tx.date + 'T00:00:00');
@@ -609,7 +647,7 @@ export function reconcileTransactions(
   for (const tx of importedTransactions) {
     const isExpected = rules.some((r) => {
       const amtMatch = Math.abs(Math.abs(tx.amount) - r.amount) / r.amount <= 0.3;
-      return amtMatch && vendorsMatch(tx.vendor, r.name);
+      return amtMatch && vendorsSimilar(tx.vendor, r.name);
     });
     if (!isExpected) {
       unexpected.push(tx);
