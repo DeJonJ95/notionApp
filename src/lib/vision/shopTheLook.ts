@@ -13,8 +13,18 @@ export type DetectedItem = {
   confidence?: number; // 0-1, optional
 };
 
-const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+// Model IDs are retired on Google's schedule, and a retired ID answers with a
+// bare 404 that looks nothing like a model problem. gemini-1.5-flash-latest was
+// shut down and cost this feature a confusing outage. So: allow an env override,
+// and fall through a list rather than hard-failing on the first 404.
+const MODEL_CANDIDATES = [
+  process.env.GEMINI_MODEL,
+  'gemini-2.5-flash',
+  'gemini-3.5-flash',
+  'gemini-2.5-flash-lite',
+].filter(Boolean) as string[];
 
 const VISION_SYSTEM = `You are a product-recognition assistant. Look at the image and identify every distinct product or item that could be purchased (clothing, furniture, accessories, decor, beauty products, etc.).
 
@@ -37,9 +47,6 @@ export async function analyzeImage(
   imageUrl: string,
   apiKey: string,
 ): Promise<{ items: DetectedItem[]; usage?: { prompt_tokens: number; completion_tokens: number } }> {
-  const url = new URL(GEMINI_URL);
-  url.searchParams.set('key', apiKey);
-
   // Gemini expects the image inline as base64, but it also accepts a URL
   // via parts. We fetch the image bytes, base64 them, and send inline.
   const imgRes = await fetch(imageUrl, {
@@ -53,35 +60,66 @@ export async function analyzeImage(
   const b64 = imgBuffer.toString('base64');
   const mime = imgRes.headers.get('content-type') || 'image/jpeg';
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: VISION_SYSTEM },
-            {
-              inline_data: {
-                mime_type: mime,
-                data: b64,
-              },
+  const payload = JSON.stringify({
+    contents: [
+      {
+        parts: [
+          { text: VISION_SYSTEM },
+          {
+            inline_data: {
+              mime_type: mime,
+              data: b64,
             },
-          ],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 1500,
-        responseMimeType: 'application/json',
+          },
+        ],
       },
-    }),
+    ],
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 1500,
+      responseMimeType: 'application/json',
+    },
   });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    console.error('Gemini vision error:', res.status, txt.slice(0, 500));
-    throw new Error(`Gemini vision request failed (${res.status})`);
+  // Walk the candidates until one answers. A 404 means that model ID is
+  // gone, so try the next; any other error is a real failure and stops here.
+  let res: Response | null = null;
+  let lastStatus = 0;
+  let lastBody = '';
+
+  for (const model of MODEL_CANDIDATES) {
+    const url = new URL(`${GEMINI_BASE}/${model}:generateContent`);
+    url.searchParams.set('key', apiKey);
+
+    const attempt = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+
+    if (attempt.ok) {
+      res = attempt;
+      break;
+    }
+
+    lastStatus = attempt.status;
+    lastBody = await attempt.text().catch(() => '');
+    console.error('Gemini vision error:', model, attempt.status, lastBody.slice(0, 500));
+
+    if (attempt.status !== 404) break;
+  }
+
+  if (!res) {
+    if (lastStatus === 404) {
+      throw new Error(
+        `No usable Gemini model. Tried: ${MODEL_CANDIDATES.join(', ')}. ` +
+          `Set GEMINI_MODEL to a current model ID.`,
+      );
+    }
+    if (lastStatus === 400 || lastStatus === 403) {
+      throw new Error(`Gemini rejected the API key (${lastStatus}). Check GEMINI_API_KEY.`);
+    }
+    throw new Error(`Gemini vision request failed (${lastStatus})`);
   }
 
   const json = await res.json();

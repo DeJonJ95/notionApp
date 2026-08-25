@@ -6,8 +6,9 @@ const DS_IN = 0.27 / 1_000_000;
 const DS_OUT = 1.10 / 1_000_000;
 
 // Gemini 1.5 Flash pricing (USD per token)
-const GEM_IN = 0.075 / 1_000_000;
-const GEM_OUT = 0.30 / 1_000_000;
+// Gemini 2.5 Flash paid tier: $0.30/M in (text/image/video), $2.50/M out.
+const GEM_IN = 0.30 / 1_000_000;
+const GEM_OUT = 2.50 / 1_000_000;
 
 // Per-call cost for services with a real metered price. Free providers
 // default to 0 and we still log them so the dashboard can show
