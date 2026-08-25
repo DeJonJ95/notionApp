@@ -1,4 +1,4 @@
-import { findForecastCollisions } from '../lib/budgetDb';
+import { findLedgerDuplicates as findForecastCollisions } from '../lib/budgetDb';
 
 const row = (
   pageId: string,
@@ -43,12 +43,54 @@ describe('findForecastCollisions', () => {
     ).toHaveLength(0);
   });
 
-  it('never proposes removing a real transaction', () => {
+  it('catches the same real transaction imported twice, keeping the original', () => {
+    // Rows arrive oldest-first, so p1 is the original.
     const out = findForecastCollisions([
       row('p1', '2026-08-05', 'City of Detroit Payroll', 3746, false),
       row('p2', '2026-08-05', 'City of Detroit Payroll', 3746, false),
     ]);
-    expect(out).toHaveLength(0);
+    expect(out).toHaveLength(1);
+    expect(out[0].pageId).toBe('p2');
+    expect(out[0].reason).toBe('repeat-import');
+  });
+
+  it('catches a re-import where the AI cleaned the vendor differently', () => {
+    // Same statement run twice through DeepSeek yields slightly different names.
+    const out = findForecastCollisions([
+      row('p1', '2026-08-05', 'City of Detroit Payroll', 3746, false),
+      row('p2', '2026-08-05', 'City of Detroit', 3746, false),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].pageId).toBe('p2');
+  });
+
+  it('leaves two same-day charges of different amounts alone', () => {
+    expect(
+      findForecastCollisions([
+        row('p1', '2026-08-05', 'Starbucks', -4.5, false),
+        row('p2', '2026-08-05', 'Starbucks', -6.75, false),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it('leaves the same amount on different days alone', () => {
+    expect(
+      findForecastCollisions([
+        row('p1', '2026-08-05', 'Starbucks', -4.5, false),
+        row('p2', '2026-08-06', 'Starbucks', -4.5, false),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it('removes only one copy when a row is imported three times', () => {
+    const out = findForecastCollisions([
+      row('p1', '2026-08-05', 'City of Detroit Payroll', 3746, false),
+      row('p2', '2026-08-05', 'City of Detroit Payroll', 3746, false),
+      row('p3', '2026-08-05', 'City of Detroit Payroll', 3746, false),
+    ]);
+    // p1↔p2 pair off; p3 needs another pass after those are archived.
+    expect(out).toHaveLength(1);
+    expect(out[0].pageId).toBe('p2');
   });
 
   it('does not let two forecasts cancel each other out', () => {

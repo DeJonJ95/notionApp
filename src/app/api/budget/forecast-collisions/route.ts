@@ -3,9 +3,9 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import {
   findOrCreateBudgetDb,
-  findForecastCollisions,
+  findLedgerDuplicates,
   isRecurringGeneratedNote,
-  type ForecastCollision,
+  type LedgerDuplicate,
 } from '@/lib/budgetDb';
 
 // Recurring forecast rows that the real transaction has landed on top of.
@@ -14,12 +14,13 @@ import {
 // guards existed still need clearing, and this also catches any that slip past.
 
 export type ForecastCollisionsPayload = {
-  collisions: ForecastCollision[];
+  collisions: LedgerDuplicate[];
 };
 
 async function loadRows(databaseId: string) {
   const pages = await prisma.page.findMany({
     where: { databaseId, isArchived: false },
+    orderBy: { createdAt: 'asc' },
     include: { properties: { include: { property: { select: { name: true } } } } },
   });
 
@@ -56,7 +57,7 @@ export async function GET() {
   try {
     const db = await findOrCreateBudgetDb(userId);
     const payload: ForecastCollisionsPayload = {
-      collisions: findForecastCollisions(await loadRows(db.id)),
+      collisions: findLedgerDuplicates(await loadRows(db.id)),
     };
     return NextResponse.json(payload);
   } catch (e: any) {
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const db = await findOrCreateBudgetDb(userId);
-    const collisions = findForecastCollisions(await loadRows(db.id));
+    const collisions = findLedgerDuplicates(await loadRows(db.id));
     const removable = new Set(collisions.map((c) => c.pageId));
     // An empty/absent list means "all of them".
     const ids = requested.length > 0 ? requested.filter((id) => removable.has(id)) : [...removable];

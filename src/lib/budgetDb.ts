@@ -346,13 +346,17 @@ export function isRecurringGeneratedNote(note: unknown): boolean {
   return /^Recurring (income|expense): /.test(String(note ?? ''));
 }
 
-export type ForecastCollision = {
-  pageId: string;   // the forecast row to remove
+export type LedgerDuplicate = {
+  pageId: string;   // the row proposed for removal
   date: string;
   vendor: string;
   amount: number;
-  matched: { date: string; vendor: string; amount: number };  // the real transaction
+  reason: 'forecast-superseded' | 'repeat-import';
+  matched: { date: string; vendor: string; amount: number };  // the row being kept
 };
+
+/** Alias kept for the original single-purpose name. */
+export type ForecastCollision = LedgerDuplicate;
 
 /** Find recurring forecast rows that the real transaction has since landed on
  *  top of. Amount is deliberately NOT compared: the whole reason these survive
@@ -362,24 +366,28 @@ export type ForecastCollision = {
  *
  *  Only rows flagged `isGenerated` are ever proposed for removal, and only when
  *  a NON-generated row corroborates them, so two forecasts can't cancel out. */
-export function findForecastCollisions(
+export function findLedgerDuplicates(
   rows: { pageId: string; date: string; vendor: string; amount: number; isGenerated: boolean }[],
   windowDays = 4,
-): ForecastCollision[] {
-  const real = rows.filter((r) => !r.isGenerated);
+): LedgerDuplicate[] {
   const windowMs = windowDays * 86_400_000;
   const time = (d: string) => new Date(d + 'T00:00:00').getTime();
+  const out: LedgerDuplicate[] = [];
+  // Rows already spoken for, as either the kept or the removed side, so a
+  // single transaction can't be counted into two different pairs.
+  const spent = new Set<string>();
 
-  const out: ForecastCollision[] = [];
-  const claimed = new Set<string>();
-
+  // ── Pass 1: a forecast the real transaction landed on top of ────────────
+  // Amount is NOT compared — a rule's fixed amount rarely equals reality, which
+  // is exactly why these survive import dedup.
+  const real = rows.filter((r) => !r.isGenerated);
   for (const forecast of rows) {
-    if (!forecast.isGenerated) continue;
+    if (!forecast.isGenerated || spent.has(forecast.pageId)) continue;
     const t = time(forecast.date);
     if (Number.isNaN(t)) continue;
 
     const hit = real.find((r) => {
-      if (claimed.has(r.pageId)) return false;              // one real row settles one forecast
+      if (spent.has(r.pageId)) return false;
       if (Math.sign(r.amount) !== Math.sign(forecast.amount)) return false;
       const rt = time(r.date);
       if (Number.isNaN(rt) || Math.abs(rt - t) > windowMs) return false;
@@ -387,17 +395,52 @@ export function findForecastCollisions(
     });
     if (!hit) continue;
 
-    claimed.add(hit.pageId);
+    spent.add(hit.pageId);
+    spent.add(forecast.pageId);
     out.push({
       pageId: forecast.pageId,
       date: forecast.date,
       vendor: forecast.vendor,
       amount: forecast.amount,
+      reason: 'forecast-superseded',
       matched: { date: hit.date, vendor: hit.vendor, amount: hit.amount },
     });
   }
+
+  // ── Pass 2: the same real transaction imported twice ────────────────────
+  // Stricter than pass 1 on purpose: identical date AND identical amount, so
+  // two genuine same-day charges of different sizes are never touched. Rows
+  // arrive oldest-first, so the original is kept and the later copy removed.
+  for (let i = 0; i < rows.length; i++) {
+    const later = rows[i];
+    if (later.isGenerated || spent.has(later.pageId)) continue;
+    if (!time(later.date)) continue;
+
+    for (let j = 0; j < i; j++) {
+      const original = rows[j];
+      if (original.isGenerated || spent.has(original.pageId)) continue;
+      if (original.date !== later.date) continue;
+      if (Math.abs(original.amount - later.amount) > 0.01) continue;
+      if (!vendorsSimilar(original.vendor, later.vendor)) continue;
+
+      spent.add(original.pageId);
+      spent.add(later.pageId);
+      out.push({
+        pageId: later.pageId,
+        date: later.date,
+        vendor: later.vendor,
+        amount: later.amount,
+        reason: 'repeat-import',
+        matched: { date: original.date, vendor: original.vendor, amount: original.amount },
+      });
+      break;
+    }
+  }
   return out;
 }
+
+/** Previous name, when this only handled the forecast case. */
+export const findForecastCollisions = findLedgerDuplicates;
 
 /** Is `date` inside any imported statement's coverage? A statement is the
  *  authoritative record for its period, so the engine must not invent a

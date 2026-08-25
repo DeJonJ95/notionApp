@@ -260,26 +260,35 @@ export function BudgetDashboard() {
             <AlertTriangle size={16} className="text-yellow-600 shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-yellow-700">
-                {collisions.collisions.length} predicted recurring{' '}
-                {collisions.collisions.length === 1 ? 'entry is' : 'entries are'} double-counting a real transaction
+                {collisions.collisions.length} duplicate{' '}
+                {collisions.collisions.length === 1 ? 'transaction is' : 'transactions are'} inflating your totals
               </p>
               <p className="text-xs text-muted mt-0.5">
-                These were forecast from your recurring rules, then the actual transaction arrived in an
-                import. Removing the forecasts leaves the real ones untouched.
+                {(() => {
+                  const f = collisions.collisions.filter((c) => c.reason === 'forecast-superseded').length;
+                  const r = collisions.collisions.length - f;
+                  const parts = [];
+                  if (f) parts.push(`${f} predicted recurring ${f === 1 ? 'entry' : 'entries'} the real transaction replaced`);
+                  if (r) parts.push(`${r} ${r === 1 ? 'row' : 'rows'} from importing the same statement twice`);
+                  return parts.join(', and ');
+                })()}. The row being kept is shown on the right of each pair.
               </p>
-              <div className="mt-2 space-y-1">
-                {collisions.collisions.slice(0, 8).map((c) => (
+              <div className="mt-2 space-y-1 max-h-64 overflow-y-auto pr-1">
+                {collisions.collisions.slice(0, 20).map((c) => (
                   <div key={c.pageId} className="flex flex-wrap items-center gap-x-2 text-xs bg-bg rounded px-2 py-1">
+                    <span className={`px-1 rounded text-[10px] ${c.reason === 'repeat-import' ? 'bg-orange-500/15 text-orange-600' : 'bg-blue-500/15 text-blue-600'}`}>
+                      {c.reason === 'repeat-import' ? 're-import' : 'forecast'}
+                    </span>
                     <span className="text-muted">{c.date}</span>
-                    <span className="truncate">{c.vendor}</span>
-                    <span className="font-mono">{fmt2(Math.abs(c.amount))}</span>
-                    <span className="text-muted">↔ real:</span>
-                    <span className="truncate text-muted">{c.matched.vendor}</span>
-                    <span className="font-mono text-muted">{fmt2(Math.abs(c.matched.amount))}</span>
+                    <span className="truncate line-through opacity-70">{c.vendor}</span>
+                    <span className="font-mono line-through opacity-70">{fmt2(Math.abs(c.amount))}</span>
+                    <span className="text-muted">→ keeping</span>
+                    <span className="truncate">{c.matched.vendor}</span>
+                    <span className="font-mono">{fmt2(Math.abs(c.matched.amount))}</span>
                   </div>
                 ))}
-                {collisions.collisions.length > 8 && (
-                  <p className="text-xs text-muted">and {collisions.collisions.length - 8} more.</p>
+                {collisions.collisions.length > 20 && (
+                  <p className="text-xs text-muted">and {collisions.collisions.length - 20} more.</p>
                 )}
               </div>
               <button
@@ -302,7 +311,7 @@ export function BudgetDashboard() {
                 {removingCollisions && <Loader2 size={12} className="animate-spin" />}
                 {removingCollisions
                   ? 'Removing…'
-                  : `Remove ${collisions.collisions.length} predicted ${collisions.collisions.length === 1 ? 'entry' : 'entries'}`}
+                  : `Remove ${collisions.collisions.length} duplicate ${collisions.collisions.length === 1 ? 'row' : 'rows'}`}
               </button>
             </div>
           </div>

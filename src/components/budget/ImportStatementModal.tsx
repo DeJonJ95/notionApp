@@ -109,9 +109,19 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
     setTxs((prev) => prev.filter((_, idx) => idx !== i));
   };
 
-  const confirm = async (overrides?: { skipDuplicates?: boolean }) => {
-    if (!databaseId || txs.length === 0) return;
-    const skipDuplicates = overrides?.skipDuplicates ?? false;
+  // `transactions` must be passed explicitly by callers that just filtered the
+  // list: React state updates are async, so reading `txs` from the closure here
+  // would still see the pre-filter array. That is how "Skip duplicates" ended up
+  // writing the duplicates it was asked to skip.
+  const confirm = async (overrides?: { skipDuplicates?: boolean; transactions?: Tx[] }) => {
+    const list = overrides?.transactions ?? txs;
+    if (!databaseId) return;
+    if (list.length === 0) {
+      // Everything in the file was a duplicate — nothing left to write.
+      setStage('done');
+      setTimeout(() => { onImported(); onClose(); }, 1200);
+      return;
+    }
     setStage('saving');
     setError(''); setErrorDetail('');
     try {
@@ -120,8 +130,10 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           databaseId,
-          transactions: skipDuplicates ? txs : txs,
-          force: !skipDuplicates && overrides === undefined ? false : overrides !== undefined,
+          transactions: list,
+          // Only an explicit "skip"/"add anyway" choice bypasses the server's
+          // duplicate check; the first attempt always runs it.
+          force: overrides !== undefined,
           account: account.trim(),
           meta,
         }),
@@ -428,15 +440,17 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
             </button>
             <button
               onClick={() => {
-                // Skip duplicates: filter out duplicate transactions
+                // Skip duplicates: drop them, then hand the filtered list
+                // straight to confirm — state hasn't updated yet at this point.
                 const dupKeys = new Set(duplicates.map((d) =>
                   `${d.incoming.date}|${d.incoming.vendor.toLowerCase().trim()}|${d.incoming.amount}`
                 ));
-                setTxs((prev) => prev.filter((t) =>
+                const remaining = txs.filter((t) =>
                   !dupKeys.has(`${t.date}|${t.vendor.toLowerCase().trim()}|${t.amount}`)
-                ));
+                );
+                setTxs(remaining);
                 setDuplicates([]);
-                confirm({ skipDuplicates: true });
+                confirm({ skipDuplicates: true, transactions: remaining });
               }}
               className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-surface transition-colors"
             >
