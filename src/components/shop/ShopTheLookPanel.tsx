@@ -32,6 +32,9 @@ export function ShopTheLookPanel({ pageId, images = [] }: Props) {
   // the vision call is slow and the free tier is rate-limited.
   const [analyzing, setAnalyzing] = useState<string | null>(null);
   const [analyzeError, setAnalyzeError] = useState('');
+  // Gemini returns 503 under load. That is worth another click, so keep the
+  // failed image around and label the button as a retry instead of a fresh run.
+  const [retryable, setRetryable] = useState(false);
   // Images analyzed this session that legitimately came back empty, so we
   // can say "nothing found" instead of silently re-offering the button.
   const [emptyResults, setEmptyResults] = useState<string[]>([]);
@@ -78,6 +81,7 @@ export function ShopTheLookPanel({ pageId, images = [] }: Props) {
   async function analyze(image: PageImage) {
     setAnalyzing(image.src);
     setAnalyzeError('');
+    setRetryable(false);
     try {
       const res = await fetch('/api/clipper/shop-the-look', {
         method: 'POST',
@@ -85,7 +89,10 @@ export function ShopTheLookPanel({ pageId, images = [] }: Props) {
         body: JSON.stringify({ pageId, imageUrl: image.src, blockId: image.blockId }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error ?? `Analysis failed (${res.status})`);
+      if (!res.ok) {
+        setRetryable(Boolean(data.retryable) || res.status === 503);
+        throw new Error(data.error ?? `Analysis failed (${res.status})`);
+      }
       const found: ShopItem[] = data.items ?? [];
       if (found.length === 0) {
         setEmptyResults((prev) => [...prev, image.src]);
@@ -161,7 +168,13 @@ export function ShopTheLookPanel({ pageId, images = [] }: Props) {
           {error && <p className="text-xs text-red-500 py-2">{error}</p>}
 
           {analyzeError && (
-            <div className="flex items-start gap-2 text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 my-2">
+            <div
+              className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 my-2 border ${
+                retryable
+                  ? 'text-muted bg-bg border-border'
+                  : 'text-red-500 bg-red-500/10 border-red-500/20'
+              }`}
+            >
               <AlertCircle size={12} className="mt-0.5 shrink-0" />
               {analyzeError}
             </div>
@@ -212,7 +225,7 @@ export function ShopTheLookPanel({ pageId, images = [] }: Props) {
                           ) : (
                             <>
                               <ShoppingBag size={12} className="text-accent" />
-                              <span>Shop This Look</span>
+                              <span>{retryable ? 'Try again' : 'Shop This Look'}</span>
                             </>
                           )}
                         </button>

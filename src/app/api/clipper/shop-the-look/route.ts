@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyClipperAuth, corsPreflight, jsonWithCors } from '@/lib/clipperAuth';
-import { analyzeImage } from '@/lib/vision/shopTheLook';
+import { analyzeImage, isTransientVisionError } from '@/lib/vision/shopTheLook';
 import { findShopLink } from '@/lib/shopSearch';
 import { logCall, logGemini } from '@/lib/logUsage';
 
@@ -51,10 +51,11 @@ export async function POST(req: NextRequest) {
     }
   } catch (e: any) {
     console.error('Shop-the-look vision failed:', e);
+    // 503 tells the client this is worth retrying; 502 reads as broken.
     return jsonWithCors(
       req,
-      { error: e?.message ?? 'Vision analysis failed' },
-      { status: 502 }
+      { error: e?.message ?? 'Vision analysis failed', retryable: isTransientVisionError(e) },
+      { status: isTransientVisionError(e) ? 503 : 502 }
     );
   }
 

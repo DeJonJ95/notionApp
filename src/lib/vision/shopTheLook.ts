@@ -26,6 +26,37 @@ const MODEL_CANDIDATES = [
   'gemini-2.5-flash-lite',
 ].filter(Boolean) as string[];
 
+// Statuses worth retrying. 503 is the common one: Gemini answers
+// "This model is currently experiencing high demand" under load.
+const TRANSIENT_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+// Backoff between attempts on the same model. Kept short because the route
+// runs under maxDuration = 60 and still has shop-link searches to do after.
+const RETRY_DELAYS_MS = [700, 1800];
+
+// Give up retrying past this point so the route returns an error rather than
+// being killed mid-flight by the function timeout.
+const MAX_RETRY_WINDOW_MS = 30_000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Marks an error as "the upstream is busy, this will probably work later" so
+ * the route can answer 503 (retry me) rather than 502 (something is broken).
+ */
+export function isTransientVisionError(e: unknown): boolean {
+  return Boolean((e as any)?.isTransient);
+}
+
+function transient(message: string, status: number): Error {
+  const err = new Error(message) as Error & { isTransient: boolean; upstreamStatus: number };
+  err.isTransient = true;
+  err.upstreamStatus = status;
+  return err;
+}
+
 const VISION_SYSTEM = `You are a product-recognition assistant. Look at the image and identify every distinct product or item that could be purchased (clothing, furniture, accessories, decor, beauty products, etc.).
 
 For each item, return:
@@ -86,32 +117,52 @@ export async function analyzeImage(
     },
   });
 
-  // Walk the candidates until one answers. A 404 means that model ID is
-  // gone, so try the next; any other error is a real failure and stops here.
+  // Walk the candidates until one answers:
+  //  - 404 means that model ID is gone, so move to the next candidate.
+  //  - Transient statuses (503 "high demand" is common on the free tier) are
+  //    retried with backoff, then fall through to the next model, which is
+  //    often serving fine when the first one is saturated.
+  //  - Anything else is a real failure and stops immediately.
   let res: Response | null = null;
   let lastStatus = 0;
   let lastBody = '';
 
-  for (const model of MODEL_CANDIDATES) {
+  const startedAt = Date.now();
+
+  outer: for (const model of MODEL_CANDIDATES) {
     const url = new URL(`${GEMINI_BASE}/${model}:generateContent`);
     url.searchParams.set('key', apiKey);
 
-    const attempt = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payload,
-    });
+    for (let attempt = 0; attempt < RETRY_DELAYS_MS.length + 1; attempt++) {
+      if (attempt > 0) {
+        await sleep(RETRY_DELAYS_MS[attempt - 1]);
+      }
 
-    if (attempt.ok) {
-      res = attempt;
-      break;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      });
+
+      if (response.ok) {
+        res = response;
+        break outer;
+      }
+
+      lastStatus = response.status;
+      lastBody = await response.text().catch(() => '');
+      console.error('Gemini vision error:', model, response.status, lastBody.slice(0, 500));
+
+      // Retired model — no point retrying it, try the next candidate.
+      if (response.status === 404) continue outer;
+
+      // Hard error (bad key, disabled API, malformed request) — retrying or
+      // switching models will not help.
+      if (!TRANSIENT_STATUSES.has(response.status)) break outer;
+
+      // Transient. Stop retrying if we are close to the route's time budget.
+      if (Date.now() - startedAt > MAX_RETRY_WINDOW_MS) break outer;
     }
-
-    lastStatus = attempt.status;
-    lastBody = await attempt.text().catch(() => '');
-    console.error('Gemini vision error:', model, attempt.status, lastBody.slice(0, 500));
-
-    if (attempt.status !== 404) break;
   }
 
   if (!res) {
@@ -145,8 +196,18 @@ export async function analyzeImage(
       );
     }
     if (lastStatus === 429) {
-      throw new Error(
-        `Gemini rate limit or quota exceeded (429).` + (detail ? ` Google said: ${detail}` : ''),
+      throw transient(
+        `Gemini rate limit or quota exceeded (429). Try again shortly.` +
+          (detail ? ` Google said: ${detail}` : ''),
+        lastStatus,
+      );
+    }
+    if (TRANSIENT_STATUSES.has(lastStatus)) {
+      throw transient(
+        `Gemini is busy right now (${lastStatus}) and did not answer after ` +
+          `${RETRY_DELAYS_MS.length + 1} attempts across ${MODEL_CANDIDATES.length} model(s). ` +
+          `This is temporary — try again in a moment.`,
+        lastStatus,
       );
     }
     throw new Error(
