@@ -141,7 +141,10 @@ Rules:
 - If the statement only shows "Apr 03" without a year, infer the year from the statement header (e.g. "Apr 01, 2026 thru Apr 30, 2026" → 2026).
 - Strip codes from vendors. E.g. "55432866091200231491715 00089047 AMAZON PRIME*JH5BA8CS3 440 Terry Ave N SEATTLE WA" → "Amazon Prime".
 - Map intuitively, but only to categories that appear in the list above; if one of these targets isn't listed, pick the closest option that is. McDonald's/restaurants/groceries → Food & Dining; gas/Uber/Lyft/parking → Transport; Apple/Netflix/Spotify/Claude.ai/Prime Video/Google One → Subscriptions; clothing/Amazon (non-Prime) → Shopping; direct deposits/refunds → Other; Verizon/Comcast/water/electric → Utilities; insurance → Insurance; credit card payments and moves between the account holder's OWN accounts (checking→savings, card payoff) → Transfers.
-- "Transfers" means money that never left the account holder. Money sent to ANOTHER PERSON — Zelle, Venmo, Cash App, PayPal or a wire addressed to someone's name — is real spending, NOT a transfer. Categorize it by what it is for, and use Gifts & Donations when the statement does not say.
+- "Transfers" means money moving between the account holder's OWN accounts, in either direction. Anything involving ANOTHER PERSON is never a transfer, whatever service carried it — Zelle, Venmo, Cash App, Apple Cash, PayPal, MoneySend, or a wire naming someone:
+  - money SENT to a person is spending. Categorize it by what it is for, using Gifts & Donations when the statement does not say.
+  - money RECEIVED from a person is income. Use Other unless the statement says what it was for.
+  Getting this wrong hides the transaction from the user's income and spending totals entirely, so when in doubt do NOT use Transfers.
 - Output ONLY the JSON object. No \`\`\` fences, no prose.`;
 
 // Strip markdown fences if DeepSeek wraps the JSON despite response_format.
