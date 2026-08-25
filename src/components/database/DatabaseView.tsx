@@ -70,6 +70,44 @@ interface DatabaseViewProps {
   onUpdate: () => void;
 }
 
+/** Inline category picker for the transaction rows inside the budget views, so
+ *  a miscategorized charge can be fixed where it's noticed instead of hunting
+ *  it down in the table. Saves through the same debounced path as any cell. */
+function CategoryPicker({
+  value,
+  options,
+  onChange,
+  tone = 'muted',
+}: {
+  value: string;
+  options: string[];
+  onChange: (next: string) => void;
+  tone?: 'muted' | 'warn';
+}) {
+  // An unset category is the one most worth fixing, so make it obvious.
+  const unset = !value;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      title="Change category"
+      className={`shrink-0 max-w-[9rem] rounded border px-1 py-0.5 text-[11px] bg-bg focus:outline-none focus:ring-1 focus:ring-accent ${
+        unset || tone === 'warn'
+          ? 'border-yellow-500/50 text-yellow-600'
+          : 'border-border/60 text-muted hover:text-text hover:border-border'
+      }`}
+    >
+      {unset && <option value="">Uncategorized</option>}
+      {options.map((o) => (
+        <option key={o} value={o}>{o}</option>
+      ))}
+      {/* A value the property no longer lists still needs to display. */}
+      {!unset && !options.includes(value) && <option value={value}>{value}</option>}
+    </select>
+  );
+}
+
 function getSelectOptions(property: Property): string[] {
   if (property.type !== 'select') return [];
   try {
@@ -161,6 +199,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
   // Back-compat shim: code/paths that still call onUpdate() get a background
   // reconcile (no longer blocks UI, since local state already changed).
   const onUpdate = reconcile;
+  const [expandedSpendCats, setExpandedSpendCats] = useState<Set<string>>(new Set());
 
   const [newPageTitle, setNewPageTitle] = useState('');
   const [selectedViewId, setSelectedViewId] = useState(database.views?.[0]?.id ?? '');
@@ -1604,7 +1643,16 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     const getVal = (page: (typeof renderedPages)[0], propId: string) =>
       page.properties.find((v) => v.property.id === propId)?.value ?? null;
 
-    type TxLine = { id: string; title: string; date: string; amount: number };
+    // Inline recategorization. Reads through localEdits so the picker reflects
+    // the choice immediately — the derived totals only catch up when the
+    // debounced save triggers onUpdate() about a second later.
+    const categoryOptions = getSelectOptions(categoryProp);
+    const txCategory = (t: { id: string; category: string }) =>
+      String(localEdits[cellKey(t.id, categoryProp.id)] ?? t.category ?? '');
+    const setTxCategory = (pageId: string, next: string) =>
+      updatePropertyValue(pageId, categoryProp.id, next, categoryProp.type);
+
+    type TxLine = { id: string; title: string; date: string; amount: number; category: string };
     interface CatData { budgeted: number; spent: number; txns: TxLine[] }
     const map = new Map<string, CatData>();
     // Actual income received in this window, broken down by category.
@@ -1627,6 +1675,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
             title: page.title || 'Untitled',
             date: dateVal ? String(dateVal).slice(0, 10) : '',
             amount,
+            category: cat,
           });
         }
         continue;
@@ -1646,6 +1695,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
             title: page.title || 'Untitled',
             date: dateVal ? String(dateVal).slice(0, 10) : '',
             amount,
+            category: cat,
           });
         }
       }
@@ -1756,9 +1806,14 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                     {open && (
                       <div className="mt-1 pl-4 space-y-0.5">
                         {c.txns.map((t) => (
-                          <div key={t.id} className="flex items-center justify-between text-[11px] text-muted">
-                            <span className="truncate">{t.date} · {t.title}</span>
-                            <span className="text-green-600 font-mono">{fmtCurrency(t.amount)}</span>
+                          <div key={t.id} className="flex items-center gap-2 text-[11px] text-muted">
+                            <span className="flex-1 truncate">{t.date} · {t.title}</span>
+                            <CategoryPicker
+                              value={txCategory(t)}
+                              options={categoryOptions}
+                              onChange={(next) => setTxCategory(t.id, next)}
+                            />
+                            <span className="text-green-600 font-mono shrink-0">{fmtCurrency(t.amount)}</span>
                           </div>
                         ))}
                       </div>
@@ -1873,15 +1928,23 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                   {expanded && hasTxns && (
                     <div className="border-t border-border/60 divide-y divide-border/40">
                       {c.txns.map((t) => (
-                        <Link
+                        <div
                           key={t.id}
-                          href={`/page/${t.id}`}
                           className="flex items-center gap-3 px-3 py-1.5 text-xs hover:bg-bg/50 transition-colors"
                         >
                           <span className="text-muted w-20 shrink-0 font-mono">{t.date || '—'}</span>
-                          <span className="flex-1 truncate text-text">{t.title}</span>
+                          {/* Only the title navigates now — the row itself has
+                              to stay clickable for the category picker. */}
+                          <Link href={`/page/${t.id}`} className="flex-1 truncate text-text hover:underline">
+                            {t.title}
+                          </Link>
+                          <CategoryPicker
+                            value={txCategory(t)}
+                            options={categoryOptions}
+                            onChange={(next) => setTxCategory(t.id, next)}
+                          />
                           <span className="text-red-500 font-mono shrink-0">{fmtCents(t.amount)}</span>
-                        </Link>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1926,7 +1989,8 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
 
     let totalIncome = 0;
     let totalExpenses = 0;
-    const catSpend = new Map<string, number>();
+    type SpendLine = { id: string; title: string; date: string; amount: number; category: string };
+    const catSpend = new Map<string, { amount: number; txns: SpendLine[] }>();
 
     for (const page of renderedPages) {
       const type = typeProp ? String(getVal(page, typeProp.id) ?? '') : '';
@@ -1940,14 +2004,38 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
       } else {
         totalExpenses += amount;
         if (categoryProp) {
-          const cat = String(getVal(page, categoryProp.id) ?? 'Uncategorized') || 'Uncategorized';
-          catSpend.set(cat, (catSpend.get(cat) ?? 0) + amount);
+          const raw = String(getVal(page, categoryProp.id) ?? '');
+          const cat = raw || 'Uncategorized';
+          if (!catSpend.has(cat)) catSpend.set(cat, { amount: 0, txns: [] });
+          const bucket = catSpend.get(cat)!;
+          bucket.amount += amount;
+          bucket.txns.push({
+            id: page.id,
+            title: page.title || 'Untitled',
+            date: dateVal ? String(dateVal).slice(0, 10) : '',
+            amount,
+            category: raw,
+          });
         }
       }
     }
 
     const net = totalIncome - totalExpenses;
-    const entries = Array.from(catSpend.entries()).sort((a, b) => b[1] - a[1]);
+    const entries = Array.from(catSpend.entries()).sort((a, b) => b[1].amount - a[1].amount);
+
+    // Same inline recategorization as the Budget Summary view.
+    const categoryOptions = categoryProp ? getSelectOptions(categoryProp) : [];
+    const txCategory = (t: SpendLine) =>
+      categoryProp ? String(localEdits[cellKey(t.id, categoryProp.id)] ?? t.category ?? '') : '';
+    const setTxCategory = (pageId: string, next: string) => {
+      if (categoryProp) updatePropertyValue(pageId, categoryProp.id, next, categoryProp.type);
+    };
+    const toggleSpendCat = (cat: string) =>
+      setExpandedSpendCats((prev) => {
+        const nextSet = new Set(prev);
+        nextSet.has(cat) ? nextSet.delete(cat) : nextSet.add(cat);
+        return nextSet;
+      });
 
     return (
       <div className="space-y-6">
@@ -1970,20 +2058,52 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
           <div>
             <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">Spending by Category</div>
             <div className="space-y-3">
-              {entries.map(([cat, amount]) => {
-                const pct = totalExpenses > 0 ? (amount / totalExpenses) * 100 : 0;
+              {entries.map(([cat, bucket]) => {
+                const pct = totalExpenses > 0 ? (bucket.amount / totalExpenses) * 100 : 0;
+                const open = expandedSpendCats.has(cat);
                 return (
                   <div key={cat}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-text">{cat}</span>
-                      <div className="flex items-center gap-3 text-xs text-muted">
-                        <span>{fmtCurrency(amount)}</span>
+                    <button
+                      onClick={() => toggleSpendCat(cat)}
+                      className="w-full flex items-center justify-between mb-1 text-left"
+                      title={open ? 'Hide transactions' : 'Show transactions to recategorize'}
+                    >
+                      <span className="flex items-center gap-1.5 text-sm text-text">
+                        <ChevronRight
+                          size={12}
+                          className={`text-muted transition-transform ${open ? 'rotate-90' : ''}`}
+                        />
+                        {cat}
+                        <span className="text-muted/60 text-xs">({bucket.txns.length})</span>
+                      </span>
+                      <span className="flex items-center gap-3 text-xs text-muted">
+                        <span>{fmtCurrency(bucket.amount)}</span>
                         <span className="w-10 text-right">{pct.toFixed(1)}%</span>
-                      </div>
-                    </div>
+                      </span>
+                    </button>
                     <div className="h-2.5 bg-bg rounded-full overflow-hidden border border-border/50">
                       <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
                     </div>
+                    {open && categoryProp && (
+                      <div className="mt-1.5 rounded-lg border border-border/60 divide-y divide-border/40">
+                        {[...bucket.txns]
+                          .sort((a, b) => b.date.localeCompare(a.date))
+                          .map((t) => (
+                            <div key={t.id} className="flex items-center gap-3 px-3 py-1.5 text-xs">
+                              <span className="text-muted w-20 shrink-0 font-mono">{t.date || '—'}</span>
+                              <Link href={`/page/${t.id}`} className="flex-1 truncate text-text hover:underline">
+                                {t.title}
+                              </Link>
+                              <CategoryPicker
+                                value={txCategory(t)}
+                                options={categoryOptions}
+                                onChange={(next) => setTxCategory(t.id, next)}
+                              />
+                              <span className="text-red-500 font-mono shrink-0">{fmtCurrency(t.amount)}</span>
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
