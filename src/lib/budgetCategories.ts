@@ -2,9 +2,13 @@
 // own options. Deliberately free of server-only imports (no prisma) so client
 // components can import DEFAULT_CATEGORIES too.
 
-/** Money moving between the user's own accounts. Excluded from spending and
+/** Money moving between the user's OWN accounts. Excluded from spending and
  *  income totals so a credit-card payment isn't counted twice: once as the
- *  card charge and again as the payment out of checking. */
+ *  card charge and again as the payment out of checking.
+ *
+ *  Money sent to another person does NOT belong here, however it was sent.
+ *  It leaves for good, so filing it as a transfer hides real spending from
+ *  every total and makes it impossible to budget against. */
 export const TRANSFERS_CATEGORY = 'Transfers';
 
 /** Fallback list, used when a budget database has no readable Category
