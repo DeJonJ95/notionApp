@@ -1175,6 +1175,74 @@ export function computeCategoryBudgets(
   return rows;
 }
 
+// ── Statement integrity ──────────────────────────────────────────────────
+
+export type ImportBalanceCheck = {
+  importId: string;
+  account: string | null;
+  openingBalance: number;
+  closingBalance: number;
+  expectedNet: number;   // what the statement says happened: closing - opening
+  actualNet: number;     // what the imported rows actually add up to
+  discrepancy: number;   // expected - actual. >0 = money the ledger never saw
+  txCount: number;
+};
+
+/** Compare each statement's own opening/closing balances against the
+ *  transactions that came in with it. The bank's balances are ground truth, so
+ *  any difference is a row the extraction missed (or mis-signed, or doubled) —
+ *  which is otherwise invisible, since a missing transaction leaves nothing
+ *  behind to notice.
+ *
+ *  Only imports carrying BOTH balances can be checked; the rest are skipped
+ *  rather than guessed at. Transactions are attributed by account so two
+ *  accounts covering the same dates don't contaminate each other. */
+export function checkImportBalances(
+  imports: {
+    id: string;
+    account: string | null;
+    openingBalance: number | null;
+    closingBalance: number | null;
+    dateFrom: Date;
+    dateTo: Date;
+  }[],
+  transactions: { account?: string | null; date: string; amount: number }[],
+): ImportBalanceCheck[] {
+  const out: ImportBalanceCheck[] = [];
+
+  for (const imp of imports) {
+    if (imp.openingBalance == null || imp.closingBalance == null) continue;
+    if (!Number.isFinite(imp.openingBalance) || !Number.isFinite(imp.closingBalance)) continue;
+
+    const from = ymdOf(imp.dateFrom);
+    const to = ymdOf(imp.dateTo);
+    const wantAccount = (imp.account ?? '').trim();
+
+    const matched = transactions.filter((t) => {
+      const acct = (t.account ?? '').trim();
+      // An import that named an account only owns that account's rows; one that
+      // didn't can only claim rows that aren't attributed elsewhere.
+      if (wantAccount ? acct !== wantAccount : acct !== '') return false;
+      return t.date >= from && t.date <= to;
+    });
+
+    const actualNet = Math.round(matched.reduce((s, t) => s + t.amount, 0) * 100) / 100;
+    const expectedNet = Math.round((imp.closingBalance - imp.openingBalance) * 100) / 100;
+
+    out.push({
+      importId: imp.id,
+      account: wantAccount || null,
+      openingBalance: imp.openingBalance,
+      closingBalance: imp.closingBalance,
+      expectedNet,
+      actualNet,
+      discrepancy: Math.round((expectedNet - actualNet) * 100) / 100,
+      txCount: matched.length,
+    });
+  }
+  return out;
+}
+
 // ── Account balances ─────────────────────────────────────────────────────
 
 /** Bucket for transactions whose account we don't know. Never carries a

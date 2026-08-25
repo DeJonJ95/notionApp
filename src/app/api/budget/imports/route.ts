@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import {
+  findOrCreateBudgetDb,
+  checkImportBalances,
+  type ImportBalanceCheck,
+} from '@/lib/budgetDb';
 
 export type ImportLogEntry = {
   id: string;
@@ -16,6 +21,8 @@ export type ImportsPayload = {
   lastImportDate: string | null;
   daysSinceLastImport: number | null;
   gaps: { from: string; to: string; days: number }[];
+  // Statements whose own opening/closing balances don't match what was imported
+  balanceChecks: ImportBalanceCheck[];
 };
 
 export async function GET() {
@@ -70,11 +77,40 @@ export async function GET() {
     }
   }
 
+  // Reconcile each statement against its own printed balances. Best-effort:
+  // a failure here must not stop the coverage list from rendering.
+  let balanceChecks: ImportBalanceCheck[] = [];
+  try {
+    const db = await findOrCreateBudgetDb(userId);
+    const pages = await prisma.page.findMany({
+      where: { databaseId: db.id, isArchived: false },
+      include: { properties: { include: { property: { select: { name: true } } } } },
+    });
+    const transactions: { account?: string | null; date: string; amount: number }[] = [];
+    for (const p of pages) {
+      const vals: Record<string, any> = {};
+      for (const pv of p.properties) vals[pv.property.name] = pv.value;
+      const type = String(vals['Type'] ?? '');
+      if (type === 'Budget') continue;
+      const rawAmt = Number(vals['Amount'] ?? 0);
+      if (!rawAmt) continue;
+      transactions.push({
+        account: vals['Account'] == null ? null : String(vals['Account']),
+        date: String(vals['Date'] ?? '').slice(0, 10),
+        amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
+      });
+    }
+    balanceChecks = checkImportBalances(logs, transactions);
+  } catch (e) {
+    console.warn('[budget-imports] balance check skipped:', (e as Error).message);
+  }
+
   const payload: ImportsPayload = {
     imports: entries,
     lastImportDate,
     daysSinceLastImport,
     gaps,
+    balanceChecks,
   };
 
   return NextResponse.json(payload);

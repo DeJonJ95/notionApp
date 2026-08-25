@@ -5,7 +5,7 @@ import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
   Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard, Wallet,
-  Landmark, ChevronLeft, ChevronRight, Pencil,
+  Landmark, ChevronLeft, ChevronRight, Pencil, Plus,
 } from 'lucide-react';
 import { promptDialog } from '@/components/ui/feedback';
 import { ImportStatementModal } from './ImportStatementModal';
@@ -13,6 +13,7 @@ import { CancelEmailModal } from './CancelEmailModal';
 import { RecurringRulesModal } from './RecurringRulesModal';
 import { SavingsGoalsModal } from './SavingsGoalsModal';
 import { CategoryBudgetsModal } from './CategoryBudgetsModal';
+import { AddTransactionModal } from './AddTransactionModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
 import { ImportReminderBanner } from './ImportReminderBanner';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
@@ -45,6 +46,7 @@ export function BudgetDashboard() {
   const [goalsOpen, setGoalsOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [budgetsOpen, setBudgetsOpen] = useState(false);
+  const [addTxOpen, setAddTxOpen] = useState(false);
   const [budgetFocusCategory, setBudgetFocusCategory] = useState<string | null>(null);
   // null = let the server pick (current month, or the latest month with data)
   const [month, setMonth] = useState<string | null>(null);
@@ -150,6 +152,14 @@ export function BudgetDashboard() {
     <div className={`max-w-6xl mx-auto px-4 md:px-8 py-8 space-y-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
       {importOpen && (
         <ImportStatementModal onClose={() => setImportOpen(false)} onImported={load} />
+      )}
+      {addTxOpen && (
+        <AddTransactionModal
+          categories={data.categoryOptions}
+          accounts={(data.accounts ?? []).map((a) => a.account).filter((a) => a !== 'Unassigned')}
+          onAdded={load}
+          onClose={() => setAddTxOpen(false)}
+        />
       )}
       {cancelTarget && (
         <CancelEmailModal
@@ -264,6 +274,13 @@ export function BudgetDashboard() {
         >
           <CreditCard size={14} /> Subscriptions
         </Link>
+        <button
+          onClick={() => setAddTxOpen(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-sm hover:bg-surface"
+          title="Add a single transaction by hand"
+        >
+          <Plus size={14} /> Add transaction
+        </button>
         <button
           onClick={() => setImportOpen(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/80"
@@ -449,6 +466,40 @@ export function BudgetDashboard() {
               ))}
             </div>
             <p className="text-xs text-muted">Tap an import to reconcile that date range.</p>
+
+            {/* Statements whose printed balances disagree with what came in.
+                A missing transaction leaves nothing behind to notice, so the
+                bank's own opening/closing figures are the only way to see it. */}
+            {(() => {
+              const off = (importsData.balanceChecks ?? []).filter(
+                (b) => Math.abs(b.discrepancy) > 0.01,
+              );
+              if (off.length === 0) return null;
+              return (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+                  <p className="text-xs font-medium text-red-600 mb-1">
+                    {off.length === 1 ? 'A statement doesn’t' : `${off.length} statements don’t`} add up
+                  </p>
+                  <div className="space-y-1">
+                    {off.map((b) => (
+                      <p key={b.importId} className="text-xs text-muted">
+                        {b.account ?? 'Unassigned'}: statement moved{' '}
+                        <strong className="text-text">{fmt2(b.expectedNet)}</strong>, imported rows total{' '}
+                        <strong className="text-text">{fmt2(b.actualNet)}</strong> —{' '}
+                        <strong className={b.discrepancy > 0 ? 'text-red-500' : 'text-yellow-600'}>
+                          {fmt2(Math.abs(b.discrepancy))} {b.discrepancy > 0 ? 'missing' : 'extra'}
+                        </strong>{' '}
+                        across {b.txCount} transactions.
+                      </p>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted mt-1.5">
+                    Compare that statement against the ledger and add what&apos;s missing with
+                    &ldquo;Add transaction&rdquo;.
+                  </p>
+                </div>
+              );
+            })()}
             {/* Gaps */}
             {importsData.gaps.length > 0 && (
               <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
