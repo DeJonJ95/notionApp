@@ -307,13 +307,16 @@
       });
       if (!res.ok) throw new Error(res.error || 'Save failed');
       closePicker();
-      showSaveToast(page.title, sourceUrl, page.id);
+      // Analyze the stored copy, not the original source URL. Pinterest and
+      // most CDNs block hotlinked server-side fetches, so passing sourceUrl
+      // here makes the vision call fail with "could not fetch image".
+      showSaveToast(page.title, res.publicUrl || sourceUrl, page.id, res.blockId || null);
     } catch (err) {
       target.setStatus(err.message || String(err), 'err');
     }
   }
 
-  function showSaveToast(pageTitle, imageUrl, pageId) {
+  function showSaveToast(pageTitle, imageUrl, pageId, blockId) {
     const root = document.createElement('div');
     root.className = 'nclip-toast nclip-toast--persistent';
 
@@ -330,7 +333,7 @@
     shopBtn.textContent = '🛍 Shop This Look';
     shopBtn.addEventListener('click', () => {
       root.remove();
-      openShopPanel(imageUrl, pageId);
+      openShopPanel(imageUrl, pageId, blockId);
     });
     actions.appendChild(shopBtn);
 
@@ -347,9 +350,9 @@
   // ── Shop-the-look overlay ────────────────────────────────────────
   let shopPanel = null;
 
-  function openShopPanel(imageUrl, pageId) {
+  function openShopPanel(imageUrl, pageId, blockId) {
     closeShopPanel();
-    shopPanel = buildShopPanel(imageUrl, pageId);
+    shopPanel = buildShopPanel(imageUrl, pageId, blockId);
     document.documentElement.appendChild(shopPanel.root);
   }
 
@@ -358,7 +361,7 @@
     shopPanel = null;
   }
 
-  function buildShopPanel(imageUrl, pageId) {
+  function buildShopPanel(imageUrl, pageId, blockId) {
     const root = document.createElement('div');
     root.className = 'nclip-picker-backdrop';
 
@@ -391,7 +394,7 @@
     // Kick off analysis
     chrome.runtime.sendMessage({
       type: 'shopTheLook',
-      payload: { pageId, imageUrl },
+      payload: { pageId, imageUrl, blockId },
     }).then((res) => {
       if (!res.ok) throw new Error(res.error || 'Analysis failed');
       const items = res.items || [];

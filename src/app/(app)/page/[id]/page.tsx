@@ -6,6 +6,32 @@ import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
 import { RecentPageTracker } from '@/components/RecentPageTracker';
 import { ShopTheLookPanel } from '@/components/shop/ShopTheLookPanel';
 
+// Clipped images live inside a block's ProseMirror doc as
+// { type: 'image', attrs: { src } } nodes. Walk the doc so the shop
+// panel knows which images this page actually holds, and can offer to
+// analyze one long after the clip-time toast is gone.
+function collectImages(blocks: CanvasBlockData[]): { src: string; blockId: string }[] {
+  const out: { src: string; blockId: string }[] = [];
+  const seen = new Set<string>();
+
+  function walk(node: any, blockId: string) {
+    if (!node || typeof node !== 'object') return;
+    if (node.type === 'image' && typeof node.attrs?.src === 'string') {
+      const src = node.attrs.src;
+      if (!seen.has(src)) {
+        seen.add(src);
+        out.push({ src, blockId });
+      }
+    }
+    if (Array.isArray(node.content)) {
+      for (const child of node.content) walk(child, blockId);
+    }
+  }
+
+  for (const b of blocks) walk(b.content, b.id);
+  return out;
+}
+
 export default async function PageRoute({ params }: { params: { id: string } }) {
   const session = await auth();
   const userId = (session?.user as any)?.id;
@@ -30,6 +56,8 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
     position: b.position,
   }));
 
+  const images = collectImages(initialBlocks);
+
   return (
     <div className="h-full flex flex-col overflow-y-auto">
       <RecentPageTracker id={page.id} title={page.title} icon={page.icon} />
@@ -45,7 +73,7 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
         initialViewMode={page.viewMode ?? 'document'}
       />
       <div className="px-6 pb-6 max-w-3xl mx-auto w-full">
-        <ShopTheLookPanel pageId={page.id} />
+        <ShopTheLookPanel pageId={page.id} images={images} />
       </div>
     </div>
   );

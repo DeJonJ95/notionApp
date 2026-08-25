@@ -53,6 +53,7 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
   // ── Save state ─────────────────────────────────────────────────
   const [savingPageId, setSavingPageId] = useState<string | null>(null);
   const [savedPage, setSavedPage] = useState<Page | null>(null);
+  const [savedImage, setSavedImage] = useState<{ url: string; blockId: string | null } | null>(null);
   const [saveError, setSaveError] = useState('');
 
   // ── Shop-the-look state ────────────────────────────────────────
@@ -125,10 +126,13 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
           alt: initialTitle,
         }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Save failed (${res.status})`);
       }
+      // Keep the stored copy, not the shared source URL. Most CDNs block
+      // hotlinked server-side fetches, so analyzing sourceUrl fails.
+      setSavedImage({ url: data.publicUrl ?? imageUrl, blockId: data.blockId ?? null });
       setSavedPage(page);
     } catch (e: any) {
       setSaveError(e.message);
@@ -155,14 +159,18 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
   }
 
   async function shopThisLook() {
-    if (!savedPage || !imageUrl) return;
+    if (!savedPage || !savedImage) return;
     setShopLoading(true);
     setShopError('');
     try {
       const res = await fetch('/api/clipper/shop-the-look', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pageId: savedPage.id, imageUrl }),
+        body: JSON.stringify({
+          pageId: savedPage.id,
+          imageUrl: savedImage.url,
+          blockId: savedImage.blockId,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -199,6 +207,7 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
             <button
               onClick={() => {
                 setSavedPage(null);
+                setSavedImage(null);
                 setSavingPageId(null);
                 setShopItems([]);
                 setShopDone(false);

@@ -61,13 +61,13 @@ async function saveImage({ pageId, sourceUrl, alt }) {
 }
 
 // Shop-the-look: analyze saved image for products + find shop links.
-async function shopTheLook({ pageId, imageUrl }) {
+async function shopTheLook({ pageId, imageUrl, blockId }) {
   const token = await getToken();
   if (!token) throw new Error('Not connected');
   const res = await fetch(`${API}/api/clipper/shop-the-look`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pageId, imageUrl }),
+    body: JSON.stringify({ pageId, imageUrl, blockId }),
   });
   return readJson(res, 'Shop the look');
 }
