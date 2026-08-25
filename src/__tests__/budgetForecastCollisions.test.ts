@@ -151,3 +151,53 @@ describe('findForecastCollisions', () => {
     expect(findForecastCollisions([])).toHaveLength(0);
   });
 });
+
+// DeJon's $0.01 pair was an account-verification deposit that got refunded —
+// a legitimate pair, not a duplicate. Tiny amounts are exactly where genuine
+// near-identical rows live, so the repeat-import pass stays out of them.
+describe('micro-transactions', () => {
+  it('leaves identical trial deposits alone', () => {
+    expect(
+      findForecastCollisions([
+        row('p1', '2026-08-12', 'Huntington Trial Deposit', 0.01, false),
+        row('p2', '2026-08-12', 'Huntington Trial Deposit', 0.01, false),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it('does not treat one cent and two cents as the same amount', () => {
+    expect(
+      findForecastCollisions([
+        row('p1', '2026-08-12', 'Huntington Trial Deposit', 0.01, false),
+        row('p2', '2026-08-12', 'Huntington Trial Deposit', 0.02, false),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it('leaves a small refund paired against its charge alone', () => {
+    expect(
+      findForecastCollisions([
+        row('p1', '2026-08-12', 'Huntington', -0.01, false),
+        row('p2', '2026-08-12', 'Huntington', 0.01, false),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it('still catches a real duplicate just above the micro threshold', () => {
+    const out = findForecastCollisions([
+      row('p1', '2026-08-12', 'Shell Oil', -1.5, false),
+      row('p2', '2026-08-12', 'Shell Oil', -1.5, false),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].pageId).toBe('p2');
+  });
+
+  it('does not collapse amounts that differ by a cent', () => {
+    expect(
+      findForecastCollisions([
+        row('p1', '2026-08-12', 'Shell Oil', -40.01, false),
+        row('p2', '2026-08-12', 'Shell Oil', -40.02, false),
+      ]),
+    ).toHaveLength(0);
+  });
+});

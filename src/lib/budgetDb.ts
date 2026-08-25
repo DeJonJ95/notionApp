@@ -366,6 +366,13 @@ export type ForecastCollision = LedgerDuplicate;
  *
  *  Only rows flagged `isGenerated` are ever proposed for removal, and only when
  *  a NON-generated row corroborates them, so two forecasts can't cancel out. */
+/** Below this, a same-day same-amount pair is far more likely to be genuine
+ *  (verification trial deposits and their refund, interest, small fees) than a
+ *  re-import, so the repeat-import pass leaves it alone. */
+export const MICRO_TRANSACTION_LIMIT = 1;
+
+const cents = (n: number) => Math.round(n * 100);
+
 export function findLedgerDuplicates(
   rows: { pageId: string; date: string; vendor: string; amount: number; isGenerated: boolean }[],
   windowDays = 4,
@@ -415,12 +422,18 @@ export function findLedgerDuplicates(
     const later = rows[i];
     if (later.isGenerated || spent.has(later.pageId)) continue;
     if (!time(later.date)) continue;
+    // Tiny amounts are where legitimate near-identical pairs actually live:
+    // account-verification trial deposits and their reversal, interest, small
+    // fees. Removing one would be wrong, and a duplicate this size moves no
+    // total worth the risk.
+    if (Math.abs(later.amount) < MICRO_TRANSACTION_LIMIT) continue;
 
     for (let j = 0; j < i; j++) {
       const original = rows[j];
       if (original.isGenerated || spent.has(original.pageId)) continue;
       if (original.date !== later.date) continue;
-      if (Math.abs(original.amount - later.amount) > 0.01) continue;
+      // Exact to the cent. A tolerance would make 0.01 and 0.02 "equal".
+      if (cents(original.amount) !== cents(later.amount)) continue;
       if (!vendorsSimilar(original.vendor, later.vendor)) continue;
 
       spent.add(original.pageId);
