@@ -31,10 +31,10 @@ export async function POST(req: NextRequest) {
 
   // Ownership check
   const page = await prisma.page.findFirst({
-    where: { id: pageId, authorId: ctx.userId, isArchived: false },
+    where: { id: pageId, authorId: ctx.userId },
     select: { id: true },
   });
-  if (!page) return jsonWithCors(req, { error: 'Page not found' }, { status: 404 });
+  if (!page) return jsonWithCors(req, { error: 'Page not found or not yours' }, { status: 404 });
 
   // Verify Gemini key
   const geminiKey = process.env.GEMINI_API_KEY;
@@ -112,10 +112,10 @@ export async function GET(req: NextRequest) {
 
   // Ownership
   const page = await prisma.page.findFirst({
-    where: { id: pageId, authorId: userId, isArchived: false },
+    where: { id: pageId, authorId: userId },
     select: { id: true },
   });
-  if (!page) return NextResponse.json({ error: 'Page not found' }, { status: 404 });
+  if (!page) return NextResponse.json({ error: 'Page not found or not yours' }, { status: 404 });
 
   const items = await prisma.shopTheLookItem.findMany({
     where: { pageId },
