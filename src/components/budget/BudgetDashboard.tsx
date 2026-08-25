@@ -5,8 +5,9 @@ import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
   Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard, Wallet,
-  Landmark, ChevronLeft, ChevronRight,
+  Landmark, ChevronLeft, ChevronRight, Pencil,
 } from 'lucide-react';
+import { promptDialog } from '@/components/ui/feedback';
 import { ImportStatementModal } from './ImportStatementModal';
 import { CancelEmailModal } from './CancelEmailModal';
 import { RecurringRulesModal } from './RecurringRulesModal';
@@ -94,6 +95,30 @@ export function BudgetDashboard() {
   }, [month]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Rename an account across its transactions and import logs. Typing the name
+  // of an existing account merges the two — the repair when a different label
+  // was typed into the import dialog than the one already being tracked.
+  // Declared after `load` because it calls it.
+  const renameAccount = useCallback(async (from: string) => {
+    const others = (data?.accounts ?? [])
+      .map((a) => a.account)
+      .filter((n) => n !== from && n !== 'Unassigned');
+    const to = await promptDialog({
+      title: `Rename "${from}"`,
+      message: others.length
+        ? `Type a new name, or type one of these to merge into it: ${others.join(' · ')}`
+        : 'Type a new name for this account.',
+      defaultValue: from,
+    });
+    if (!to || !to.trim() || to.trim() === from) return;
+    const res = await fetch('/api/budget/accounts', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to: to.trim() }),
+    });
+    if (res.ok) load();
+  }, [data, load]);
 
   // Full-page spinner only on the very first load — switching months keeps the
   // current view on screen (dimmed) so the header controls don't jump.
@@ -500,7 +525,19 @@ export function BudgetDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {data.accounts.map((a) => (
               <div key={a.account} className="rounded-xl border border-border bg-surface p-3">
-                <div className="text-xs text-muted truncate" title={a.account}>{a.account}</div>
+                <div className="flex items-start gap-1">
+                  <div className="flex-1 min-w-0 text-xs text-muted truncate" title={a.account}>{a.account}</div>
+                  {a.account !== 'Unassigned' && (
+                    <button
+                      onClick={() => renameAccount(a.account)}
+                      title="Rename this account, or merge it into another by typing that name"
+                      aria-label={`Rename ${a.account}`}
+                      className="p-1 -m-1 rounded text-muted hover:text-accent hover:bg-bg shrink-0"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  )}
+                </div>
                 {a.balance != null ? (
                   <>
                     <div className={`text-xl font-bold ${a.balance >= 0 ? '' : 'text-red-500'}`}>
