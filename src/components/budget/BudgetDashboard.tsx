@@ -668,6 +668,68 @@ export function BudgetDashboard() {
         </Section>
       )}
 
+      {/* Month-by-month forecast */}
+      {data.monthlyForecast && data.monthlyForecast.length > 0 && (
+        <Section
+          title="Forecast — next 6 months"
+          icon={<Calendar size={13} className="text-accent" />}
+          right={
+            <span className="text-xs text-muted">
+              {data.hasBalances ? `From ${fmt2(data.totalBalance)} today` : 'Net only — no account balance yet'}
+            </span>
+          }
+        >
+          <div className="rounded-lg border border-border overflow-x-auto">
+            <table className="w-full text-sm min-w-[34rem]">
+              <thead className="bg-surface text-xs text-muted">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">Month</th>
+                  <th className="text-right px-3 py-2 font-medium">Income</th>
+                  <th className="text-right px-3 py-2 font-medium">Bills</th>
+                  <th className="text-right px-3 py-2 font-medium">Other</th>
+                  <th className="text-right px-3 py-2 font-medium">Net</th>
+                  {data.hasBalances && <th className="text-right px-3 py-2 font-medium">Ending balance</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {data.monthlyForecast.map((m) => (
+                  <tr key={m.month} className="border-t border-border/40">
+                    <td className="px-3 py-1.5">
+                      {m.label}
+                      {m.isPartial && <span className="text-[10px] text-muted ml-1">(rest of month)</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-mono text-xs text-green-600">{fmt(m.income)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-xs text-red-500">{fmt(m.recurringExpenses)}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-xs text-muted">{fmt(m.variableExpenses)}</td>
+                    <td className={`px-3 py-1.5 text-right font-mono text-xs font-semibold ${m.net >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      {fmt(m.net)}
+                    </td>
+                    {data.hasBalances && (
+                      <td className={`px-3 py-1.5 text-right font-mono text-xs font-semibold ${m.endingBalance >= 0 ? '' : 'text-red-500'}`}>
+                        {fmt(m.endingBalance)}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] text-muted mt-1.5">
+            Income and Bills come from your recurring rules. <strong>Other</strong> is{' '}
+            {data.variableSpendEstimate > 0
+              ? `${fmt(data.variableSpendEstimate)}/mo, your average non-recurring spending over the last 3 complete months`
+              : 'not estimated yet — it needs a few complete months of history'}
+            . Anything you have not set up as a recurring rule and did not spend recently is not in here.
+          </p>
+          {data.hasBalances && data.monthlyForecast.some((m) => m.endingBalance < 0) && (
+            <p className="text-xs text-red-600 mt-1">
+              Projected to run out during{' '}
+              {data.monthlyForecast.find((m) => m.endingBalance < 0)!.label}.
+            </p>
+          )}
+        </Section>
+      )}
+
       {/* Expected vs Actual — income/expense from recurring rules compared to what's been imported */}
       {data.expectedVsActual && (data.expectedVsActual.incomeExpected > 0 || data.expectedVsActual.expenseExpected > 0) && (
         <div className="rounded-xl border border-border bg-surface p-4">

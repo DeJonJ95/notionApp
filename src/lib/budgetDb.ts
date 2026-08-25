@@ -1175,6 +1175,124 @@ export function computeCategoryBudgets(
   return rows;
 }
 
+// ── Multi-month forecast ─────────────────────────────────────────────────
+
+export type MonthForecast = {
+  month: string;             // YYYY-MM
+  label: string;             // "September 2026"
+  isPartial: boolean;        // the current month, counted from today onward
+  income: number;            // scheduled income occurrences
+  recurringExpenses: number; // scheduled bills
+  variableExpenses: number;  // everything else, estimated from history
+  expenses: number;          // recurring + variable
+  net: number;
+  endingBalance: number;     // running, chained from the starting balance
+};
+
+/** Project the next `months` calendar months from scheduled occurrences plus a
+ *  typical-spending estimate.
+ *
+ *  Recurring rules only describe scheduled money. Left alone they'd forecast a
+ *  wildly optimistic net, because groceries, fuel and everything else
+ *  discretionary is invisible to them — so callers pass `monthlyVariableSpend`
+ *  measured from history and it is counted as an expense too.
+ *
+ *  The first row is the REMAINDER of the current month: occurrences from today
+ *  onward, with the variable estimate prorated over the days left. That keeps
+ *  the balance chain continuous with today's actual balance. */
+export function forecastMonths(
+  occurrences: { date: string; amount: number }[],
+  opts: {
+    startingBalance: number;
+    months: number;
+    today: Date;
+    monthlyVariableSpend: number;
+  },
+): MonthForecast[] {
+  const { startingBalance, months, today, monthlyVariableSpend } = opts;
+  const cents2 = (n: number) => Math.round(n * 100) / 100;
+  const out: MonthForecast[] = [];
+  let running = startingBalance;
+
+  for (let i = 0; i < months; i++) {
+    const start = new Date(today.getFullYear(), today.getMonth() + i, 1);
+    const end = new Date(today.getFullYear(), today.getMonth() + i + 1, 1); // exclusive
+    const isPartial = i === 0;
+    const from = isPartial
+      ? new Date(today.getFullYear(), today.getMonth(), today.getDate())
+      : start;
+
+    let income = 0;
+    let recurringExpenses = 0;
+    for (const o of occurrences) {
+      const d = new Date(o.date + 'T00:00:00');
+      if (Number.isNaN(d.getTime()) || d < from || d >= end) continue;
+      if (o.amount > 0) income += o.amount;
+      else recurringExpenses += Math.abs(o.amount);
+    }
+
+    const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    const daysLeft = isPartial ? daysInMonth - today.getDate() + 1 : daysInMonth;
+    const variableExpenses = cents2(monthlyVariableSpend * (daysLeft / daysInMonth));
+
+    const expenses = cents2(recurringExpenses + variableExpenses);
+    const net = cents2(income - expenses);
+    running = cents2(running + net);
+
+    out.push({
+      month: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`,
+      label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      isPartial,
+      income: cents2(income),
+      recurringExpenses: cents2(recurringExpenses),
+      variableExpenses,
+      expenses,
+      net,
+      endingBalance: running,
+    });
+  }
+  return out;
+}
+
+/** Average monthly spend that ISN'T covered by a recurring rule, measured over
+ *  the last `lookbackMonths` COMPLETE months. Transactions matching an active
+ *  rule are excluded so the forecast doesn't count a bill twice, and only
+ *  months that actually have data are averaged — otherwise a new user's first
+ *  month gets divided by three and the estimate reads far too low. */
+export function estimateVariableMonthlySpend(
+  transactions: { date: string; vendor: string; amount: number }[],
+  rules: { name: string; amount: number }[],
+  today: Date,
+  lookbackMonths = 3,
+): number {
+  const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  const windows: string[] = [];
+  for (let i = 1; i <= lookbackMonths; i++) {
+    windows.push(monthKey(new Date(today.getFullYear(), today.getMonth() - i, 1)));
+  }
+  const wanted = new Set(windows);
+
+  const perMonth = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.amount >= 0) continue;
+    const key = String(t.date ?? '').slice(0, 7);
+    if (!wanted.has(key)) continue;
+    // Skip anything a recurring rule already accounts for.
+    const covered = rules.some(
+      (r) =>
+        vendorsSimilar(t.vendor, r.name) &&
+        r.amount > 0 &&
+        Math.abs(Math.abs(t.amount) - r.amount) / r.amount <= 0.3,
+    );
+    if (covered) continue;
+    perMonth.set(key, (perMonth.get(key) ?? 0) + Math.abs(t.amount));
+  }
+
+  if (perMonth.size === 0) return 0;
+  const total = Array.from(perMonth.values()).reduce((s, v) => s + v, 0);
+  return Math.round((total / perMonth.size) * 100) / 100;
+}
+
 // ── Statement integrity ──────────────────────────────────────────────────
 
 export type ImportBalanceCheck = {

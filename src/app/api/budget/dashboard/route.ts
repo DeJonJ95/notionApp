@@ -13,6 +13,9 @@ import {
   computeCategoryBudgets,
   computeAccountBalancesFrom,
   buildBalanceCurve,
+  forecastMonths,
+  estimateVariableMonthlySpend,
+  type MonthForecast,
   resolveDisplayMonth,
   getBudgetCategories,
   vendorsSimilar,
@@ -87,6 +90,10 @@ export type DashboardPayload = {
   totalBalance: number;
   balanceCurve: { date: string; balance: number }[];  // empty when hasBalances is false
   negativeBalanceDate: string | null;
+  // Month-by-month projection: scheduled income and bills plus a
+  // typical-spending estimate, chained from today's balance
+  monthlyForecast: MonthForecast[];
+  variableSpendEstimate: number;   // per month, measured from history
   // Recurring + forecast additions
   forecast: ForecastItem[];      // next 14 days of scheduled income/expense
   projectedMonthEnd: number;     // expected net = current + remaining scheduled this month
@@ -338,8 +345,14 @@ export async function GET(req: NextRequest) {
   // Pull 45 days for the balance curve; the "coming up" list shows 14.
   // Same fallback as above — graceful degradation before the migration runs.
   const BALANCE_CURVE_DAYS = 45;
-  let forecast45: ForecastItem[] = [];
-  try { forecast45 = await forecastOccurrences(userId, BALANCE_CURVE_DAYS, now); } catch {}
+  const FORECAST_MONTHS = 6;
+  // One pull covers everything: the 6-month table, the 45-day curve, and the
+  // 14-day list are all slices of the same occurrence set.
+  const FORECAST_DAYS = FORECAST_MONTHS * 31 + 31;
+  let horizon: ForecastItem[] = [];
+  try { horizon = await forecastOccurrences(userId, FORECAST_DAYS, now); } catch {}
+  const day45 = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + BALANCE_CURVE_DAYS));
+  const forecast45 = horizon.filter((f) => f.date <= day45);
   const day14 = ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 14));
   const forecast = forecast45.filter((f) => f.date <= day14);
 
@@ -372,6 +385,28 @@ export async function GET(req: NextRequest) {
   const { curve: balanceCurve, negativeOn: negativeBalanceDate } = hasBalances
     ? buildBalanceCurve(totalBalance, forecast45, BALANCE_CURVE_DAYS, now)
     : { curve: [] as { date: string; balance: number }[], negativeOn: null as string | null };
+
+  // ── Month-by-month forecast ─────────────────────────────────────────────
+  // Scheduled money alone would read far too optimistically, so discretionary
+  // spending is estimated from the last 3 complete months and counted too.
+  let monthlyForecast: MonthForecast[] = [];
+  let variableSpendEstimate = 0;
+  try {
+    const activeRules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
+    variableSpendEstimate = estimateVariableMonthlySpend(
+      spendable.map((t) => ({ date: t.date, vendor: t.vendor, amount: t.amount })),
+      activeRules,
+      now,
+    );
+    monthlyForecast = forecastMonths(horizon, {
+      startingBalance: totalBalance,
+      months: FORECAST_MONTHS,
+      today: now,
+      monthlyVariableSpend: variableSpendEstimate,
+    });
+  } catch (e) {
+    console.warn('[budget-dashboard] monthly forecast skipped:', (e as Error).message);
+  }
 
   // ── Pattern auto-detection (Feature 5) ───────────────────────────────────
   let patternSuggestions: PatternSuggestion[] = [];
@@ -563,6 +598,8 @@ export async function GET(req: NextRequest) {
     totalBalance,
     balanceCurve,
     negativeBalanceDate,
+    monthlyForecast,
+    variableSpendEstimate,
     forecast,
     projectedMonthEnd,
     generatedThisLoad: generated,
