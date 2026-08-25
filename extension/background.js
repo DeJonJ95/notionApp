@@ -60,6 +60,18 @@ async function saveImage({ pageId, sourceUrl, alt }) {
   return readJson(res, 'Save image');
 }
 
+// Shop-the-look: analyze saved image for products + find shop links.
+async function shopTheLook({ pageId, imageUrl }) {
+  const token = await getToken();
+  if (!token) throw new Error('Not connected');
+  const res = await fetch(`${API}/api/clipper/shop-the-look`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pageId, imageUrl }),
+  });
+  return readJson(res, 'Shop the look');
+}
+
 // ApplyKit: capture a scraped hiring.cafe listing into the jobs tracker.
 // Same bearer-token auth as the clipper endpoints; the server upserts on
 // (userId, sourceUrl) so re-capturing a job updates rather than duplicates.
@@ -168,6 +180,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg?.type === 'saveImage') {
     saveImage(msg.payload)
+      .then((data) => sendResponse({ ok: true, ...data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+  if (msg?.type === 'shopTheLook') {
+    shopTheLook(msg.payload)
       .then((data) => sendResponse({ ok: true, ...data }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true;

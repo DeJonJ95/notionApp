@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { CanvasPageEditor } from '@/components/editor/CanvasPageEditor';
 import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
 import { RecentPageTracker } from '@/components/RecentPageTracker';
+import { ShopTheLookPanel } from '@/components/shop/ShopTheLookPanel';
 
 export default async function PageRoute({ params }: { params: { id: string } }) {
   const session = await auth();
@@ -30,7 +31,7 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
   }));
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-y-auto">
       <RecentPageTracker id={page.id} title={page.title} icon={page.icon} />
       <CanvasPageEditor
         page={{
@@ -43,6 +44,9 @@ export default async function PageRoute({ params }: { params: { id: string } }) 
         initialBlocks={initialBlocks}
         initialViewMode={page.viewMode ?? 'document'}
       />
+      <div className="px-6 pb-6 max-w-3xl mx-auto w-full">
+        <ShopTheLookPanel pageId={page.id} />
+      </div>
     </div>
   );
 }

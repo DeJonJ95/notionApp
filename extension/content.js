@@ -307,10 +307,135 @@
       });
       if (!res.ok) throw new Error(res.error || 'Save failed');
       closePicker();
-      showToast(`Saved to "${page.title}"`);
+      showSaveToast(page.title, sourceUrl, page.id);
     } catch (err) {
       target.setStatus(err.message || String(err), 'err');
     }
+  }
+
+  function showSaveToast(pageTitle, imageUrl, pageId) {
+    const root = document.createElement('div');
+    root.className = 'nclip-toast nclip-toast--persistent';
+
+    const msg = document.createElement('div');
+    msg.className = 'nclip-toast-msg';
+    msg.textContent = `Saved to "${pageTitle}"`;
+    root.appendChild(msg);
+
+    const actions = document.createElement('div');
+    actions.className = 'nclip-toast-actions';
+
+    const shopBtn = document.createElement('button');
+    shopBtn.className = 'nclip-toast-btn nclip-toast-btn--shop';
+    shopBtn.textContent = '🛍 Shop This Look';
+    shopBtn.addEventListener('click', () => {
+      root.remove();
+      openShopPanel(imageUrl, pageId);
+    });
+    actions.appendChild(shopBtn);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'nclip-toast-btn';
+    closeBtn.textContent = 'Dismiss';
+    closeBtn.addEventListener('click', () => root.remove());
+    actions.appendChild(closeBtn);
+
+    root.appendChild(actions);
+    document.documentElement.appendChild(root);
+  }
+
+  // ── Shop-the-look overlay ────────────────────────────────────────
+  let shopPanel = null;
+
+  function openShopPanel(imageUrl, pageId) {
+    closeShopPanel();
+    shopPanel = buildShopPanel(imageUrl, pageId);
+    document.documentElement.appendChild(shopPanel.root);
+  }
+
+  function closeShopPanel() {
+    if (shopPanel?.root?.parentNode) shopPanel.root.remove();
+    shopPanel = null;
+  }
+
+  function buildShopPanel(imageUrl, pageId) {
+    const root = document.createElement('div');
+    root.className = 'nclip-picker-backdrop';
+
+    const panel = document.createElement('div');
+    panel.className = 'nclip-picker';
+    root.appendChild(panel);
+
+    const header = document.createElement('div');
+    header.className = 'nclip-picker-header';
+    const title = document.createElement('p');
+    title.className = 'nclip-picker-title';
+    title.textContent = 'Shop This Look';
+    header.appendChild(title);
+    const close = document.createElement('button');
+    close.className = 'nclip-close';
+    close.textContent = '×';
+    close.addEventListener('click', closeShopPanel);
+    header.appendChild(close);
+    panel.appendChild(header);
+
+    const body = document.createElement('div');
+    body.className = 'nclip-shop-body';
+    body.innerHTML = '<div class="nclip-status">Analyzing image for items…</div>';
+    panel.appendChild(body);
+
+    root.addEventListener('click', (e) => {
+      if (e.target === root) closeShopPanel();
+    });
+
+    // Kick off analysis
+    chrome.runtime.sendMessage({
+      type: 'shopTheLook',
+      payload: { pageId, imageUrl },
+    }).then((res) => {
+      if (!res.ok) throw new Error(res.error || 'Analysis failed');
+      const items = res.items || [];
+      if (items.length === 0) {
+        body.innerHTML = '<div class="nclip-status">No identifiable products found.</div>';
+        return;
+      }
+      body.innerHTML = '';
+      const list = document.createElement('ul');
+      list.className = 'nclip-shop-list';
+      items.forEach((item) => {
+        const li = document.createElement('li');
+        li.className = 'nclip-shop-item';
+
+        const name = document.createElement('div');
+        name.className = 'nclip-shop-name';
+        name.textContent = item.name;
+        li.appendChild(name);
+
+        if (item.description) {
+          const desc = document.createElement('div');
+          desc.className = 'nclip-shop-desc';
+          desc.textContent = item.description;
+          li.appendChild(desc);
+        }
+
+        if (item.shopUrl) {
+          const link = document.createElement('a');
+          link.className = 'nclip-shop-link';
+          link.href = item.shopUrl;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Shop →';
+          li.appendChild(link);
+        }
+
+        list.appendChild(li);
+      });
+      body.appendChild(list);
+    }).catch((err) => {
+      body.innerHTML = `<div class="nclip-status err">${err.message || String(err)}</div>`;
+    });
+
+    return { root };
   }
 
   function showToast(text, isError) {

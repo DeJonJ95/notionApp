@@ -1,8 +1,13 @@
 import { prisma } from './prisma';
 
 // DeepSeek V3 pricing (USD per token)
+// DeepSeek V3 pricing (USD per token)
 const DS_IN = 0.27 / 1_000_000;
 const DS_OUT = 1.10 / 1_000_000;
+
+// Gemini 1.5 Flash pricing (USD per token)
+const GEM_IN = 0.075 / 1_000_000;
+const GEM_OUT = 0.30 / 1_000_000;
 
 // Per-call cost for services with a real metered price. Free providers
 // default to 0 and we still log them so the dashboard can show
@@ -57,5 +62,18 @@ export async function logDeepSeek(
     inputTokens: usage.prompt_tokens,
     outputTokens: usage.completion_tokens,
     costUsd: usage.prompt_tokens * DS_IN + usage.completion_tokens * DS_OUT,
+  });
+}
+
+export async function logGemini(
+  operation: string,
+  usage: { prompt_tokens: number; completion_tokens: number },
+  userId?: string
+) {
+  await logCall('gemini', operation, {
+    userId,
+    inputTokens: usage.prompt_tokens,
+    outputTokens: usage.completion_tokens,
+    costUsd: usage.prompt_tokens * GEM_IN + usage.completion_tokens * GEM_OUT,
   });
 }

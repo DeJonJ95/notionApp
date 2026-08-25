@@ -404,6 +404,26 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+model ShopTheLookItem {
+  id          String   @id @default(cuid())
+  userId      String
+  pageId      String
+  blockId     String?
+  imageUrl    String
+  name        String
+  category    String?
+  description String?
+  searchQuery String
+  shopUrl     String?
+  shopTitle   String?
+  confidence  Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([pageId])
+  @@index([userId])
+}
+
 model UsageLog {
   id           String   @id @default(cuid())
   service      String

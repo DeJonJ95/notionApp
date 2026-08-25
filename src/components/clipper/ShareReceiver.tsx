@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Check, AlertCircle, Loader2, ArrowLeft, ImageOff } from 'lucide-react';
+import { Search, Check, AlertCircle, Loader2, ArrowLeft, ImageOff, ShoppingBag, ExternalLink } from 'lucide-react';
 
 type Page = {
   id: string;
@@ -9,6 +9,15 @@ type Page = {
   icon: string;
   workspaceName: string;
   updatedAt: string;
+};
+
+type ShopItem = {
+  id: string;
+  name: string;
+  category: string | null;
+  description: string | null;
+  shopUrl: string | null;
+  shopTitle: string | null;
 };
 
 type Props = {
@@ -45,6 +54,12 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
   const [savingPageId, setSavingPageId] = useState<string | null>(null);
   const [savedPage, setSavedPage] = useState<Page | null>(null);
   const [saveError, setSaveError] = useState('');
+
+  // ── Shop-the-look state ────────────────────────────────────────
+  const [shopLoading, setShopLoading] = useState(false);
+  const [shopItems, setShopItems] = useState<ShopItem[]>([]);
+  const [shopError, setShopError] = useState('');
+  const [shopDone, setShopDone] = useState(false);
 
   // Resolve the shared URL into an actual image URL via the server.
   useEffect(() => {
@@ -139,6 +154,29 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
       .finally(() => setResolving(false));
   }
 
+  async function shopThisLook() {
+    if (!savedPage || !imageUrl) return;
+    setShopLoading(true);
+    setShopError('');
+    try {
+      const res = await fetch('/api/clipper/shop-the-look', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pageId: savedPage.id, imageUrl }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error ?? `Analysis failed (${res.status})`);
+      }
+      setShopItems(data.items ?? []);
+      setShopDone(true);
+    } catch (e: any) {
+      setShopError(e.message);
+    } finally {
+      setShopLoading(false);
+    }
+  }
+
   // ── Success view ───────────────────────────────────────────────
   if (savedPage) {
     return (
@@ -162,6 +200,9 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
               onClick={() => {
                 setSavedPage(null);
                 setSavingPageId(null);
+                setShopItems([]);
+                setShopDone(false);
+                setShopError('');
               }}
               className="px-4 py-2 rounded-lg border border-border text-sm hover:bg-bg"
             >
@@ -169,6 +210,75 @@ export function ShareReceiver({ initialUrl, initialTitle, initialImageUrl = '' }
             </button>
           </div>
         </div>
+
+        {/* Shop This Look action */}
+        {!shopDone && (
+          <button
+            onClick={shopThisLook}
+            disabled={shopLoading}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-border bg-surface hover:bg-bg text-sm font-medium disabled:opacity-50"
+          >
+            {shopLoading ? (
+              <>
+                <Loader2 size={16} className="animate-spin text-accent" />
+                <span className="text-muted">Analyzing image for items…</span>
+              </>
+            ) : (
+              <>
+                <ShoppingBag size={16} className="text-accent" />
+                <span>Shop This Look</span>
+              </>
+            )}
+          </button>
+        )}
+
+        {shopError && (
+          <div className="m-3 flex items-start gap-2 text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+            <AlertCircle size={12} className="mt-0.5 shrink-0" />
+            {shopError}
+          </div>
+        )}
+
+        {/* Shop results */}
+        {shopItems.length > 0 && (
+          <div className="rounded-xl border border-border bg-surface overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+              <ShoppingBag size={16} className="text-accent" />
+              <span className="text-sm font-medium">Items found</span>
+            </div>
+            <ul className="divide-y divide-border">
+              {shopItems.map((item) => (
+                <li key={item.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-text">{item.name}</p>
+                      {item.description && (
+                        <p className="text-xs text-muted mt-0.5">{item.description}</p>
+                      )}
+                    </div>
+                    {item.shopUrl ? (
+                      <a
+                        href={item.shopUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 flex items-center gap-1 text-xs text-accent hover:underline"
+                      >
+                        <ExternalLink size={12} />
+                        Shop
+                      </a>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {shopDone && shopItems.length === 0 && (
+          <p className="text-xs text-muted text-center">
+            No identifiable products found. The image may be too abstract or not a product photo.
+          </p>
+        )}
       </div>
     );
   }
