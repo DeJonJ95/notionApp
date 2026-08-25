@@ -2457,25 +2457,11 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
           Add a second view to use split mode.
         </div>
       ) : (
-        <div>
-          <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
-            {database.views.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setSelectedViewId(v.id)}
-                className={`px-3 py-1 rounded text-sm whitespace-nowrap border transition-colors ${
-                  v.id === selectedViewId
-                    ? 'bg-text text-bg border-text'
-                    : 'bg-bg text-text border-border hover:bg-surface'
-                }`}
-              >
-                {v.name}
-                <span className="ml-1.5 text-xs opacity-60">({VIEW_TYPE_LABELS[String(v.type ?? "").trim().toLowerCase()] ?? v.type})</span>
-              </button>
-            ))}
-          </div>
-          {renderViewContent(selectedView)}
-        </div>
+        // Same pane as split mode. This branch used to inline its own copy of
+        // the tab strip and call renderViewContent directly, skipping the
+        // filter/sort/group bar entirely — so the bar only ever appeared in
+        // split view, which is why it looked like the feature didn't exist.
+        renderViewPane(selectedView, setSelectedViewId)
       )}
 
       {/* Add Property Modal */}
