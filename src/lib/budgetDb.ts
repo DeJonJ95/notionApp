@@ -581,6 +581,52 @@ export function monthlySavingsContribution(
   return Math.round(total * 100) / 100;
 }
 
+// ── Categorization rules ────────────────────────────────────────────────
+
+export type CategorizationRuleLike = {
+  match: string;
+  category: string;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+};
+
+/** Pick the rule that forces a transaction's category, or null.
+ *
+ *  The vendor must contain the rule's (lowercased) match text, and the amount
+ *  must fall inside whatever bounds the rule sets. Bounds compare against the
+ *  ABSOLUTE amount so the user can think in plain dollars without worrying
+ *  about the income/expense sign.
+ *
+ *  Specificity wins: a rule with amount bounds beats an unbounded one, and
+ *  among equals the longest match text wins. That is what lets "zelle" over
+ *  $200 mean family support while smaller Zelle activity falls through to a
+ *  broader rule. */
+export function matchCategorizationRule<T extends CategorizationRuleLike>(
+  vendor: string,
+  amount: number,
+  rules: T[],
+): T | null {
+  const v = String(vendor ?? '').toLowerCase();
+  const abs = Math.abs(amount);
+
+  const candidates = rules.filter((r) => {
+    const m = String(r.match ?? '').toLowerCase().trim();
+    if (!m || !v.includes(m)) return false;
+    if (r.minAmount != null && abs < r.minAmount) return false;
+    if (r.maxAmount != null && abs > r.maxAmount) return false;
+    return true;
+  });
+  if (candidates.length === 0) return null;
+
+  const bounded = (r: CategorizationRuleLike) =>
+    r.minAmount != null || r.maxAmount != null ? 1 : 0;
+
+  return candidates.reduce((best, r) => {
+    if (bounded(r) !== bounded(best)) return bounded(r) > bounded(best) ? r : best;
+    return String(r.match).length > String(best.match).length ? r : best;
+  });
+}
+
 // ── Vendor name matching ────────────────────────────────────────────────
 
 // Words that carry no identity and only get in the way of matching.

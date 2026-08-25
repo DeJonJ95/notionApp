@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { logDeepSeek } from '@/lib/logUsage';
-import { findOrCreateBudgetDb, getBudgetCategories } from '@/lib/budgetDb';
+import { findOrCreateBudgetDb, getBudgetCategories, matchCategorizationRule } from '@/lib/budgetDb';
 import { fallbackCategory } from '@/lib/budgetCategories';
 import { looksLikePdf, describePdfFailure } from '@/lib/budgetImportFile';
 
@@ -420,8 +420,7 @@ export async function POST(req: NextRequest) {
     const rules = await prisma.categorizationRule.findMany({ where: { userId } });
     if (rules.length > 0) {
       for (const tx of cleaned as any[]) {
-        const v = (tx.vendor ?? '').toLowerCase();
-        const hit = rules.find((r) => v.includes(r.match));
+        const hit = matchCategorizationRule(tx.vendor ?? '', Number(tx.amount) || 0, rules);
         if (hit) tx.category = hit.category;
       }
     }

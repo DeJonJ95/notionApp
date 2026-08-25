@@ -192,9 +192,14 @@ model CategorizationRule {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   match     String // lowercased substring matched against vendor
   category  String // category to force when matched
+  // Optional bounds on the ABSOLUTE amount, so one vendor string can split by
+  // size — e.g. Zelle over $200 is family support, under it is Apple Pay.
+  minAmount Float?
+  maxAmount Float?
   createdAt DateTime @default(now())
 
-  @@unique([userId, match])
+  // No unique on (userId, match) on purpose: the same vendor text needs
+  // several rules when they differ by amount band.
   @@index([userId])
 }
 

@@ -9,6 +9,7 @@ import {
   getBudgetCategories,
   writeTransactions,
   findDuplicateTransactions,
+  matchCategorizationRule,
   type ParsedTransaction,
 } from '@/lib/budgetDb';
 import { fallbackCategory } from '@/lib/budgetCategories';
@@ -107,8 +108,8 @@ export async function POST(req: NextRequest) {
   // Same precedence as statement import: a user's correction always wins.
   try {
     const rules = await prisma.categorizationRule.findMany({ where: { userId } });
-    const v = tx.vendor.toLowerCase();
-    const hit = rules.find((r) => v.includes(r.match));
+
+    const hit = matchCategorizationRule(tx.vendor, tx.amount, rules);
     if (hit) tx.category = hit.category;
   } catch (e) {
     console.warn('[budget-capture-tx] categorization rules skipped:', (e as Error).message);

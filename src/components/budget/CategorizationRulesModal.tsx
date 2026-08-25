@@ -3,7 +3,24 @@ import { useEffect, useState, useCallback } from 'react';
 import { X, Plus, Trash2, Tag, Loader2 } from 'lucide-react';
 import { DEFAULT_CATEGORIES, fallbackCategory } from '@/lib/budgetCategories';
 
-type Rule = { id: string; match: string; category: string };
+type Rule = {
+  id: string;
+  match: string;
+  category: string;
+  minAmount?: number | null;
+  maxAmount?: number | null;
+};
+
+const money = (n: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+
+/** "over $200" / "under $50" / "$50–$200" — or nothing when unbounded. */
+function boundsLabel(r: Rule): string {
+  if (r.minAmount != null && r.maxAmount != null) return `${money(r.minAmount)}–${money(r.maxAmount)}`;
+  if (r.minAmount != null) return `over ${money(r.minAmount)}`;
+  if (r.maxAmount != null) return `under ${money(r.maxAmount)}`;
+  return '';
+}
 
 export function CategorizationRulesModal({
   onClose,
@@ -19,6 +36,8 @@ export function CategorizationRulesModal({
   const [error, setError] = useState('');
   const [match, setMatch] = useState('');
   const [category, setCategory] = useState(fallbackCategory(CATEGORIES));
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -42,10 +61,18 @@ export function CategorizationRulesModal({
     const res = await fetch('/api/budget/rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ match: match.trim(), category }),
+      body: JSON.stringify({
+        match: match.trim(),
+        category,
+        minAmount: minAmount.trim() || null,
+        maxAmount: maxAmount.trim() || null,
+      }),
     });
-    if (res.ok) { setMatch(''); setCategory(fallbackCategory(CATEGORIES)); load(); }
-    else { const j = await res.json().catch(() => ({})); setError(j.error ?? 'Failed'); }
+    if (res.ok) {
+      setMatch(''); setMinAmount(''); setMaxAmount('');
+      setCategory(fallbackCategory(CATEGORIES));
+      load();
+    } else { const j = await res.json().catch(() => ({})); setError(j.error ?? 'Failed'); }
   };
 
   const del = async (id: string) => {
@@ -69,6 +96,12 @@ export function CategorizationRulesModal({
             forced to your choice — overriding the AI. Rules are also created automatically
             whenever you correct a category during import.
           </p>
+          <p className="text-xs text-muted">
+            The amount bounds let one vendor split by size: the same name over $200 can be
+            family support while smaller charges fall through to another rule. Bounds ignore
+            the income/expense sign, so enter plain dollars. A rule with bounds wins over one
+            without.
+          </p>
           {error && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 text-red-600 text-xs px-3 py-2">{error}</div>
           )}
@@ -82,6 +115,11 @@ export function CategorizationRulesModal({
               {rules.map((r) => (
                 <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm">
                   <span className="font-mono text-xs text-muted truncate flex-1">“{r.match}”</span>
+                  {boundsLabel(r) && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-accent/10 text-accent shrink-0">
+                      {boundsLabel(r)}
+                    </span>
+                  )}
                   <span className="text-xs">→</span>
                   <span className="text-xs font-medium">{r.category}</span>
                   <button onClick={() => del(r.id)} className="text-muted hover:text-red-500 ml-1"><Trash2 size={12} /></button>
@@ -98,6 +136,28 @@ export function CategorizationRulesModal({
               placeholder="If vendor contains… (e.g. shell, netflix)"
               className="w-full bg-bg border border-border rounded px-2 py-1 text-sm text-text"
             />
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted shrink-0">and amount is</span>
+              <input
+                value={minAmount}
+                onChange={(e) => setMinAmount(e.target.value)}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                placeholder="over $"
+                className="w-24 bg-bg border border-border rounded px-2 py-1 text-sm text-text"
+              />
+              <input
+                value={maxAmount}
+                onChange={(e) => setMaxAmount(e.target.value)}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                placeholder="under $"
+                className="w-24 bg-bg border border-border rounded px-2 py-1 text-sm text-text"
+              />
+              <span className="text-[11px] text-muted">optional</span>
+            </div>
             <div className="flex gap-2">
               <select
                 value={category}
