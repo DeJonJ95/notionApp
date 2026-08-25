@@ -201,3 +201,40 @@ describe('micro-transactions', () => {
     ).toHaveLength(0);
   });
 });
+
+// A bill anchored to the 25th that actually cleared on the 14th. The old
+// 4-day window missed it entirely, so it sat in the ledger double-counted.
+describe('forecast/real pairs that drift from the rule anchor', () => {
+  it('catches an insurance premium that posted 11 days early', () => {
+    const out = findForecastCollisions([
+      row('real', '2026-08-14', 'Cure Auto Insurance', -253.71, false),
+      row('fcast', '2026-08-25', 'NNT Cure Auto Insurance', -228.94, true),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].pageId).toBe('fcast');
+    expect(out[0].reason).toBe('forecast-superseded');
+  });
+
+  it('still refuses a pair beyond the window', () => {
+    expect(
+      findForecastCollisions([
+        row('real', '2026-08-01', 'Cure Auto Insurance', -253.71, false),
+        row('fcast', '2026-08-25', 'NNT Cure Auto Insurance', -228.94, true),
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it('pairs the nearest transaction, not the first one listed', () => {
+    // Two forecasts, two real charges. Naive first-match would cross them.
+    const out = findForecastCollisions([
+      row('realA', '2026-08-03', 'Cure Auto Insurance', -250, false),
+      row('realB', '2026-08-17', 'Cure Auto Insurance', -250, false),
+      row('fcastA', '2026-08-02', 'Cure Auto Insurance', -240, true),
+      row('fcastB', '2026-08-16', 'Cure Auto Insurance', -240, true),
+    ]);
+    expect(out).toHaveLength(2);
+    const byForecast = Object.fromEntries(out.map((c) => [c.pageId, c.matched.date]));
+    expect(byForecast['fcastA']).toBe('2026-08-03');
+    expect(byForecast['fcastB']).toBe('2026-08-17');
+  });
+});

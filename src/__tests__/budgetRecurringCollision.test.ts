@@ -4,6 +4,7 @@ import {
   isDateCovered,
   findDuplicateTransactions,
   vendorsMatch,
+  alreadyPaid,
 } from '../lib/budgetDb';
 
 const range = (from: string, to: string) => ({
@@ -88,5 +89,45 @@ describe('the recurring/import collision dedup cannot catch', () => {
     expect(vendorsMatch(bill.vendor, realCharge.vendor)).toBe(true);
     expect(findDuplicateTransactions([bill], [realCharge])).toHaveLength(0);
     expect(isDateCovered(bill.date, [range('2026-06-24', '2026-07-10')])).toBe(true);
+  });
+});
+
+describe('alreadyPaid', () => {
+  const actuals = [
+    { date: '2026-08-14', vendor: 'Cure Auto Insurance', amount: -253.71 },
+    { date: '2026-08-05', vendor: 'City of Detroit Payroll', amount: 3746 },
+  ];
+
+  it('stops a forecast for a bill that already cleared, at a different amount', () => {
+    expect(
+      alreadyPaid({ date: '2026-08-25', amount: -228.94 }, 'NNT Cure Auto Insurance', actuals, 14),
+    ).toBe(true);
+  });
+
+  it('lets a forecast through when the real charge is too far away', () => {
+    expect(
+      alreadyPaid({ date: '2026-09-25', amount: -228.94 }, 'NNT Cure Auto Insurance', actuals, 14),
+    ).toBe(false);
+  });
+
+  it('lets a forecast through when nothing similar was paid', () => {
+    expect(alreadyPaid({ date: '2026-08-25', amount: -60 }, 'Netflix', actuals, 14)).toBe(false);
+  });
+
+  it('will not match an expense forecast against income', () => {
+    expect(
+      alreadyPaid({ date: '2026-08-05', amount: -3746 }, 'City of Detroit Payroll', actuals, 14),
+    ).toBe(false);
+  });
+
+  it('matches income forecasts against income', () => {
+    expect(
+      alreadyPaid({ date: '2026-08-05', amount: 3746 }, 'City of Detroit', actuals, 14),
+    ).toBe(true);
+  });
+
+  it('handles an empty ledger and bad dates', () => {
+    expect(alreadyPaid({ date: '2026-08-25', amount: -50 }, 'Anything', [], 14)).toBe(false);
+    expect(alreadyPaid({ date: '', amount: -50 }, 'Cure Auto Insurance', actuals, 14)).toBe(false);
   });
 });

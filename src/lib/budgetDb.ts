@@ -205,6 +205,36 @@ export function nextOccurrenceAfter(anchor: Date, frequency: RuleFrequency, afte
   return occs[0] ?? horizonEnd;
 }
 
+/** Half a rule's period, in days. A real transaction further away than this
+ *  belongs to a neighbouring occurrence, not this one. */
+export const HALF_PERIOD_DAYS: Record<RuleFrequency, number> = {
+  weekly: 3,
+  biweekly: 7,
+  semimonthly: 7,
+  monthly: 14,
+};
+
+/** Has this occurrence already been paid for real? Amount is not compared —
+ *  a rule's fixed figure rarely equals the actual bill, which is the whole
+ *  reason these slip past duplicate detection. */
+export function alreadyPaid(
+  occurrence: { date: string; amount: number },
+  ruleName: string,
+  actuals: { date: string; vendor: string; amount: number }[],
+  withinDays: number,
+): boolean {
+  const t = new Date(occurrence.date + 'T00:00:00').getTime();
+  if (Number.isNaN(t)) return false;
+  const windowMs = withinDays * 86_400_000;
+
+  return actuals.some((a) => {
+    if (Math.sign(a.amount) !== Math.sign(occurrence.amount)) return false;
+    const at = new Date(a.date + 'T00:00:00').getTime();
+    if (Number.isNaN(at) || Math.abs(at - t) > windowMs) return false;
+    return vendorsSimilar(a.vendor, ruleName);
+  });
+}
+
 // Process every active rule for a user — generate any past-due transactions
 // up through today, advance the anchor, and update lastGeneratedDate.
 export async function runRecurringEngine(userId: string, today: Date = new Date()): Promise<{
@@ -229,6 +259,33 @@ export async function runRecurringEngine(userId: string, today: Date = new Date(
     });
   } catch (e) {
     console.warn('[recurring-engine] import coverage unavailable:', (e as Error).message);
+  }
+
+  // Real (non-forecast) transactions, so a bill that already posted doesn't get
+  // forecast on top of. Coverage-skipping above only helps inside an imported
+  // range; a bill paid after the last statement still needs this.
+  let actuals: { date: string; vendor: string; amount: number }[] = [];
+  try {
+    const pages = await prisma.page.findMany({
+      where: { databaseId: db.id, isArchived: false },
+      include: { properties: { include: { property: { select: { name: true } } } } },
+    });
+    for (const p of pages) {
+      const vals: Record<string, any> = {};
+      for (const pv of p.properties) vals[pv.property.name] = pv.value;
+      const type = String(vals['Type'] ?? '');
+      if (type === 'Budget') continue;
+      if (isRecurringGeneratedNote(vals['Notes'])) continue; // another forecast
+      const rawAmt = Number(vals['Amount'] ?? 0);
+      if (!rawAmt) continue;
+      actuals.push({
+        date: String(vals['Date'] ?? '').slice(0, 10),
+        vendor: String(vals['Vendor'] ?? p.title ?? ''),
+        amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
+      });
+    }
+  } catch (e) {
+    console.warn('[recurring-engine] actuals unavailable:', (e as Error).message);
   }
 
   let generated = 0;
@@ -260,9 +317,12 @@ export async function runRecurringEngine(userId: string, today: Date = new Date(
         status: 'Planned',
       };
     });
-    // Drop occurrences inside an imported statement's range — the real
-    // transaction is already in the ledger from that import.
-    const toWrite = transactions.filter((t) => !isDateCovered(t.date, coverage));
+    // Drop occurrences the ledger already accounts for: inside an imported
+    // statement's range, or already paid for real near the due date.
+    const nearDays = HALF_PERIOD_DAYS[rule.frequency as RuleFrequency] ?? 14;
+    const toWrite = transactions.filter(
+      (t) => !isDateCovered(t.date, coverage) && !alreadyPaid(t, rule.name, actuals, nearDays),
+    );
     skipped += transactions.length - toWrite.length;
     if (toWrite.length > 0) {
       await writeTransactions(userId, db.id, toWrite);
@@ -373,9 +433,15 @@ export const MICRO_TRANSACTION_LIMIT = 1;
 
 const cents = (n: number) => Math.round(n * 100);
 
+/** How far a real transaction may sit from the forecast it supersedes. Bills
+ *  post early or late against a rule's anchor — an insurance premium anchored
+ *  to the 25th can clear on the 14th — so a few days is far too tight. Stays
+ *  under half a monthly period, so it can't reach an adjacent occurrence. */
+export const FORECAST_MATCH_WINDOW_DAYS = 14;
+
 export function findLedgerDuplicates(
   rows: { pageId: string; date: string; vendor: string; amount: number; isGenerated: boolean }[],
-  windowDays = 4,
+  windowDays = FORECAST_MATCH_WINDOW_DAYS,
 ): LedgerDuplicate[] {
   const windowMs = windowDays * 86_400_000;
   const time = (d: string) => new Date(d + 'T00:00:00').getTime();
@@ -388,20 +454,32 @@ export function findLedgerDuplicates(
   // Amount is NOT compared — a rule's fixed amount rarely equals reality, which
   // is exactly why these survive import dedup.
   const real = rows.filter((r) => !r.isGenerated);
+  // Collect every plausible pairing, then settle the closest ones first. With a
+  // window this wide, taking the first match in array order would happily pair
+  // a forecast with a transaction that belongs to the occurrence next door.
+  type Pair = { forecast: (typeof rows)[number]; hit: (typeof rows)[number]; distance: number };
+  const pairs: Pair[] = [];
   for (const forecast of rows) {
-    if (!forecast.isGenerated || spent.has(forecast.pageId)) continue;
+    if (!forecast.isGenerated) continue;
     const t = time(forecast.date);
     if (Number.isNaN(t)) continue;
 
-    const hit = real.find((r) => {
-      if (spent.has(r.pageId)) return false;
-      if (Math.sign(r.amount) !== Math.sign(forecast.amount)) return false;
+    for (const r of real) {
+      if (Math.sign(r.amount) !== Math.sign(forecast.amount)) continue;
       const rt = time(r.date);
-      if (Number.isNaN(rt) || Math.abs(rt - t) > windowMs) return false;
-      return vendorsSimilar(r.vendor, forecast.vendor);
-    });
-    if (!hit) continue;
+      if (Number.isNaN(rt)) continue;
+      const distance = Math.abs(rt - t);
+      if (distance > windowMs) continue;
+      if (!vendorsSimilar(r.vendor, forecast.vendor)) continue;
+      pairs.push({ forecast, hit: r, distance });
+    }
+  }
+  pairs.sort((a, b) =>
+    a.distance - b.distance || a.forecast.pageId.localeCompare(b.forecast.pageId),
+  );
 
+  for (const { forecast, hit } of pairs) {
+    if (spent.has(forecast.pageId) || spent.has(hit.pageId)) continue;
     spent.add(hit.pageId);
     spent.add(forecast.pageId);
     out.push({
