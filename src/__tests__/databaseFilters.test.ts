@@ -111,3 +111,40 @@ describe('deposits in August', () => {
     expect(out.map((r) => r.Date)).toEqual(['2026-08-05', '2026-08-21']);
   });
 });
+
+// The filter bar was gated on an allow-list of exact view types while the
+// content renderer fell through to a table for anything unrecognized. A view
+// stored as anything but exactly 'table' therefore rendered as a table with no
+// way to filter it — which is what hid the bar on DeJon's Personal Budget.
+describe('which views get the filter bar', () => {
+  const SPECIALIZED = ['calendar', 'heatmap', 'budget-summary', 'spending-breakdown'];
+  const key = (t: unknown) => String(t ?? '').trim().toLowerCase();
+  const showsBar = (t: unknown) => !SPECIALIZED.includes(key(t));
+  const rendersAsTable = (t: unknown) =>
+    !['gallery', 'list', 'board', ...SPECIALIZED].includes(key(t));
+
+  it('hides the bar only for the purpose-built views', () => {
+    for (const t of SPECIALIZED) expect(showsBar(t)).toBe(false);
+  });
+
+  it('shows the bar for every record view', () => {
+    for (const t of ['table', 'list', 'gallery', 'board']) expect(showsBar(t)).toBe(true);
+  });
+
+  it('shows the bar for odd casing and stray whitespace', () => {
+    for (const t of ['Table', ' table ', 'TABLE']) expect(showsBar(t)).toBe(true);
+  });
+
+  it('shows the bar for an unrecognized type, which renders as a table', () => {
+    for (const t of ['grid', '', null, undefined]) {
+      expect(rendersAsTable(t)).toBe(true);
+      expect(showsBar(t)).toBe(true);
+    }
+  });
+
+  it('never lets the two disagree', () => {
+    for (const t of ['table', 'Table', 'grid', '', 'list', 'board', 'gallery', ...SPECIALIZED]) {
+      if (rendersAsTable(t)) expect(showsBar(t)).toBe(true);
+    }
+  });
+});

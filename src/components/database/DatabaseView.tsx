@@ -2159,8 +2159,17 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     );
   };
 
+  // Views with their own purpose-built layout and toolbar. Everything else —
+  // including a type this build doesn't recognize — falls through to the table
+  // renderer, so it must also get the filter/sort/group bar. Keeping this as a
+  // deny-list rather than an allow-list is what stops the two disagreeing: a
+  // view stored as anything but exactly 'table' used to render as a table with
+  // no way to filter it.
+  const SPECIALIZED_VIEW_TYPES = ['calendar', 'heatmap', 'budget-summary', 'spending-breakdown'];
+  const viewTypeKey = (view: View) => String(view.type ?? '').trim().toLowerCase();
+
   const renderViewContent = (view: View) => {
-    switch (view.type) {
+    switch (viewTypeKey(view)) {
       case 'gallery': return renderGalleryView();
       case 'list': return renderListView();
       case 'board': return renderBoardView();
@@ -2173,8 +2182,9 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
   };
 
   const renderViewConfigBar = (view: View) => {
-    // Only the generic record views support filter/sort/group
-    if (!['table', 'list', 'gallery', 'board'].includes(view.type)) return null;
+    // Mirror of renderViewContent: anything not specialized renders as records,
+    // so it gets filter/sort/group.
+    if (SPECIALIZED_VIEW_TYPES.includes(viewTypeKey(view))) return null;
     const conds = normalizeFilters((view as any).filters);
     const s = (view as any).sorts as { propertyId: string; dir: string } | null;
     const g = (view as any).grouping as { propertyId: string } | null;
@@ -2335,7 +2345,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
             }`}
           >
             {v.name}
-            <span className="ml-1.5 text-xs opacity-60">({VIEW_TYPE_LABELS[v.type] ?? v.type})</span>
+            <span className="ml-1.5 text-xs opacity-60">({VIEW_TYPE_LABELS[String(v.type ?? "").trim().toLowerCase()] ?? v.type})</span>
           </button>
         ))}
       </div>
@@ -2460,7 +2470,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                 }`}
               >
                 {v.name}
-                <span className="ml-1.5 text-xs opacity-60">({VIEW_TYPE_LABELS[v.type] ?? v.type})</span>
+                <span className="ml-1.5 text-xs opacity-60">({VIEW_TYPE_LABELS[String(v.type ?? "").trim().toLowerCase()] ?? v.type})</span>
               </button>
             ))}
           </div>
