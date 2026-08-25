@@ -452,7 +452,7 @@ export function BudgetDashboard() {
 
       {/* Feature 1: Coverage section */}
       {importsData && importsData.imports.length > 0 && (
-        <Section title="Coverage" icon={<Layers size={13} className="text-accent" />}>
+        <Section id="coverage" defaultOpen={false} title="Coverage" icon={<Layers size={13} className="text-accent" />}>
           <div className="space-y-2">
             {/* Timeline of imports */}
             <div className="flex flex-wrap gap-2">
@@ -574,7 +574,7 @@ export function BudgetDashboard() {
       {/* Accounts — balances anchored on the latest statement per account */}
       {data.accounts && data.accounts.length > 0 && (
         <Section
-          title="Accounts"
+          id="accounts" defaultOpen={true} title="Accounts"
           icon={<Landmark size={13} className="text-accent" />}
           right={
             data.hasBalances ? (
@@ -632,7 +632,7 @@ export function BudgetDashboard() {
       {/* Projected balance curve — next 45 days */}
       {data.hasBalances && data.balanceCurve.length > 1 && (
         <Section
-          title="Projected balance — next 45 days"
+          id="balance-curve" defaultOpen={false} title="Projected balance — next 45 days"
           icon={<TrendingDown size={13} className={data.negativeBalanceDate ? 'text-red-500' : 'text-accent'} />}
         >
           {(() => {
@@ -680,7 +680,7 @@ export function BudgetDashboard() {
       {/* Month-by-month forecast */}
       {data.monthlyForecast && data.monthlyForecast.length > 0 && (
         <Section
-          title="Forecast — next 6 months"
+          id="forecast" defaultOpen={true} title="Forecast — next 6 months"
           icon={<Calendar size={13} className="text-accent" />}
           right={
             <span className="text-xs text-muted">
@@ -873,7 +873,7 @@ export function BudgetDashboard() {
 
       {/* Forecast — next 14 days of scheduled income/expense */}
       {data.forecast.length > 0 && (
-        <Section title="Coming up — next 14 days" icon={<Calendar size={13} className="text-blue-500" />}>
+        <Section id="upcoming" defaultOpen={false} count={data.forecast.length} title="Coming up — next 14 days" icon={<Calendar size={13} className="text-blue-500" />}>
           <div className="space-y-1.5">
             {data.forecast.map((f, idx) => (
               <div key={`${f.ruleId}-${idx}`} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
@@ -894,7 +894,7 @@ export function BudgetDashboard() {
       {/* Where money is leaking */}
       {waste && waste.findings.length > 0 && (
         <Section
-          title="Where the waste is"
+          id="waste" defaultOpen={false} count={waste.findings.length} title="Where the waste is"
           icon={<Sparkles size={13} className="text-accent" />}
           right={
             waste.totalAnnualImpact > 0 ? (
@@ -969,7 +969,7 @@ export function BudgetDashboard() {
 
       {/* Excesses */}
       {data.excesses.length > 0 && (
-        <Section title="Spending excesses" icon={<AlertTriangle size={14} className="text-yellow-500" />}>
+        <Section id="excesses" defaultOpen={false} count={data.excesses.length} title="Spending excesses" icon={<AlertTriangle size={14} className="text-yellow-500" />}>
           <div className="space-y-2">
             {data.excesses.map((e) => (
               <div key={e.category} className="flex items-center justify-between rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
@@ -990,7 +990,7 @@ export function BudgetDashboard() {
 
       {/* Spending trends — last 6 months, income vs expenses */}
       {data.trends && data.trends.some((t) => t.income || t.expenses) && (
-        <Section title="Trends — last 6 months" icon={<BarChart3 size={13} className="text-accent" />}>
+        <Section id="trends" defaultOpen={false} title="Trends — last 6 months" icon={<BarChart3 size={13} className="text-accent" />}>
           {(() => {
             const max = Math.max(
               1,
@@ -1027,7 +1027,7 @@ export function BudgetDashboard() {
 
       {/* Feature 5: Pattern suggestions */}
       {data.patternSuggestions && data.patternSuggestions.length > 0 && (
-        <Section title="Suggested recurring" icon={<Zap size={13} className="text-accent" />}>
+        <Section id="suggested" defaultOpen={false} count={data.patternSuggestions.length} title="Suggested recurring" icon={<Zap size={13} className="text-accent" />}>
           <p className="text-xs text-muted mb-2">
             Detected regular patterns. Tap <strong>Track</strong> to add as a recurring rule.
           </p>
@@ -1057,7 +1057,7 @@ export function BudgetDashboard() {
 
       {/* Feature 4: Rule variance shown in recurring section */}
       {data.ruleVariance && data.ruleVariance.length > 0 && (
-        <Section title="Recurring rule variance" icon={<BarChart3 size={13} className="text-blue-500" />}>
+        <Section id="variance" defaultOpen={false} title="Recurring rule variance" icon={<BarChart3 size={13} className="text-blue-500" />}>
           <p className="text-xs text-muted mb-2">
             How actual amounts compare to your recurring rule amounts.
             <Link href={`/database/${data.databaseId}`} className="text-accent hover:underline ml-1">View all</Link>
@@ -1097,7 +1097,7 @@ export function BudgetDashboard() {
       {/* Budgets — per-category envelope target vs this month's spend */}
       {data.categoryBudgets && data.categoryBudgets.length > 0 && (
         <Section
-          title="Budgets"
+          id="budgets" defaultOpen={true} title="Budgets"
           icon={<Wallet size={13} className="text-accent" />}
           right={
             <button
@@ -1200,7 +1200,7 @@ export function BudgetDashboard() {
           gas stations, utility bills with variable amounts, etc. */}
       {data.repeatVendors && data.repeatVendors.length > 0 && (
         <Section
-          title="Other repeat vendors"
+          id="repeat" defaultOpen={false} count={data.repeatVendors.length} title="Other repeat vendors"
           icon={<Repeat size={13} className="text-muted" />}
         >
           <p className="text-xs text-muted mb-2">
@@ -1239,7 +1239,7 @@ export function BudgetDashboard() {
 
       {/* Subscriptions / recurring */}
       {data.subscriptions.length > 0 && (
-        <Section title="Recurring charges" icon={<RefreshCw size={13} className="text-accent" />}>
+        <Section id="subs" defaultOpen={false} count={data.subscriptions.length} title="Recurring charges" icon={<RefreshCw size={13} className="text-accent" />}>
           <p className="text-xs text-muted mb-2">
             Detected by repeated charges from the same vendor. Tap the email icon to draft a cancellation.
           </p>
@@ -1278,7 +1278,7 @@ export function BudgetDashboard() {
       {/* Recent transactions */}
       {data.recentTransactions.length > 0 && (
         <Section
-          title="Recent transactions"
+          id="recent" defaultOpen={false} count={data.recentTransactions.length} title="Recent transactions"
           icon={null}
           right={
             <Link href={`/database/${data.databaseId}`} className="text-xs text-muted hover:text-accent flex items-center gap-1">
@@ -1366,23 +1366,60 @@ function StatCard({
   );
 }
 
+// Collapsible so the page stays scannable — /budget has accumulated a lot of
+// sections. Open/closed is remembered per section in localStorage, and the
+// header keeps showing its summary and item count while collapsed, so folding
+// something away never hides the number that matters.
 function Section({
-  title, icon, right, children,
+  id, title, icon, right, count, defaultOpen = true, children,
 }: {
+  id: string;
   title: string;
   icon: React.ReactNode;
   right?: React.ReactNode;
+  count?: number;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const storageKey = `kove-budget-section:${id}`;
+  const [open, setOpen] = useState(() => {
+    if (typeof window === 'undefined') return defaultOpen;
+    try {
+      const saved = window.localStorage.getItem(storageKey);
+      return saved === null ? defaultOpen : saved === '1';
+    } catch {
+      return defaultOpen;
+    }
+  });
+
+  const toggle = () =>
+    setOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(storageKey, next ? '1' : '0');
+      } catch {}
+      return next;
+    });
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <h2 className="text-sm font-semibold uppercase tracking-wide">{title}</h2>
-        <div className="flex-1" />
+        <button
+          onClick={toggle}
+          aria-expanded={open}
+          className="flex flex-1 min-w-0 items-center gap-2 py-1 text-left text-muted hover:text-text"
+        >
+          <ChevronRight
+            size={12}
+            className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+          />
+          {icon}
+          <h2 className="text-sm font-semibold uppercase tracking-wide truncate text-text">{title}</h2>
+          {typeof count === 'number' && <span className="text-xs shrink-0">({count})</span>}
+        </button>
         {right}
       </div>
-      {children}
+      {open && children}
     </div>
   );
 }
