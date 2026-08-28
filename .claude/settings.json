@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\Users\\DeJon.Johnson\\.claude\\gate\\gate.ps1\" --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,750 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-28",
+  "files": {
+    ".claude/ledger/2026-08-23--013--feature-horizon-exploration.md": {
+      "banned": 1
+    },
+    ".claude/plans/2026-08-23-feature-horizon.md": {
+      "banned": 1
+    },
+    ".claude/plans/2026-08-23-product-feature-roadmap.md": {
+      "banned": 1
+    },
+    "extension/background.js": {
+      "complexity": 22,
+      "commentRatio": 0.183
+    },
+    "extension/claude.js": {
+      "functionLoc": 171,
+      "commentRatio": 0.188
+    },
+    "extension/content.js": {
+      "fileLoc": 470,
+      "functionLoc": 460
+    },
+    "extension/hiringcafe.js": {
+      "functionLoc": 224,
+      "complexity": 24
+    },
+    "extension/jobcapture.js": {
+      "functionLoc": 203
+    },
+    "src/app/(app)/admin/page.tsx": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/(app)/calendar-feed/page.tsx": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/(app)/clipper/page.tsx": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/(app)/clipper/share/page.tsx": {
+      "anyCount": 1,
+      "castChain": 1,
+      "commentRatio": 0.323
+    },
+    "src/app/(app)/database/[id]/page.tsx": {
+      "functionLoc": 230,
+      "anyCount": 3
+    },
+    "src/app/(app)/docs/page.tsx": {
+      "functionLoc": 172
+    },
+    "src/app/(app)/journal/page.tsx": {
+      "functionLoc": 200,
+      "anyCount": 2
+    },
+    "src/app/(app)/page/[id]/page.tsx": {
+      "anyCount": 3,
+      "castChain": 2
+    },
+    "src/app/(app)/page.tsx": {
+      "functionLoc": 138,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/(app)/workspace/[slug]/page.tsx": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/admin/usage/route.ts": {
+      "functionLoc": 134,
+      "complexity": 16,
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/applications/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/applications/[id]/route.ts": {
+      "complexity": 17,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/blocks/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/blocks/[id]/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/book-summary/route.ts": {
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/budget/accounts/route.ts": {
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/budget/cancel-email/route.ts": {
+      "complexity": 17,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/capture-tx/route.ts": {
+      "functionLoc": 102,
+      "complexity": 23,
+      "anyCount": 1
+    },
+    "src/app/api/budget/category-budgets/route.ts": {
+      "complexity": 16,
+      "anyCount": 5,
+      "castChain": 2
+    },
+    "src/app/api/budget/dashboard/route.ts": {
+      "fileLoc": 613,
+      "functionLoc": 493,
+      "complexity": 69,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/forecast-collisions/route.ts": {
+      "anyCount": 4,
+      "castChain": 2
+    },
+    "src/app/api/budget/goals/route.ts": {
+      "anyCount": 5,
+      "castChain": 2
+    },
+    "src/app/api/budget/goals/[id]/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/budget/import/confirm/route.ts": {
+      "functionLoc": 116,
+      "complexity": 28,
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/budget/import/route.ts": {
+      "fileLoc": 444,
+      "functionLoc": 137,
+      "complexity": 25,
+      "anyCount": 11,
+      "castChain": 4
+    },
+    "src/app/api/budget/imports/route.ts": {
+      "functionLoc": 90,
+      "complexity": 16,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/projected/route.ts": {
+      "complexity": 17,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/reconciliation/route.ts": {
+      "complexity": 20,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/recurring/route.ts": {
+      "anyCount": 4,
+      "castChain": 2
+    },
+    "src/app/api/budget/recurring/[id]/route.ts": {
+      "complexity": 17,
+      "anyCount": 3,
+      "castChain": 2
+    },
+    "src/app/api/budget/reminders/route.ts": {
+      "functionLoc": 97,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/rules/route.ts": {
+      "anyCount": 5,
+      "castChain": 2
+    },
+    "src/app/api/budget/rules/[id]/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/subscriptions/route.ts": {
+      "functionLoc": 89,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/budget/waste/route.ts": {
+      "functionLoc": 87,
+      "complexity": 19,
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/calendar/feed/route.ts": {
+      "anyCount": 3,
+      "castChain": 3
+    },
+    "src/app/api/calendar/[token]/route.ts": {
+      "commentRatio": 0.171
+    },
+    "src/app/api/clipper/extract-image/route.ts": {
+      "functionLoc": 89,
+      "complexity": 17,
+      "banned": 1,
+      "anyCount": 1,
+      "castChain": 1,
+      "commentRatio": 0.195
+    },
+    "src/app/api/clipper/save-image/route.ts": {
+      "functionLoc": 111,
+      "complexity": 22,
+      "commentRatio": 0.163
+    },
+    "src/app/api/clipper/share-target/route.ts": {
+      "complexity": 23,
+      "anyCount": 1,
+      "castChain": 1,
+      "commentRatio": 0.253
+    },
+    "src/app/api/clipper/shop-the-look/route.ts": {
+      "functionLoc": 85,
+      "complexity": 20,
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/clipper/tokens/route.ts": {
+      "anyCount": 2,
+      "castChain": 2,
+      "commentRatio": 0.163
+    },
+    "src/app/api/clipper/tokens/[id]/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/clipper/upload-image/route.ts": {
+      "functionLoc": 90,
+      "complexity": 19
+    },
+    "src/app/api/databases/from-template/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/databases/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/databases/[id]/properties/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/databases/[id]/properties/[propId]/route.ts": {
+      "anyCount": 3,
+      "castChain": 3
+    },
+    "src/app/api/databases/[id]/route.ts": {
+      "anyCount": 3,
+      "castChain": 3
+    },
+    "src/app/api/databases/[id]/views/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/databases/[id]/views/[viewId]/route.ts": {
+      "complexity": 18,
+      "anyCount": 3,
+      "castChain": 2
+    },
+    "src/app/api/extract/apply/route.ts": {
+      "functionLoc": 140,
+      "complexity": 24,
+      "anyCount": 5,
+      "castChain": 5
+    },
+    "src/app/api/extract/route.ts": {
+      "functionLoc": 235,
+      "complexity": 46,
+      "anyCount": 3,
+      "castChain": 2
+    },
+    "src/app/api/files/download/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/inbox/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/inbox/triage/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/inbox/[id]/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/jobs/ingest-text/route.ts": {
+      "complexity": 18
+    },
+    "src/app/api/jobs/ingest-url/route.ts": {
+      "functionLoc": 99,
+      "complexity": 16,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/jobs/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/jobs/[id]/analyze/route.ts": {
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/jobs/[id]/apply/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/jobs/[id]/coverletter/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/jobs/[id]/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/jobs/[id]/tailor/route.ts": {
+      "functionLoc": 104,
+      "complexity": 18,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/journal/dates/route.ts": {
+      "anyCount": 1,
+      "castChain": 1,
+      "commentRatio": 0.17
+    },
+    "src/app/api/journal/entry/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/journal/review/route.ts": {
+      "functionLoc": 142,
+      "complexity": 31,
+      "anyCount": 5,
+      "castChain": 2
+    },
+    "src/app/api/journal/today/route.ts": {
+      "anyCount": 4,
+      "castChain": 2
+    },
+    "src/app/api/moodboard/save/route.ts": {
+      "complexity": 16,
+      "anyCount": 1,
+      "castChain": 1,
+      "commentRatio": 0.29
+    },
+    "src/app/api/moodboard/search/route.ts": {
+      "functionLoc": 97,
+      "complexity": 19,
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/organize/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/pages/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/pages/[id]/preview/route.ts": {
+      "anyCount": 3,
+      "castChain": 1
+    },
+    "src/app/api/pages/[id]/route.ts": {
+      "anyCount": 3,
+      "castChain": 3
+    },
+    "src/app/api/property-values/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/resumes/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/resumes/[id]/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/search/route.ts": {
+      "functionLoc": 116,
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/summarize/route.ts": {
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/tiktok-transcript/route.ts": {
+      "anyCount": 2,
+      "castChain": 1
+    },
+    "src/app/api/transcribe/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/upload/route.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/app/api/workspaces/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/workspaces/[id]/route.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/app/api/youtube-transcript/route.ts": {
+      "fileLoc": 469,
+      "anyCount": 11,
+      "castChain": 2
+    },
+    "src/app/layout.tsx": {
+      "commentRatio": 0.185
+    },
+    "src/components/admin/AdminDashboard.tsx": {
+      "fileLoc": 433,
+      "functionLoc": 323
+    },
+    "src/components/budget/AddTransactionModal.tsx": {
+      "functionLoc": 207,
+      "anyCount": 1
+    },
+    "src/components/budget/BudgetDashboard.tsx": {
+      "fileLoc": 1425,
+      "functionLoc": 1300,
+      "complexity": 116
+    },
+    "src/components/budget/BudgetReminders.tsx": {
+      "functionLoc": 91
+    },
+    "src/components/budget/CancelEmailModal.tsx": {
+      "functionLoc": 133,
+      "anyCount": 1
+    },
+    "src/components/budget/CategorizationRulesModal.tsx": {
+      "functionLoc": 158,
+      "anyCount": 1
+    },
+    "src/components/budget/CategoryBudgetsModal.tsx": {
+      "functionLoc": 139,
+      "anyCount": 1
+    },
+    "src/components/budget/ImportReminderBanner.tsx": {
+      "functionLoc": 100
+    },
+    "src/components/budget/ImportStatementModal.tsx": {
+      "fileLoc": 473,
+      "functionLoc": 442,
+      "complexity": 26,
+      "anyCount": 2
+    },
+    "src/components/budget/RecurringRulesModal.tsx": {
+      "functionLoc": 269,
+      "complexity": 21,
+      "anyCount": 5,
+      "castChain": 2
+    },
+    "src/components/budget/SavingsGoalsModal.tsx": {
+      "functionLoc": 189,
+      "anyCount": 1
+    },
+    "src/components/budget/SubscriptionAudit.tsx": {
+      "functionLoc": 126
+    },
+    "src/components/calendar/CalendarFeedSettings.tsx": {
+      "functionLoc": 187,
+      "anyCount": 2
+    },
+    "src/components/clipper/ClipperSettings.tsx": {
+      "functionLoc": 256,
+      "anyCount": 2
+    },
+    "src/components/clipper/ShareReceiver.tsx": {
+      "fileLoc": 415,
+      "functionLoc": 380,
+      "complexity": 21,
+      "anyCount": 2
+    },
+    "src/components/database/DatabaseView.tsx": {
+      "fileLoc": 2938,
+      "functionLoc": 2726,
+      "complexity": 47,
+      "banned": 1,
+      "anyCount": 19,
+      "castChain": 8
+    },
+    "src/components/database/RelationCell.tsx": {
+      "functionLoc": 90,
+      "anyCount": 1
+    },
+    "src/components/editor/AudioRecorder.tsx": {
+      "functionLoc": 275,
+      "anyCount": 1
+    },
+    "src/components/editor/CanvasPageEditor.tsx": {
+      "fileLoc": 2904,
+      "functionLoc": 1970,
+      "params": 6,
+      "complexity": 40,
+      "anyCount": 21,
+      "castChain": 2,
+      "commentRatio": 0.167
+    },
+    "src/components/editor/CanvasTextBlock.tsx": {
+      "functionLoc": 321,
+      "complexity": 22,
+      "anyCount": 7,
+      "castChain": 1
+    },
+    "src/components/editor/ResizableImage.tsx": {
+      "fileLoc": 687,
+      "functionLoc": 520,
+      "anyCount": 5,
+      "castChain": 1,
+      "commentRatio": 0.189
+    },
+    "src/components/editor/SummarizeModal.tsx": {
+      "functionLoc": 107
+    },
+    "src/components/editor/TikTokImportModal.tsx": {
+      "functionLoc": 82,
+      "anyCount": 1
+    },
+    "src/components/editor/YouTubeImportModal.tsx": {
+      "functionLoc": 81,
+      "anyCount": 1
+    },
+    "src/components/extract/ExtractFromNotes.tsx": {
+      "fileLoc": 780,
+      "functionLoc": 757,
+      "complexity": 40,
+      "anyCount": 8,
+      "castChain": 5
+    },
+    "src/components/extract/OrganizeModal.tsx": {
+      "functionLoc": 124
+    },
+    "src/components/inbox/InboxView.tsx": {
+      "functionLoc": 251
+    },
+    "src/components/jobs/JobCard.tsx": {
+      "fileLoc": 532,
+      "functionLoc": 332,
+      "complexity": 42,
+      "anyCount": 7
+    },
+    "src/components/jobs/JobsDashboard.tsx": {
+      "functionLoc": 102,
+      "anyCount": 2
+    },
+    "src/components/jobs/ResumeManager.tsx": {
+      "functionLoc": 146,
+      "anyCount": 1
+    },
+    "src/components/journal/JournalCalendar.tsx": {
+      "functionLoc": 136
+    },
+    "src/components/journal/VoiceCaptureModal.tsx": {
+      "functionLoc": 289
+    },
+    "src/components/moodboard/MoodBoardModal.tsx": {
+      "fileLoc": 435,
+      "functionLoc": 410,
+      "complexity": 37,
+      "anyCount": 1
+    },
+    "src/components/pomodoro/PomodoroTimer.tsx": {
+      "functionLoc": 248
+    },
+    "src/components/search/SearchModal.tsx": {
+      "functionLoc": 140
+    },
+    "src/components/shop/ShopTheLookPanel.tsx": {
+      "functionLoc": 227,
+      "complexity": 19,
+      "anyCount": 1
+    },
+    "src/components/sidebar/PagePreview.tsx": {
+      "functionLoc": 99
+    },
+    "src/components/sidebar/PageTree.tsx": {
+      "functionLoc": 228
+    },
+    "src/components/sidebar/Sidebar.tsx": {
+      "fileLoc": 430,
+      "functionLoc": 400,
+      "complexity": 16,
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/components/templates/TemplateModal.tsx": {
+      "functionLoc": 219
+    },
+    "src/components/ui/feedback.tsx": {
+      "functionLoc": 127,
+      "anyCount": 2
+    },
+    "src/components/ui/ThemeToggle.tsx": {
+      "commentRatio": 0.17
+    },
+    "src/lib/auth.ts": {
+      "anyCount": 3,
+      "castChain": 3
+    },
+    "src/lib/budgetCapture.ts": {
+      "anyCount": 1
+    },
+    "src/lib/budgetCategories.ts": {
+      "commentRatio": 0.378
+    },
+    "src/lib/budgetDb.ts": {
+      "fileLoc": 1492,
+      "functionLoc": 100,
+      "complexity": 24,
+      "anyCount": 1,
+      "commentRatio": 0.181
+    },
+    "src/lib/budgetImportFile.ts": {
+      "commentRatio": 0.2
+    },
+    "src/lib/budgetWaste.ts": {
+      "complexity": 23
+    },
+    "src/lib/calendarFeed.ts": {
+      "commentRatio": 0.198
+    },
+    "src/lib/claudeChats.ts": {
+      "anyCount": 4,
+      "castChain": 4,
+      "commentRatio": 0.188
+    },
+    "src/lib/clipperAuth.ts": {
+      "anyCount": 2,
+      "castChain": 1,
+      "commentRatio": 0.326
+    },
+    "src/lib/inbox.ts": {
+      "anyCount": 3,
+      "castChain": 1
+    },
+    "src/lib/jobs/docx.ts": {
+      "commentRatio": 0.222
+    },
+    "src/lib/jobs/jsonld.ts": {
+      "complexity": 18,
+      "anyCount": 7
+    },
+    "src/lib/jobs/parse.ts": {
+      "commentRatio": 0.157
+    },
+    "src/lib/jobs/resumeFiles.ts": {
+      "anyCount": 2,
+      "castChain": 2
+    },
+    "src/lib/logUsage.ts": {
+      "commentRatio": 0.225
+    },
+    "src/lib/moodboardProviders.ts": {
+      "fileLoc": 718,
+      "functionLoc": 94,
+      "anyCount": 17,
+      "castChain": 3,
+      "commentRatio": 0.24
+    },
+    "src/lib/prisma.ts": {
+      "castChain": 1
+    },
+    "src/lib/recentPages.ts": {
+      "commentRatio": 0.194
+    },
+    "src/lib/shopSearch.ts": {
+      "anyCount": 1,
+      "commentRatio": 0.29
+    },
+    "src/lib/usageGuard.ts": {
+      "commentRatio": 0.18
+    },
+    "src/lib/utils.ts": {
+      "anyCount": 1
+    },
+    "src/lib/vision/shopTheLook.ts": {
+      "anyCount": 1,
+      "castChain": 1,
+      "commentRatio": 0.153
+    },
+    "src/__tests__/budgetAccountBalances.test.ts": {
+      "functionLoc": 106
+    },
+    "src/__tests__/budgetCategoryBudgets.test.ts": {
+      "functionLoc": 93
+    },
+    "src/__tests__/BudgetDashboardSections.test.tsx": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/__tests__/budgetForecastCollisions.test.ts": {
+      "functionLoc": 143
+    },
+    "src/__tests__/budgetImportBalanceCheck.test.ts": {
+      "functionLoc": 98
+    },
+    "src/__tests__/budgetMonthlyForecast.test.ts": {
+      "functionLoc": 83
+    },
+    "src/__tests__/budgetPatternDetection.test.ts": {
+      "functionLoc": 126
+    },
+    "src/__tests__/budgetVendorMatch.test.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/__tests__/claudeChats.test.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/__tests__/databaseFilters.test.ts": {
+      "anyCount": 1,
+      "castChain": 1
+    },
+    "src/__tests__/DatabaseViewConfigBar.test.tsx": {
+      "anyCount": 6,
+      "castChain": 6
+    },
+    "src/__tests__/NewDatabaseButton.test.tsx": {
+      "anyCount": 1
+    },
+    "src/__tests__/Sidebar.test.tsx": {
+      "anyCount": 1
+    }
+  }
+}
