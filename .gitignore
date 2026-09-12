@@ -7,3 +7,9 @@ node_modules
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# per-machine hook wiring: the gate's interpreter path differs by OS
+.claude/settings.local.json
+.claude/ledger/
+.claude/INDEX.md
+.claude/plans/
