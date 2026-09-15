@@ -55,7 +55,7 @@
       "functionLoc": 172
     },
     "src/app/(app)/journal/page.tsx": {
-      "functionLoc": 200,
+      "functionLoc": 185,
       "anyCount": 2
     },
     "src/app/(app)/page/[id]/page.tsx": {
@@ -348,10 +348,6 @@
       "functionLoc": 142,
       "complexity": 31,
       "anyCount": 5,
-      "castChain": 2
-    },
-    "src/app/api/journal/today/route.ts": {
-      "anyCount": 4,
       "castChain": 2
     },
     "src/app/api/moodboard/save/route.ts": {

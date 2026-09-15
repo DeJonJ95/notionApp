@@ -6,6 +6,7 @@ import { WelcomeCard } from '@/components/onboarding/WelcomeCard';
 import { EntityIcon } from '@/components/icons/registry';
 import { TodaysNoteButton } from '@/components/journal/TodaysNoteButton';
 import { VoiceCaptureButton } from '@/components/journal/VoiceCaptureButton';
+import { HomeAgenda } from '@/components/journal/AgendaPanel';
 
 // Relative age for the "worth revisiting" card.
 function agoLabel(d: Date): string {
@@ -79,8 +80,8 @@ export default async function DashboardPage() {
       {/* First-run onboarding — dismissible, localStorage-gated */}
       <WelcomeCard />
 
-      {/* Budget reminders — only renders if there are upcoming/overdue items */}
       <BudgetReminders />
+      <HomeAgenda />
 
       {/* Resurfaced older notes — a nudge to revisit past thinking */}
       {resurfaced.length > 0 && (

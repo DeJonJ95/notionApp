@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { JournalCalendar } from '@/components/journal/JournalCalendar';
 import { EveningReviewButton } from '@/components/journal/EveningReviewButton';
+import { TasksMenu } from '@/components/journal/TasksMenu';
 import { CanvasPageEditor } from '@/components/editor/CanvasPageEditor';
 import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
 
@@ -38,7 +39,6 @@ export default function JournalPage() {
   const [loading, setLoading] = useState(true);
   const calendarRef = useRef<HTMLDivElement>(null);
 
-  // Close calendar on outside click
   useEffect(() => {
     if (!showCalendar) return;
     const handler = (e: MouseEvent) => {
@@ -50,7 +50,6 @@ export default function JournalPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showCalendar]);
 
-  // Load the journal entry for a given date
   const loadEntry = useCallback(async (date: string) => {
     setLoading(true);
     setPageId(null);
@@ -61,13 +60,11 @@ export default function JournalPage() {
       let pid: string | null = null;
 
       if (date === today) {
-        // Today: create-or-get (idempotent)
         const res = await fetch(`/api/journal/today?date=${date}`);
         if (!res.ok) { setLoading(false); return; }
         const data = await res.json();
         pid = data.pageId ?? null;
       } else {
-        // Past dates: lookup only — never auto-create
         const res = await fetch(`/api/journal/entry?date=${date}`);
         if (!res.ok) { setLoading(false); return; }
         const data = await res.json();
@@ -76,7 +73,6 @@ export default function JournalPage() {
 
       if (!pid) { setLoading(false); return; }
 
-      // Load the page blocks
       const pageRes = await fetch(`/api/pages/${pid}`);
       if (!pageRes.ok) { setLoading(false); return; }
       const page = await pageRes.json();
@@ -105,16 +101,13 @@ export default function JournalPage() {
     }
   }, []);
 
-  // Load today's entry on mount
   useEffect(() => {
     loadEntry(selectedDate);
   }, [selectedDate, loadEntry]);
 
-  const canGoBack = true; // always allow going back
   const canGoForward = selectedDate < today;
 
   const goBack = () => {
-    if (!canGoBack) return;
     setSelectedDate((d) => addDays(d, -1));
     setShowCalendar(false);
   };
@@ -132,11 +125,9 @@ export default function JournalPage() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Sticky header with date navigation */}
       <div className="sticky top-0 z-10 bg-surface border-b border-border">
         <div className="flex items-center justify-between px-4 py-2 max-w-4xl mx-auto w-full">
           <div className="flex items-center gap-2">
-            {/* Previous day */}
             <button
               onClick={goBack}
               className="p-1.5 rounded hover:bg-bg text-muted transition-colors"
@@ -145,12 +136,10 @@ export default function JournalPage() {
               <ChevronLeft size={16} />
             </button>
 
-            {/* Date label */}
             <h1 className="text-base font-semibold min-w-[180px] text-center select-none">
               {formatDisplay(selectedDate)}
             </h1>
 
-            {/* Next day — only enabled for past dates */}
             <button
               onClick={goForward}
               disabled={!canGoForward}
@@ -162,7 +151,6 @@ export default function JournalPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Evening review — only on today's entry, once it's loaded */}
             {selectedDate === today && pageId && (
               <EveningReviewButton
                 pageId={pageId}
@@ -170,8 +158,8 @@ export default function JournalPage() {
                 onDone={() => loadEntry(selectedDate)}
               />
             )}
+            {selectedDate === today && pageId && <TasksMenu pageId={pageId} date={selectedDate} />}
 
-            {/* Today button — only shown when not on today */}
             {selectedDate !== today && (
               <button
                 onClick={() => handleDateSelect(today)}
@@ -181,7 +169,6 @@ export default function JournalPage() {
               </button>
             )}
 
-            {/* Calendar toggle */}
             <div className="relative" ref={calendarRef}>
               <button
                 onClick={() => setShowCalendar((v) => !v)}
@@ -205,7 +192,6 @@ export default function JournalPage() {
         </div>
       </div>
 
-      {/* Editor area */}
       <div className="flex-1 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-full">

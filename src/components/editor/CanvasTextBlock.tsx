@@ -16,6 +16,7 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
+import { trackEditor } from '@/lib/editorRegistry';
 
 interface SlashCmd {
   title: string;
@@ -277,10 +278,10 @@ export function CanvasTextBlock({
 
   useEffect(() => {
     if (editor && getEditorRef) getEditorRef(blockId, editor);
-    return () => {
+    return trackEditor(editor, () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
       editor?.destroy();
-    };
+    });
   }, [editor, blockId, getEditorRef]);
 
   useEffect(() => {

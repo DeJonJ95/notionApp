@@ -21,10 +21,22 @@ function Item({ name, children }: { name: string; children: React.ReactNode }) {
   );
 }
 
+function TasksJournalSection() {
+  return (
+    <Section title="Tasks & journal">
+      <Item name="Today">Home and the journal header’s Tasks button list every database row that is overdue, due today, or has an in-progress Status, across all your databases (the budget ledger is excluded). Any date property counts; a property named Due Date or Deadline wins when there are several.</Item>
+      <Item name="Promote a to-do">In today’s journal, put the cursor in a checkbox item and click the “Task” chip that appears beside it. Pick a database and the item becomes a row there (due today, first open Status, with a link back to the journal). The journal item turns into a link to the row.</Item>
+      <Item name="Pull tasks in">Journal header → Tasks → Pull into today’s to-do list. Every open row is added as a linked checkbox; rows already present are skipped.</Item>
+      <Item name="Checking a linked to-do">Ticking a linked checkbox sets the row’s Status to its first done-like option (Complete, Done, Closed…), or its Done checkbox. Unticking reopens it.</Item>
+      <Item name="Carry-over">A new day’s to-do list starts with yesterday’s “Tomorrow’s Priorities” followed by any to-dos left unchecked, formatting and links intact.</Item>
+    </Section>
+  );
+}
+
 export default function DocsPage() {
   const toc = [
     'Workspaces & pages', 'Canvas notes', 'Text formatting', 'Databases',
-    'Views, filters & grouping', 'Relations & rollups', 'Budget', 'Recurring & forecast',
+    'Views, filters & grouping', 'Relations & rollups', 'Tasks & journal', 'Budget', 'Recurring & forecast',
     'Goals, rules & trends', 'Transcripts & audio', 'Extract from notes',
     'Claude conversations', 'Inbox & capture', 'Bank alerts → budget', 'Subscriptions',
     'Gestures & shortcuts',
@@ -90,7 +102,7 @@ export default function DocsPage() {
         <Item name="Rollup">Aggregates a field across a relation’s linked rows: count, sum, average, min, or max. Read-only, recomputed live.</Item>
         <Item name="Use which?">Use a Relation/Rollup to reference & summarize across databases. Use “Move page in” only to relocate a misfiled page.</Item>
       </Section>
-
+      <TasksJournalSection />
       <Section title="Budget">
         <Item name="Import statements">/budget → Import statement. Upload a CSV or PDF from any bank; DeepSeek extracts and categorizes every transaction. Review/edit the preview table, then confirm — rows save to your Personal Budget database.</Item>
         <Item name="Dashboard">Income, expenses, net, projected end-of-month, spending excesses (categories up &gt;50% vs last month), category breakdown, recent transactions, and detected recurring charges.</Item>
