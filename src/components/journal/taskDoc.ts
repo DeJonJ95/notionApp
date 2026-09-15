@@ -50,16 +50,16 @@ export function taskItemAt(editor: Editor, li: Element): { pos: number; node: PM
   return null;
 }
 
+// Adds the row link as a mark over the existing inline content, so bold,
+// code, and hard breaks in the to-do survive promotion.
 export function linkifyTaskItem(editor: Editor, pos: number, href: string): void {
   const node = editor.state.doc.nodeAt(pos);
   const para = node?.firstChild;
-  const text = para?.textContent.trim();
-  if (!node || !para || !text) return;
+  if (!node || !para || !para.textContent.trim()) return;
   const from = pos + 2;
   const to = from + para.content.size;
-  const { schema } = editor.state;
-  const linked = schema.text(text, [schema.marks.link.create({ href })]);
-  editor.view.dispatch(editor.state.tr.replaceWith(from, to, linked));
+  const link = editor.state.schema.marks.link.create({ href });
+  editor.view.dispatch(editor.state.tr.addMark(from, to, link));
 }
 
 type ListHit = { pos: number; node: PMNode };

@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { isDoneStatus, selectOptions, statusProperty } from '@/lib/agenda';
+import { isDoneStatus, selectOptions, taskSchema } from '@/lib/agenda';
 
-// Flips a database row between done and open. Writes the Status select when
-// the database has one (first done-like option, or first open option), and a
-// checkbox named Done/Complete when it has that instead. No-op otherwise.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth();
   const userId = (session?.user as { id?: string } | undefined)?.id;
@@ -25,18 +22,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   });
   if (!page?.database) return NextResponse.json({ error: 'Not a database row' }, { status: 404 });
 
-  const props = page.database.properties;
-  const status = statusProperty(props);
+  const { status, done } = taskSchema(page.database.properties);
   const options = selectOptions(status);
   const target = body.done ? options.find(isDoneStatus) : options.find((o) => !isDoneStatus(o));
-  const checkbox = props.find((p) => p.type === 'checkbox' && /done|complete/i.test(p.name));
 
   const write = status && target
     ? { propertyId: status.id, value: target }
-    : checkbox
-      ? { propertyId: checkbox.id, value: body.done }
+    : done
+      ? { propertyId: done.id, value: body.done }
       : null;
-  if (!write) return NextResponse.json({ updated: false });
+  if (!write) {
+    return NextResponse.json(
+      { updated: false, error: 'This database has no Complete/Done status option or Done checkbox' },
+      { status: 409 }
+    );
+  }
 
   await prisma.propertyValue.upsert({
     where: { propertyId_pageId: { propertyId: write.propertyId, pageId: page.id } },

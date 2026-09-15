@@ -25,8 +25,11 @@ export type Agenda = { items: AgendaItem[]; databases: AgendaTarget[] };
 
 export type Prop = { id: string; name: string; type: string; formula: string | null };
 
+// The three columns the bridge reads and writes, discovered by name.
+export type TaskSchema = { due?: Prop; status?: Prop; done?: Prop };
+
 const DONE_RE = /^(done|complete|completed|finished|closed|cancel|cancelled|archived)$/i;
-const IN_PROGRESS_RE = /progress|doing|active|started|working|review/i;
+const IN_PROGRESS_RE = /\b(in[\s-]?progress|progress|doing|active|started|working|in[\s-]?review|review)\b/i;
 const NEGATED_RE = /^(not|never)\b/i;
 const MAX_ITEMS = 60;
 
@@ -34,7 +37,7 @@ export function isDoneStatus(value: string | null): boolean {
   return value != null && DONE_RE.test(value.trim());
 }
 
-// "Not Started" must not read as started.
+// "Not Started" must not read as started; "Inactive" must not read as active.
 export function isInProgressStatus(value: string | null): boolean {
   if (!value) return false;
   const v = value.trim();
@@ -51,14 +54,22 @@ export function selectOptions(prop: Prop | undefined): string[] {
   }
 }
 
+// Only an explicitly named deadline counts. Falling back to any date column
+// turned "Last Completed" and "Last Contacted" into overdue deadlines.
 export function dueProperty(props: Prop[]): Prop | undefined {
-  const dates = props.filter((p) => p.type === 'date');
-  return dates.find((p) => /due|deadline/i.test(p.name)) ?? dates[0];
+  return props.find((p) => p.type === 'date' && /due|deadline/i.test(p.name));
 }
 
 export function statusProperty(props: Prop[]): Prop | undefined {
-  const selects = props.filter((p) => p.type === 'select');
-  return selects.find((p) => /status|stage|state/i.test(p.name));
+  return props.find((p) => p.type === 'select' && /status|stage|state/i.test(p.name));
+}
+
+export function doneProperty(props: Prop[]): Prop | undefined {
+  return props.find((p) => p.type === 'checkbox' && /done|complete/i.test(p.name));
+}
+
+export function taskSchema(props: Prop[]): TaskSchema {
+  return { due: dueProperty(props), status: statusProperty(props), done: doneProperty(props) };
 }
 
 // Mirrors the schema signature findOrCreateBudgetDb uses. Budget rows are
@@ -81,12 +92,11 @@ export type RowInput = {
   properties: { propertyId: string; value: unknown }[];
 };
 
-export function classifyRow(row: RowInput, due: Prop | undefined, status: Prop | undefined, today: string) {
-  const cell = (p: Prop | undefined) =>
-    p ? asText(row.properties.find((v) => v.propertyId === p.id)?.value) : null;
-  const dueDate = cell(due)?.slice(0, 10) ?? null;
-  const statusValue = cell(status);
-  if (isDoneStatus(statusValue)) return null;
+export function classifyRow(row: RowInput, schema: TaskSchema, today: string) {
+  const cell = (p: Prop | undefined) => (p ? row.properties.find((v) => v.propertyId === p.id)?.value : undefined);
+  const dueDate = asText(cell(schema.due))?.slice(0, 10) ?? null;
+  const statusValue = asText(cell(schema.status));
+  if (isDoneStatus(statusValue) || cell(schema.done) === true) return null;
   let bucket: AgendaBucket | null = null;
   if (dueDate && dueDate < today) bucket = 'overdue';
   else if (dueDate === today) bucket = 'today';
@@ -114,11 +124,10 @@ export async function buildAgenda(userId: string, today: string): Promise<Agenda
   const targets: AgendaTarget[] = [];
   for (const db of databases) {
     if (looksLikeBudget(db.properties)) continue;
-    const due = dueProperty(db.properties);
-    const status = statusProperty(db.properties);
-    targets.push({ id: db.id, name: db.name, workspaceName: db.workspace.name, hasDue: !!due, hasStatus: !!status });
+    const schema = taskSchema(db.properties);
+    targets.push({ id: db.id, name: db.name, workspaceName: db.workspace.name, hasDue: !!schema.due, hasStatus: !!schema.status });
     for (const row of db.pages) {
-      const c = classifyRow(row, due, status, today);
+      const c = classifyRow(row, schema, today);
       if (c) items.push({ id: row.id, title: row.title, icon: row.icon, databaseId: db.id, databaseName: db.name, ...c });
     }
   }

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRightToLine, Loader2 } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
@@ -95,6 +95,24 @@ export function PromoteTaskAffordance({ targets, pageId, date, onPromoted }: Pro
   const [target, setTarget] = useState<Target | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Open picker: outside click or Escape closes it and re-arms tracking.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open) return;
@@ -131,7 +149,7 @@ export function PromoteTaskAffordance({ targets, pageId, date, onPromoted }: Pro
 
   if (!target) return null;
   return createPortal(
-    <div style={{ position: 'fixed', top: target.top, left: target.left, width: CHIP_W }} className="z-[400]">
+    <div ref={rootRef} style={{ position: 'fixed', top: target.top, left: target.left, width: CHIP_W }} className="z-[400]">
       <button
         type="button"
         onMouseDown={(e) => e.preventDefault()}

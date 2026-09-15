@@ -61,6 +61,42 @@ describe('extractCarryOver', () => {
     ];
     expect(extractCarryOver(blocks).map((i) => nodeText({ content: i }))).toEqual(['Second block']);
   });
+
+  it('carries the evening review priorities first, even though its heading comes last', () => {
+    const blocks = [
+      ...doc(
+        heading("✅ Today's To-Do List"),
+        { type: 'taskList', content: [task([text('Leftover')], false)] },
+        heading("🌅 Tomorrow's Priorities"),
+        { type: 'bulletList', content: [bullet([])] }
+      ),
+      ...doc(
+        { type: 'heading', attrs: { level: 3 }, content: [text('Tomorrow’s priorities')] },
+        { type: 'taskList', content: [task([text('Review pick')], false), task([text('Ticked already')], true)] }
+      ),
+    ];
+    const out = extractCarryOver(blocks).map((i) => nodeText({ content: i }));
+    expect(out).toEqual(['Review pick', 'Leftover']);
+  });
+
+  it('prefers the linked to-do over a plain bullet with the same text', () => {
+    const blocks = doc(
+      { type: 'taskList', content: [task([linked('Follow up', '/page/row1')], false)] },
+      heading("🌅 Tomorrow's Priorities"),
+      { type: 'bulletList', content: [bullet([text('Follow up')])] }
+    );
+    const out = extractCarryOver(blocks);
+    expect(out).toHaveLength(1);
+    expect(out[0][0].marks).toEqual([{ type: 'link', attrs: { href: '/page/row1' } }]);
+  });
+
+  it('keeps two different rows that share a title', () => {
+    const blocks = doc({
+      type: 'taskList',
+      content: [task([linked('Standup', '/page/a1')], false), task([linked('Standup', '/page/b2')], false)],
+    });
+    expect(extractCarryOver(blocks)).toHaveLength(2);
+  });
 });
 
 describe('journalTemplate', () => {

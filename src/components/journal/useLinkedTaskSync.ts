@@ -14,9 +14,10 @@ async function patchDone(pageId: string, done: boolean) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ done }),
     });
-    const json = (await res.json().catch(() => ({}))) as { updated?: boolean; value?: unknown };
-    if (!res.ok) toast.error('Could not update the task row');
-    else if (json.updated && typeof json.value === 'string') toast.success(`Task marked ${json.value}`);
+    const json = (await res.json().catch(() => ({}))) as { updated?: boolean; value?: unknown; error?: string };
+    if (!res.ok) toast.error(json.error ?? 'Could not update the task row');
+    else if (typeof json.value === 'string') toast.success(`Task marked ${json.value}`);
+    else toast.success(done ? 'Task marked done' : 'Task reopened');
   } catch {
     toast.error('Network error updating task');
   }
