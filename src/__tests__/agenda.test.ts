@@ -4,6 +4,7 @@ import {
   dueProperty,
   isDoneStatus,
   isInProgressStatus,
+  resolveTaskWrite,
   selectOptions,
   statusProperty,
   taskSchema,
@@ -97,5 +98,24 @@ describe('classifyRow', () => {
 
   it('tolerates datetime strings in date cells', () => {
     expect(classifyRow(row({ due: '2026-09-15T00:00:00.000Z' }), { due }, TODAY)?.bucket).toBe('today');
+  });
+});
+
+describe('resolveTaskWrite', () => {
+  const status: Prop = { id: 's', name: 'Status', type: 'select', formula: JSON.stringify(['Not started', 'In progress', 'Done']) };
+  const done: Prop = { id: 'd', name: 'Done', type: 'checkbox', formula: null };
+
+  it('writes a named status when it is one of the options', () => {
+    expect(resolveTaskWrite({ status: 'In progress' }, { status })).toEqual({ propertyId: 's', value: 'In progress' });
+    expect(resolveTaskWrite({ status: 'Bogus' }, { status })).toMatchObject({ code: 400 });
+    expect(resolveTaskWrite({ status: 'Done' }, { done })).toMatchObject({ code: 409 });
+  });
+
+  it('maps done to the first done-like option, else the checkbox', () => {
+    expect(resolveTaskWrite({ done: true }, { status })).toEqual({ propertyId: 's', value: 'Done' });
+    expect(resolveTaskWrite({ done: false }, { status })).toEqual({ propertyId: 's', value: 'Not started' });
+    expect(resolveTaskWrite({ done: true }, { done })).toEqual({ propertyId: 'd', value: true });
+    expect(resolveTaskWrite({ done: true }, {})).toMatchObject({ code: 409 });
+    expect(resolveTaskWrite({}, { status })).toMatchObject({ code: 400 });
   });
 });

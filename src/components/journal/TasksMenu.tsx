@@ -58,7 +58,7 @@ export function TasksMenu({ pageId, date }: { pageId: string; date: string }) {
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 w-80 max-w-[90vw] rounded-xl border border-border bg-surface shadow-2xl p-3">
           <div className="max-h-72 overflow-y-auto">
-            <AgendaPanel agenda={agenda} loading={loading} />
+            <AgendaPanel agenda={agenda} loading={loading} onChange={reload} />
           </div>
           <button
             onClick={pull}

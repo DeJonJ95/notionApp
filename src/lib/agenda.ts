@@ -19,6 +19,7 @@ export type AgendaTarget = {
   workspaceName: string;
   hasDue: boolean;
   hasStatus: boolean;
+  statusOptions: string[];
 };
 
 export type Agenda = { items: AgendaItem[]; databases: AgendaTarget[] };
@@ -104,6 +105,26 @@ export function classifyRow(row: RowInput, schema: TaskSchema, today: string) {
   return bucket ? { dueDate, status: statusValue, bucket } : null;
 }
 
+export type TaskWrite = { propertyId: string; value: string | boolean };
+export type TaskWriteError = { error: string; code: 400 | 409 };
+
+// A task PATCH either names a status option outright or asks for done/reopened,
+// which maps onto the first matching status option or the Done checkbox.
+export function resolveTaskWrite(body: { done?: unknown; status?: unknown }, schema: TaskSchema): TaskWrite | TaskWriteError {
+  const { status, done } = schema;
+  const options = selectOptions(status);
+  if (typeof body.status === 'string') {
+    if (!status) return { error: 'This database has no Status column', code: 409 };
+    if (!options.includes(body.status)) return { error: 'Unknown status option', code: 400 };
+    return { propertyId: status.id, value: body.status };
+  }
+  if (typeof body.done !== 'boolean') return { error: 'Expected { done: boolean } or { status: string }', code: 400 };
+  const target = body.done ? options.find(isDoneStatus) : options.find((o) => !isDoneStatus(o));
+  if (status && target) return { propertyId: status.id, value: target };
+  if (done) return { propertyId: done.id, value: body.done };
+  return { error: 'This database has no Complete/Done status option or Done checkbox', code: 409 };
+}
+
 const BUCKET_ORDER: Record<AgendaBucket, number> = { overdue: 0, today: 1, inProgress: 2 };
 
 export async function buildAgenda(userId: string, today: string): Promise<Agenda> {
@@ -125,7 +146,7 @@ export async function buildAgenda(userId: string, today: string): Promise<Agenda
   for (const db of databases) {
     if (looksLikeBudget(db.properties)) continue;
     const schema = taskSchema(db.properties);
-    targets.push({ id: db.id, name: db.name, workspaceName: db.workspace.name, hasDue: !!schema.due, hasStatus: !!schema.status });
+    targets.push({ id: db.id, name: db.name, workspaceName: db.workspace.name, hasDue: !!schema.due, hasStatus: !!schema.status, statusOptions: selectOptions(schema.status) });
     for (const row of db.pages) {
       const c = classifyRow(row, schema, today);
       if (c) items.push({ id: row.id, title: row.title, icon: row.icon, databaseId: db.id, databaseName: db.name, ...c });

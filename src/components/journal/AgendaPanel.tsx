@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { AgendaRowActions } from './AgendaRowActions';
 import type { Agenda, AgendaBucket, AgendaItem } from '@/lib/agenda';
 
 export function localDate(): string {
@@ -33,28 +34,40 @@ const BUCKETS: { key: AgendaBucket; title: string; className: string }[] = [
   { key: 'inProgress', title: 'In progress', className: 'text-accent' },
 ];
 
-function Row({ item }: { item: AgendaItem }) {
+function Row({ item, statusOptions, onChange }: { item: AgendaItem; statusOptions: string[]; onChange: () => void }) {
   return (
-    <li>
-      <Link
-        href={`/page/${item.id}`}
-        className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-bg text-sm"
-      >
-        <span className="flex-1 truncate text-text">{item.title || 'Untitled'}</span>
-        <span className="text-xs text-muted shrink-0 truncate max-w-[8rem]">{item.databaseName}</span>
-        {item.dueDate && (
-          <span className="text-xs text-muted shrink-0 tabular-nums">{item.dueDate.slice(5)}</span>
-        )}
+    <li className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-bg text-sm">
+      <Link href={`/page/${item.id}`} className="flex-1 min-w-0 truncate text-text hover:underline">
+        {item.title || 'Untitled'}
       </Link>
+      <Link
+        href={`/database/${item.databaseId}`}
+        title={`Open ${item.databaseName}`}
+        className="text-xs text-muted shrink-0 truncate max-w-[8rem] hover:text-text hover:underline"
+      >
+        {item.databaseName}
+      </Link>
+      {item.dueDate && (
+        <span className="text-xs text-muted shrink-0 tabular-nums">{item.dueDate.slice(5)}</span>
+      )}
+      <AgendaRowActions item={item} statusOptions={statusOptions} onChange={onChange} />
     </li>
   );
 }
 
-export function AgendaPanel({ agenda, loading }: { agenda: Agenda | null; loading: boolean }) {
+export function AgendaPanel({
+  agenda, loading, onChange = () => {},
+}: {
+  agenda: Agenda | null;
+  loading: boolean;
+  onChange?: () => void;
+}) {
   if (loading && !agenda) return <p className="text-sm text-muted">Loading…</p>;
   if (!agenda?.items.length) {
     return <p className="text-sm text-muted">Nothing overdue, due today, or in progress.</p>;
   }
+  const optionsFor = (databaseId: string) =>
+    agenda.databases.find((d) => d.id === databaseId)?.statusOptions ?? [];
   const groups = BUCKETS.map((b) => ({ ...b, items: agenda.items.filter((i) => i.bucket === b.key) }))
     .filter((g) => g.items.length);
   return (
@@ -65,7 +78,9 @@ export function AgendaPanel({ agenda, loading }: { agenda: Agenda | null; loadin
             {g.title} · {g.items.length}
           </p>
           <ul className="space-y-0.5">
-            {g.items.map((item) => <Row key={item.id} item={item} />)}
+            {g.items.map((item) => (
+              <Row key={item.id} item={item} statusOptions={optionsFor(item.databaseId)} onChange={onChange} />
+            ))}
           </ul>
         </div>
       ))}
@@ -77,12 +92,12 @@ export function AgendaPanel({ agenda, loading }: { agenda: Agenda | null; loadin
 // database, so a notes-only workspace never sees an empty "Today".
 export function HomeAgenda() {
   const [date] = useState(localDate);
-  const { agenda, loading } = useAgenda(date);
+  const { agenda, loading, reload } = useAgenda(date);
   if (!loading && !agenda?.databases.length) return null;
   return (
     <section className="mb-12">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted mb-3">Today</h2>
-      <AgendaPanel agenda={agenda} loading={loading} />
+      <AgendaPanel agenda={agenda} loading={loading} onChange={reload} />
     </section>
   );
 }
