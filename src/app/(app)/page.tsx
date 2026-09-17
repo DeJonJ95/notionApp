@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { BudgetReminders } from '@/components/budget/BudgetReminders';
 import { WelcomeCard } from '@/components/onboarding/WelcomeCard';
 import { EntityIcon } from '@/components/icons/registry';
 import { TodaysNoteButton } from '@/components/journal/TodaysNoteButton';
@@ -80,7 +79,6 @@ export default async function DashboardPage() {
       {/* First-run onboarding — dismissible, localStorage-gated */}
       <WelcomeCard />
 
-      <BudgetReminders />
       <HomeAgenda />
 
       {/* Resurfaced older notes — a nudge to revisit past thinking */}

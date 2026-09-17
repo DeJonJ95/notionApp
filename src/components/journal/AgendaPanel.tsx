@@ -31,8 +31,44 @@ export function useAgenda(date: string) {
 const BUCKETS: { key: AgendaBucket; title: string; className: string }[] = [
   { key: 'overdue', title: 'Overdue', className: 'text-red-500' },
   { key: 'today', title: 'Due today', className: 'text-amber-500' },
+  { key: 'week', title: 'Due this week', className: 'text-blue-500' },
   { key: 'inProgress', title: 'In progress', className: 'text-accent' },
 ];
+
+// Rows shown per bucket before the rest go behind "Show more", so a backlog
+// of overdue tasks does not push the rest of the home page off screen.
+const GROUP_LIMIT = 6;
+
+function Group({
+  title, className, items, statusOptions, onChange,
+}: {
+  title: string;
+  className: string;
+  items: AgendaItem[];
+  statusOptions: (databaseId: string) => string[];
+  onChange: () => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? items : items.slice(0, GROUP_LIMIT);
+  const hidden = items.length - visible.length;
+  return (
+    <div>
+      <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${className}`}>
+        {title} · {items.length}
+      </p>
+      <ul className="space-y-0.5">
+        {visible.map((item) => (
+          <Row key={item.id} item={item} statusOptions={statusOptions(item.databaseId)} onChange={onChange} />
+        ))}
+      </ul>
+      {items.length > GROUP_LIMIT && (
+        <button onClick={() => setShowAll((v) => !v)} className="mt-1 px-2 text-xs text-accent hover:underline">
+          {showAll ? 'Show less' : `Show ${hidden} more`}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function Row({ item, statusOptions, onChange }: { item: AgendaItem; statusOptions: string[]; onChange: () => void }) {
   return (
@@ -64,7 +100,7 @@ export function AgendaPanel({
 }) {
   if (loading && !agenda) return <p className="text-sm text-muted">Loading…</p>;
   if (!agenda?.items.length) {
-    return <p className="text-sm text-muted">Nothing overdue, due today, or in progress.</p>;
+    return <p className="text-sm text-muted">Nothing overdue, due this week, or in progress.</p>;
   }
   const optionsFor = (databaseId: string) =>
     agenda.databases.find((d) => d.id === databaseId)?.statusOptions ?? [];
@@ -73,16 +109,7 @@ export function AgendaPanel({
   return (
     <div className="space-y-3">
       {groups.map((g) => (
-        <div key={g.key}>
-          <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${g.className}`}>
-            {g.title} · {g.items.length}
-          </p>
-          <ul className="space-y-0.5">
-            {g.items.map((item) => (
-              <Row key={item.id} item={item} statusOptions={optionsFor(item.databaseId)} onChange={onChange} />
-            ))}
-          </ul>
-        </div>
+        <Group key={g.key} title={g.title} className={g.className} items={g.items} statusOptions={optionsFor} onChange={onChange} />
       ))}
     </div>
   );

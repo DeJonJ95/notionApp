@@ -76,7 +76,9 @@ describe('classifyRow', () => {
   it('buckets by due date relative to today', () => {
     expect(classifyRow(row({ due: '2026-09-14' }), schema, TODAY)?.bucket).toBe('overdue');
     expect(classifyRow(row({ due: '2026-09-15' }), schema, TODAY)?.bucket).toBe('today');
-    expect(classifyRow(row({ due: '2026-09-16' }), schema, TODAY)).toBeNull();
+    expect(classifyRow(row({ due: '2026-09-16' }), schema, TODAY)?.bucket).toBe('week');
+    expect(classifyRow(row({ due: '2026-09-22' }), schema, TODAY)?.bucket).toBe('week');
+    expect(classifyRow(row({ due: '2026-09-23' }), schema, TODAY)).toBeNull();
   });
 
   it('surfaces in-progress rows with no due date', () => {
@@ -86,6 +88,7 @@ describe('classifyRow', () => {
 
   it('hides done rows even when overdue', () => {
     expect(classifyRow(row({ due: '2026-01-01', status: 'Complete' }), schema, TODAY)).toBeNull();
+    expect(classifyRow(row({ due: '2026-01-01', status: 'Cleared' }), schema, TODAY)).toBeNull();
     expect(classifyRow(row({ due: '2026-01-01', done: true }), { due, done }, TODAY)).toBeNull();
     expect(classifyRow(row({ due: '2026-01-01', done: false }), { due, done }, TODAY)?.bucket).toBe('overdue');
   });

@@ -97,9 +97,9 @@ export function Sidebar() {
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then(setPages)
       .catch((err) => console.error('Failed to load pages:', err));
-    fetch('/api/budget/reminders')
+    fetch('/api/agenda')
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) setReminderCount(d.overdue + d.dueSoon ? d.overdue.length + d.dueSoon.length : 0); })
+      .then((d: { items?: { bucket: string }[] } | null) => setReminderCount(d?.items?.filter((i) => i.bucket === 'overdue' || i.bucket === 'today').length ?? 0))
       .catch(() => {});
 
     // No journal auto-create needed here — the dedicated /journal page

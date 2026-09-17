@@ -63,7 +63,7 @@
       "castChain": 2
     },
     "src/app/(app)/page.tsx": {
-      "functionLoc": 138,
+      "functionLoc": 137,
       "anyCount": 1,
       "castChain": 1
     },
@@ -173,11 +173,6 @@
       "complexity": 17,
       "anyCount": 3,
       "castChain": 2
-    },
-    "src/app/api/budget/reminders/route.ts": {
-      "functionLoc": 97,
-      "anyCount": 1,
-      "castChain": 1
     },
     "src/app/api/budget/rules/route.ts": {
       "anyCount": 5,
@@ -439,9 +434,6 @@
       "fileLoc": 1424,
       "functionLoc": 1298,
       "complexity": 116
-    },
-    "src/components/budget/BudgetReminders.tsx": {
-      "functionLoc": 91
     },
     "src/components/budget/CancelEmailModal.tsx": {
       "functionLoc": 133,

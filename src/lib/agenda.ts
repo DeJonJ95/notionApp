@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 
-export type AgendaBucket = 'overdue' | 'today' | 'inProgress';
+export type AgendaBucket = 'overdue' | 'today' | 'week' | 'inProgress';
 
 export type AgendaItem = {
   id: string;
@@ -29,10 +29,17 @@ export type Prop = { id: string; name: string; type: string; formula: string | n
 // The three columns the bridge reads and writes, discovered by name.
 export type TaskSchema = { due?: Prop; status?: Prop; done?: Prop };
 
-const DONE_RE = /^(done|complete|completed|finished|closed|cancel|cancelled|archived)$/i;
+const DONE_RE = /^(done|complete|completed|finished|closed|cancel|cancelled|archived|cleared|paid)$/i;
 const IN_PROGRESS_RE = /\b(in[\s-]?progress|progress|doing|active|started|working|in[\s-]?review|review)\b/i;
 const NEGATED_RE = /^(not|never)\b/i;
 const MAX_ITEMS = 60;
+const WEEK_DAYS = 7;
+
+export function addDays(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export function isDoneStatus(value: string | null): boolean {
   return value != null && DONE_RE.test(value.trim());
@@ -101,6 +108,7 @@ export function classifyRow(row: RowInput, schema: TaskSchema, today: string) {
   let bucket: AgendaBucket | null = null;
   if (dueDate && dueDate < today) bucket = 'overdue';
   else if (dueDate === today) bucket = 'today';
+  else if (dueDate && dueDate <= addDays(today, WEEK_DAYS)) bucket = 'week';
   else if (isInProgressStatus(statusValue)) bucket = 'inProgress';
   return bucket ? { dueDate, status: statusValue, bucket } : null;
 }
@@ -125,7 +133,7 @@ export function resolveTaskWrite(body: { done?: unknown; status?: unknown }, sch
   return { error: 'This database has no Complete/Done status option or Done checkbox', code: 409 };
 }
 
-const BUCKET_ORDER: Record<AgendaBucket, number> = { overdue: 0, today: 1, inProgress: 2 };
+const BUCKET_ORDER: Record<AgendaBucket, number> = { overdue: 0, today: 1, week: 2, inProgress: 3 };
 
 export async function buildAgenda(userId: string, today: string): Promise<Agenda> {
   const databases = await prisma.database.findMany({
