@@ -666,17 +666,16 @@ function DocumentBlockRow({
   return (
     <div
       ref={setRef}
-      className={`group relative py-0.5 transition-opacity ${isDragging ? 'opacity-30' : ''}`}
+      className={`group relative py-0.5 -ml-8 pl-8 transition-opacity ${isDragging ? 'opacity-30' : ''}`}
     >
-      {/* Drop indicator line */}
       {isDragOver && dragOverHalf === 'top' && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-accent rounded pointer-events-none" />
+        <div className="absolute top-0 left-8 right-0 h-0.5 bg-accent rounded pointer-events-none" />
       )}
       {isDragOver && dragOverHalf === 'bottom' && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent rounded pointer-events-none" />
+        <div className="absolute bottom-0 left-8 right-0 h-0.5 bg-accent rounded pointer-events-none" />
       )}
-      {/* Left gutter — drag handle + delete, visible on hover */}
-      <div className="hidden group-hover:flex flex-col items-center gap-0.5 absolute -left-7 top-1">
+      {/* Gutter lives inside the row's padding so hover survives the trip to it */}
+      <div className="hidden group-hover:flex flex-col items-center gap-0.5 absolute left-1 top-1">
         <button
           onPointerDown={(e) => onDragHandlePointerDown(e, block.id)}
           className="p-0.5 rounded text-muted hover:text-text cursor-grab active:cursor-grabbing touch-none select-none"
@@ -729,7 +728,18 @@ function DocumentBlockRow({
 // scrolls that heading to the top. The bar for the section currently at the
 // top of the viewport is highlighted.
 
-type OutlineHeading = { id: string; text: string; level: number };
+type OutlineHeading = { index: number; text: string; level: number };
+
+const HEADING_SELECTOR = '.ProseMirror h1, .ProseMirror h2, .ProseMirror h3';
+const ACTIVE_OFFSET_PX = 80;
+
+// Scoped to `.ProseMirror` so headings inside embedded databases don't leak
+// in; empty heading placeholders are skipped.
+function outlineHeadings(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(HEADING_SELECTOR)).filter(
+    (el) => (el.textContent?.trim() ?? '') !== ''
+  );
+}
 
 function DocOutlineRail({
   scrollRef,
@@ -739,35 +749,25 @@ function DocOutlineRail({
   blocks: CanvasBlockData[];
 }) {
   const [headings, setHeadings] = useState<OutlineHeading[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [hovered, setHovered] = useState(false);
 
-  // Walk the rendered editor DOM for h1/h2/h3 and build the outline. Scoped to
-  // `.ProseMirror` so headings inside embedded databases don't leak in. Each
-  // element gets a stable data-outline-id (assigned once) used as the scroll
-  // target and active-section key.
+  // Headings are addressed by document order and re-queried on every use, so
+  // a ProseMirror re-render can never leave the rail pointing at dead nodes.
   const scan = useCallback(() => {
     const sc = scrollRef.current;
     if (!sc) return;
-    const els = Array.from(
-      sc.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3')
-    ) as HTMLElement[];
-    const list: OutlineHeading[] = [];
-    for (const el of els) {
-      const text = el.textContent?.trim() ?? '';
-      if (!text) continue; // skip empty heading placeholders
-      if (!el.dataset.outlineId) {
-        el.dataset.outlineId = `ol-${Math.random().toString(36).slice(2, 9)}`;
-      }
-      const level = el.tagName === 'H1' ? 1 : el.tagName === 'H2' ? 2 : 3;
-      list.push({ id: el.dataset.outlineId, text, level });
-    }
-    setHeadings(list);
+    setHeadings(
+      outlineHeadings(sc).map((el, index) => ({
+        index,
+        text: el.textContent?.trim() ?? '',
+        level: el.tagName === 'H1' ? 1 : el.tagName === 'H2' ? 2 : 3,
+      }))
+    );
   }, [scrollRef]);
 
-  // Re-scan on block changes and on any DOM mutation inside the scroll area
-  // (typing, adding/removing blocks). Debounced so a burst of keystrokes only
-  // triggers one rescan.
+  // Re-scan on block changes and on any DOM mutation inside the scroll area,
+  // debounced so a burst of keystrokes only triggers one rescan.
   useEffect(() => {
     scan();
     const sc = scrollRef.current;
@@ -784,32 +784,32 @@ function DocOutlineRail({
     };
   }, [scan, blocks]);
 
-  // Highlight the last heading whose top has scrolled above the fold.
+  // Highlight the last heading whose top has scrolled above the fold. Scroll
+  // is observed on the document in the capture phase, so it works whether the
+  // document view scrolls inside scrollRef or in an ancestor.
   useEffect(() => {
     const sc = scrollRef.current;
     if (!sc || headings.length === 0) return;
     const onScroll = () => {
-      const scTop = sc.getBoundingClientRect().top;
-      let active: string | null = headings[0]?.id ?? null;
-      for (const h of headings) {
-        const el = sc.querySelector(`[data-outline-id="${h.id}"]`) as HTMLElement | null;
-        if (!el) continue;
-        if (el.getBoundingClientRect().top - scTop <= 80) active = h.id;
-        else break;
-      }
-      setActiveId(active);
+      const threshold = Math.max(sc.getBoundingClientRect().top, 0) + ACTIVE_OFFSET_PX;
+      let active = 0;
+      outlineHeadings(sc).forEach((el, i) => {
+        if (el.getBoundingClientRect().top <= threshold) active = i;
+      });
+      setActiveIndex(active);
     };
     onScroll();
-    sc.addEventListener('scroll', onScroll, { passive: true });
-    return () => sc.removeEventListener('scroll', onScroll);
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', onScroll, { capture: true });
   }, [headings, scrollRef]);
 
   const scrollTo = useCallback(
-    (id: string) => {
-      const el = scrollRef.current?.querySelector(
-        `[data-outline-id="${id}"]`
-      ) as HTMLElement | null;
-      el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    (index: number) => {
+      const sc = scrollRef.current;
+      const el = sc ? outlineHeadings(sc)[index] : undefined;
+      if (!el) return;
+      el.style.scrollMarginTop = '24px';
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
     [scrollRef]
   );
@@ -821,17 +821,17 @@ function DocOutlineRail({
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 z-20 flex-col items-end gap-1.5 max-h-[80%] overflow-y-auto transition-colors ${
+      className={`hidden md:flex absolute right-5 top-1/2 -translate-y-1/2 z-20 flex-col items-end gap-1.5 max-h-[80%] overflow-y-auto transition-colors ${
         hovered ? 'bg-surface/95 border border-border rounded-lg shadow-lg px-3 py-2 backdrop-blur' : ''
       }`}
     >
       {headings.map((h) => {
-        const isActive = h.id === activeId;
+        const isActive = h.index === activeIndex;
         const barW = h.level === 1 ? 16 : h.level === 2 ? 12 : 8;
         return (
           <button
-            key={h.id}
-            onClick={() => scrollTo(h.id)}
+            key={h.index}
+            onClick={() => scrollTo(h.index)}
             title={h.text}
             className="flex items-center justify-end gap-2 group/bar"
           >
@@ -2266,7 +2266,7 @@ export function CanvasPageEditor({
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-bg">
+    <div className="flex flex-col h-full flex-1 min-h-0 overflow-hidden bg-bg">
       {/* ── Top bar ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-surface shrink-0 flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-wrap">

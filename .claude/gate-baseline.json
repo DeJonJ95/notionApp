@@ -506,7 +506,7 @@
       "complexity": 40,
       "anyCount": 21,
       "castChain": 2,
-      "commentRatio": 0.167
+      "commentRatio": 0.166
     },
     "src/components/editor/CanvasTextBlock.tsx": {
       "functionLoc": 321,
