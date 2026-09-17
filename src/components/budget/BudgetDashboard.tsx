@@ -16,6 +16,7 @@ import { CategoryBudgetsModal } from './CategoryBudgetsModal';
 import { AddTransactionModal } from './AddTransactionModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
 import { ImportReminderBanner } from './ImportReminderBanner';
+import { OverdueBills } from './OverdueBills';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
 import type { ImportsPayload } from '@/app/api/budget/imports/route';
 import type { ForecastCollisionsPayload } from '@/app/api/budget/forecast-collisions/route';
@@ -739,7 +740,8 @@ export function BudgetDashboard() {
         </Section>
       )}
 
-      {/* Expected vs Actual — income/expense from recurring rules compared to what's been imported */}
+      <OverdueBills bills={data.overdueBills} />
+
       {data.expectedVsActual && (data.expectedVsActual.incomeExpected > 0 || data.expectedVsActual.expenseExpected > 0) && (
         <div className="rounded-xl border border-border bg-surface p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -778,7 +780,6 @@ export function BudgetDashboard() {
               )}
             </div>
           </div>
-          {/* Per-rule mini breakdown */}
           {data.expectedVsActual.rules.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {data.expectedVsActual.rules.map((r) => {
@@ -805,7 +806,6 @@ export function BudgetDashboard() {
         </div>
       )}
 
-      {/* Auto-budget overview */}
       <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
         <div className="flex items-center gap-2 mb-3">
           <DollarSign size={14} className="text-accent" />
@@ -871,7 +871,6 @@ export function BudgetDashboard() {
         </div>
       )}
 
-      {/* Forecast — next 14 days of scheduled income/expense */}
       {data.forecast.length > 0 && (
         <Section id="upcoming" defaultOpen={false} count={data.forecast.length} title="Coming up — next 14 days" icon={<Calendar size={13} className="text-blue-500" />}>
           <div className="space-y-1.5">

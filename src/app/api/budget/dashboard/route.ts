@@ -7,7 +7,6 @@ import {
   forecastOccurrences,
   detectRecurringPatterns,
   computeRuleVariance,
-  occurrencesBetween,
   normalizeBudgetToMonthly,
   monthElapsedPercent,
   computeCategoryBudgets,
@@ -28,6 +27,13 @@ import {
   type PatternSuggestion,
   type RuleVariance,
 } from '@/lib/budgetDb';
+import {
+  computeExpectedVsActual,
+  computeOverdueBills,
+  emptyExpectedVsActual,
+  type ExpectedVsActual,
+  type OverdueBill,
+} from '@/lib/budgetExpected';
 
 export type Tx = {
   pageId: string;
@@ -67,13 +73,8 @@ export type DashboardPayload = {
   expenses: number;
   net: number;
   prevMonth: { income: number; expenses: number; net: number };
-  expectedVsActual: {
-    incomeExpected: number;
-    incomeActual: number;
-    expenseExpected: number;
-    expenseActual: number;
-    rules: { ruleId: string; name: string; type: string; expectedAmt: number; expectedCount: number; matchedCount: number; matchedTotal: number }[];
-  };
+  expectedVsActual: ExpectedVsActual;
+  overdueBills: OverdueBill[];
   byCategory: { category: string; spent: number; pct: number }[];
   // Per-category envelope targets (Type=Budget rows) joined to this month's spend
   categoryBudgets: CategoryBudget[];
@@ -506,71 +507,12 @@ export async function GET(req: NextRequest) {
     console.warn('[budget-dashboard] auto-budget skipped:', (e as Error).message);
   }
 
-  // ── Expected vs Actual ──────────────────────────────────────────────────
-  let expectedVsActual: DashboardPayload['expectedVsActual'] = {
-    incomeExpected: 0, incomeActual: 0,
-    expenseExpected: 0, expenseActual: 0,
-    rules: [],
-  };
+  let expectedVsActual = emptyExpectedVsActual();
+  let overdueBills: OverdueBill[] = [];
   try {
     const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
-    const ruleResults: DashboardPayload['expectedVsActual']['rules'] = [];
-    let totalIncomeExpected = 0;
-    let totalExpenseExpected = 0;
-
-    for (const rule of rules) {
-      const dueDates = occurrencesBetween(
-        rule.anchorDate,
-        rule.frequency as 'weekly' | 'biweekly' | 'semimonthly' | 'monthly',
-        displayMonthStart,
-        new Date(Math.min(displayMonthEnd.getTime(), Date.now())), // don't forecast past today
-      );
-      if (dueDates.length === 0) continue;
-
-      const expectedCount = dueDates.length;
-      const expectedTotal = expectedCount * rule.amount;
-      if (rule.type === 'income') totalIncomeExpected += expectedTotal;
-      else totalExpenseExpected += expectedTotal;
-
-      // Match each expected occurrence against actual transactions
-      let matchedCount = 0;
-      let matchedTotal = 0;
-      for (const due of dueDates) {
-        const match = usedThis.find((t) => {
-          if (!vendorsSimilar(t.vendor, rule.name)) return false;
-          const tAbs = Math.abs(t.amount);
-          if (Math.abs(tAbs - rule.amount) / rule.amount > 0.3) return false;
-          const threeDays = 3 * 24 * 60 * 60 * 1000;
-          if (Math.abs(new Date(t.date + 'T00:00:00').getTime() - due.getTime()) > threeDays) return false;
-          return true;
-        });
-        if (match) {
-          matchedCount++;
-          matchedTotal += Math.abs(match.amount);
-        }
-      }
-
-      ruleResults.push({
-        ruleId: rule.id,
-        name: rule.name,
-        type: rule.type,
-        expectedAmt: rule.amount,
-        expectedCount,
-        matchedCount,
-        matchedTotal: Math.round(matchedTotal * 100) / 100,
-      });
-    }
-
-    const incomeActual = usedThis.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-    const expenseActual = usedThis.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
-
-    expectedVsActual = {
-      incomeExpected: Math.round(totalIncomeExpected * 100) / 100,
-      incomeActual: Math.round(incomeActual * 100) / 100,
-      expenseExpected: Math.round(totalExpenseExpected * 100) / 100,
-      expenseActual: Math.round(expenseActual * 100) / 100,
-      rules: ruleResults,
-    };
+    expectedVsActual = computeExpectedVsActual(rules, usedThis, { start: displayMonthStart, end: displayMonthEnd, now });
+    overdueBills = computeOverdueBills(rules, all, now);
   } catch (e) {
     console.warn('[budget-dashboard] expected-vs-actual skipped:', (e as Error).message);
   }
@@ -586,6 +528,7 @@ export async function GET(req: NextRequest) {
     net: income - expenses,
     prevMonth: { income: prevIncome, expenses: prevExpenses, net: prevIncome - prevExpenses },
     expectedVsActual,
+    overdueBills,
     byCategory,
     categoryBudgets,
     categoryOptions,
