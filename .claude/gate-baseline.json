@@ -579,9 +579,6 @@
       "complexity": 37,
       "anyCount": 1
     },
-    "src/components/pomodoro/PomodoroTimer.tsx": {
-      "functionLoc": 248
-    },
     "src/components/search/SearchModal.tsx": {
       "functionLoc": 140
     },
