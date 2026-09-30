@@ -8,6 +8,7 @@ export type DbPropertyDef = {
 export type DbViewDef = {
   name: string;
   type: 'table' | 'board' | 'calendar' | 'gallery' | 'list' | 'budget-summary' | 'spending-breakdown';
+  filters?: { property: string; op: 'contains' | 'eq' | 'gte' | 'lte'; value: string }[];
 };
 
 export type DbTemplate = {
@@ -181,6 +182,31 @@ export const DB_TEMPLATES: DbTemplate[] = [
     views: [
       { name: 'All Contacts', type: 'table' },
       { name: 'Pipeline', type: 'board' },
+    ],
+  },
+  {
+    id: 'guest-list',
+    name: 'Guest List',
+    description: 'Track RSVPs, who actually came, and who you have invited next. Import a Partiful guest CSV or paste a list of names.',
+    icon: '🎟️',
+    properties: [
+      { name: 'Status', type: 'select', options: ['Going', 'Maybe', "Can't Go", 'Invited'] },
+      { name: 'Source', type: 'select', options: ['Partiful', 'Text', 'DM', 'Walk-in'] },
+      { name: 'Attended', type: 'select', options: ['Yes', 'No'] },
+      { name: 'Sunday Invite', type: 'select', options: ['Not invited', 'Invited', 'Confirmed'] },
+      { name: 'Phone / IG', type: 'text' },
+      { name: 'RSVP date', type: 'date' },
+      { name: 'Invited By', type: 'text' },
+      { name: 'Is Plus One Of', type: 'text' },
+    ],
+    views: [
+      { name: 'All Guests', type: 'table' },
+      { name: 'Came, not yet invited', type: 'table', filters: [
+        { property: 'Attended', op: 'eq', value: 'Yes' },
+        { property: 'Sunday Invite', op: 'eq', value: 'Not invited' },
+      ] },
+      { name: 'Invited', type: 'table', filters: [{ property: 'Sunday Invite', op: 'eq', value: 'Invited' }] },
+      { name: 'Board', type: 'board' },
     ],
   },
 ];

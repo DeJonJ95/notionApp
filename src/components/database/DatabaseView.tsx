@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { computeFormulaValues, getPositionBetween } from '@/lib/utils';
 import { RelationCell, RollupCell } from './RelationCell';
+import { RowTools } from './RowTools';
 import { confirmDialog, toast } from '@/components/ui/feedback';
 import { EntityIcon } from '@/components/icons/registry';
 
@@ -235,8 +236,6 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
       .catch(() => { toast.error(failMsg); reconcile(); });
   };
 
-  // Back-compat shim: code/paths that still call onUpdate() get a background
-  // reconcile (no longer blocks UI, since local state already changed).
   const onUpdate = reconcile;
   const [expandedSpendCats, setExpandedSpendCats] = useState<Set<string>>(new Set());
 
@@ -2398,6 +2397,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
             <span className="hidden sm:inline">Add View</span>
             <span className="sm:hidden">+ View</span>
           </button>
+          <RowTools database={database} rows={viewedPages} onImported={onUpdate} />
         </div>
         <div className="flex items-center gap-2">
           <button

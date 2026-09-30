@@ -32,10 +32,10 @@ export async function POST(req: NextRequest) {
       data: { name: dbName, workspaceId },
     });
 
-    // Create properties in order
+    const propIds = new Map<string, string>();
     for (let i = 0; i < template.properties.length; i++) {
       const prop = template.properties[i];
-      await tx.property.create({
+      const created = await tx.property.create({
         data: {
           name: prop.name,
           type: prop.type,
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
           databaseId: db.id,
         },
       });
+      propIds.set(prop.name, created.id);
     }
 
     // Create views in order
@@ -56,6 +57,9 @@ export async function POST(req: NextRequest) {
           name: view.name,
           type: view.type,
           databaseId: db.id,
+          filters: view.filters
+            ? view.filters.flatMap((f) => (propIds.has(f.property) ? [{ propertyId: propIds.get(f.property)!, op: f.op, value: f.value }] : []))
+            : undefined,
         },
       });
     }
