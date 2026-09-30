@@ -119,3 +119,11 @@ describe('invite messages', () => {
     expect(contactLink(null, 'hi')).toBeNull();
   });
 });
+
+describe('emoji-only names', () => {
+  it('keep a key so the same guest matches on re-import', () => {
+    expect(normalizeName('🤍')).toBe('🤍');
+    expect(buildIndex([person('e', '🤍 ')]).find('🤍')).toBe('e');
+    expect(normalizeName('Kynzi 🤍')).toBe('kynzi');
+  });
+});

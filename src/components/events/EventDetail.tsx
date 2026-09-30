@@ -108,6 +108,9 @@ export function EventDetail({ id }: { id: string }) {
             onRsvp={(g, rsvp) => patchGuest(g, { rsvp })}
             onRemove={removeGuest}
             onMerge={mergeGuest}
+            onContact={(g, action) =>
+              patchGuest(g, { contactGiven: null, person: action === 'accept' ? { ...g.person, contact: g.contactGiven } : g.person }, { contact: action })
+            }
           />
         </div>
         <div className="space-y-8">

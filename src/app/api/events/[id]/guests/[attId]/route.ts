@@ -10,6 +10,7 @@ const patchSchema = z.object({
   rsvp: z.enum(['going', 'maybe', 'cant-go', 'invited']).nullable().optional(),
   source: z.enum(['partiful', 'text', 'dm', 'walk-in', 'qr']).nullable().optional(),
   sent: z.boolean().optional(),
+  contact: z.enum(['accept', 'dismiss']).optional(),
 });
 
 async function owned(ctx: Ctx) {
@@ -17,18 +18,23 @@ async function owned(ctx: Ctx) {
   if (!userId) return null;
   return prisma.attendance.findFirst({
     where: { id: ctx.params.attId, eventId: ctx.params.id, event: { ownerId: userId } },
-    select: { id: true },
+    select: { id: true, personId: true, contactGiven: true },
   });
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
-  if (!(await owned(ctx))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const current = await owned(ctx);
+  if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
-  const { attended, sent, ...rest } = parsed.data;
+  const { attended, sent, contact, ...rest } = parsed.data;
+  if (contact === 'accept' && current.contactGiven) {
+    await prisma.person.update({ where: { id: current.personId }, data: { contact: current.contactGiven } });
+  }
+  const pending = contact ? { contactGiven: null } : {};
   const checkIn = attended === undefined ? {} : { attended, checkedInAt: attended ? new Date() : null };
   const invite = sent === undefined ? {} : { invitedAt: sent ? new Date() : null };
-  const row = await prisma.attendance.update({ where: { id: ctx.params.attId }, data: { ...rest, ...checkIn, ...invite } });
+  const row = await prisma.attendance.update({ where: { id: ctx.params.attId }, data: { ...rest, ...checkIn, ...invite, ...pending } });
   return NextResponse.json(row);
 }
 

@@ -476,21 +476,22 @@ model Event {
 }
 
 model Attendance {
-  id          String    @id @default(cuid())
-  eventId     String
-  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  personId    String
-  person      Person    @relation("AttendancePerson", fields: [personId], references: [id], onDelete: Cascade)
-  source      String? // partiful | text | dm | walk-in | qr
-  rsvp        String? // going | maybe | cant-go | invited
-  rsvpAt      DateTime?
-  attended    Boolean   @default(false)
-  checkedInAt DateTime?
-  invitedAt   DateTime?
-  invitedBy   String?
-  guestOfId   String?
-  guestOf     Person?   @relation("AttendanceGuestOf", fields: [guestOfId], references: [id], onDelete: SetNull)
-  createdAt   DateTime  @default(now())
+  id           String    @id @default(cuid())
+  eventId      String
+  event        Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  personId     String
+  person       Person    @relation("AttendancePerson", fields: [personId], references: [id], onDelete: Cascade)
+  source       String? // partiful | text | dm | walk-in | qr
+  rsvp         String? // going | maybe | cant-go | invited
+  rsvpAt       DateTime?
+  attended     Boolean   @default(false)
+  checkedInAt  DateTime?
+  invitedAt    DateTime?
+  contactGiven String? // typed at the public check-in for an existing guest; the host confirms it
+  invitedBy    String?
+  guestOfId    String?
+  guestOf      Person?   @relation("AttendanceGuestOf", fields: [guestOfId], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
 
   @@unique([eventId, personId])
   @@index([personId])

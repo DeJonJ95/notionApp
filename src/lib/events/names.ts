@@ -1,11 +1,14 @@
 export function normalizeName(name: string): string {
-  return name
+  const plain = name
     .normalize('NFKD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s'+]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
+  // An emoji-only name has nothing left once symbols go; keep it as typed so
+  // it still matches itself on the next import.
+  return plain || name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 export function normalizeContact(contact: string): string {

@@ -19,7 +19,7 @@ export async function loadEventView(eventId: string, ownerId: string) {
   const ids = event.attendances.map((a) => a.personId);
   const [prior, people] = await Promise.all([
     prisma.attendance.findMany({
-      where: { personId: { in: ids }, event: { date: { lt: event.date } } },
+      where: { personId: { in: ids }, event: { date: { lt: event.date < new Date() ? event.date : new Date() } } },
       select: { personId: true, attended: true, rsvp: true },
     }),
     prisma.person.findMany({
@@ -33,8 +33,7 @@ export async function loadEventView(eventId: string, ownerId: string) {
     if (p.attended) came.set(p.personId, (came.get(p.personId) ?? 0) + 1);
     else if (p.rsvp === 'going') missed.set(p.personId, (missed.get(p.personId) ?? 0) + 1);
   }
-  const onList = new Set(ids);
-  const veterans = people.filter((p) => p._count.attendances > 0 && !onList.has(p.id));
+  const veterans = people.filter((p) => p._count.attendances > 0);
 
   return {
     ...event,
@@ -42,7 +41,7 @@ export async function loadEventView(eventId: string, ownerId: string) {
       const cameBefore = came.get(a.personId) ?? 0;
       const maybeSame = cameBefore || a.person.isPlaceholder
         ? []
-        : veterans.filter((v) => duplicateReason(a.person, v)).slice(0, 3).map((v) => ({ id: v.id, name: v.name }));
+        : veterans.filter((v) => v.id !== a.personId && duplicateReason(a.person, v)).slice(0, 3).map((v) => ({ id: v.id, name: v.name }));
       return { ...a, cameBefore, missedBefore: missed.get(a.personId) ?? 0, maybeSame };
     }),
   };

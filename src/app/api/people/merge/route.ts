@@ -29,7 +29,17 @@ export async function POST(req: NextRequest) {
       if (!clash) return prisma.attendance.update({ where: { id: a.id }, data: { personId: keep.id } });
       return prisma.attendance.update({
         where: { id: clash.id },
-        data: { attended: clash.attended || a.attended, rsvp: clash.rsvp ?? a.rsvp, source: clash.source ?? a.source },
+        data: {
+          attended: clash.attended || a.attended,
+          checkedInAt: clash.checkedInAt ?? a.checkedInAt,
+          invitedAt: clash.invitedAt ?? a.invitedAt,
+          rsvp: clash.rsvp ?? a.rsvp,
+          rsvpAt: clash.rsvpAt ?? a.rsvpAt,
+          source: clash.source ?? a.source,
+          invitedBy: clash.invitedBy ?? a.invitedBy,
+          guestOfId: clash.guestOfId ?? a.guestOfId,
+          contactGiven: clash.contactGiven ?? a.contactGiven,
+        },
       });
     }),
     prisma.attendance.updateMany({ where: { guestOfId: gone.id }, data: { guestOfId: keep.id } }),

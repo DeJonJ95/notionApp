@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { currentUserId } from '@/lib/events/session';
 import { suggestInvites } from '@/lib/events/suggest';
+import { duplicateReason } from '@/lib/events/match';
 
 type Ctx = { params: { id: string } };
 
@@ -11,7 +12,11 @@ async function context(eventId: string) {
   if (!userId) return null;
   const event = await prisma.event.findFirst({
     where: { id: eventId, ownerId: userId },
-    select: { id: true, date: true, attendances: { select: { personId: true } } },
+    select: {
+      id: true,
+      date: true,
+      attendances: { select: { personId: true, person: { select: { id: true, name: true, aliases: true, contact: true, isPlaceholder: true } } } },
+    },
   });
   return event ? { userId, event } : null;
 }
@@ -47,13 +52,20 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   );
   const people = await prisma.person.findMany({
     where: { id: { in: suggestions.map((s) => s.personId) } },
-    select: { id: true, name: true, contact: true },
+    select: { id: true, name: true, aliases: true, contact: true, isPlaceholder: true },
   });
   const byId = new Map(people.map((p) => [p.id, p]));
+  const listed = ctx.event.attendances.map((a) => a.person).filter((p) => !p.isPlaceholder);
+  // Someone listed under another spelling ("Deciah" vs "Deciah Mahone") is
+  // flagged so they aren't invited twice before the host merges them.
+  const listedAs = (id: string) => {
+    const p = byId.get(id);
+    return p ? listed.find((l) => duplicateReason(p, l))?.name ?? null : null;
+  };
   return NextResponse.json({
     events,
     from,
-    suggestions: suggestions.map((s) => ({ ...s, person: byId.get(s.personId) })),
+    suggestions: suggestions.map((s) => ({ ...s, person: byId.get(s.personId), maybeListedAs: listedAs(s.personId) })),
   });
 }
 

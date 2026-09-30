@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { selfCheckIn } from '@/lib/events/checkin';
+import { selfCheckIn, tooManyCheckIns } from '@/lib/events/checkin';
 
 type Ctx = { params: { token: string } };
 
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest, { params }: Ctx) {
   const event = await findEvent(params.token);
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!event.checkInOpen) return NextResponse.json({ error: 'Check-in is closed' }, { status: 403 });
+  if (await tooManyCheckIns(event.id)) return NextResponse.json({ error: 'Too many check-ins right now. Try again in a minute.' }, { status: 429 });
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Enter your name' }, { status: 400 });
   await selfCheckIn(event, parsed.data.name, parsed.data.contact || null);

@@ -36,9 +36,10 @@ type Props = {
   onRsvp: (g: Guest, rsvp: string | null) => void;
   onRemove: (g: Guest) => void;
   onMerge: (g: Guest, into: { id: string; name: string }) => void;
+  onContact: (g: Guest, action: 'accept' | 'dismiss') => void;
 };
 
-function GuestRow({ g, onToggle, onRsvp, onRemove, onMerge }: { g: Guest } & Omit<Props, 'guests'>) {
+function GuestRow({ g, onToggle, onRsvp, onRemove, onMerge, onContact }: { g: Guest } & Omit<Props, 'guests'>) {
   return (
     <li className="flex items-center gap-3 py-2">
       <button
@@ -60,6 +61,13 @@ function GuestRow({ g, onToggle, onRsvp, onRemove, onMerge }: { g: Guest } & Omi
             </span>
           )}
         </div>
+        {g.contactGiven && (
+          <span className="block text-xs text-text">
+            Gave {g.contactGiven} at check-in:{' '}
+            <button onClick={() => onContact(g, 'accept')} className="text-accent hover:underline">save</button>{' · '}
+            <button onClick={() => onContact(g, 'dismiss')} className="text-accent hover:underline">ignore</button>
+          </span>
+        )}
         {g.maybeSame.map((m) => (
           <button key={m.id} onClick={() => onMerge(g, m)} className="block text-xs text-accent hover:underline">
             Same person as {m.name}? Merge

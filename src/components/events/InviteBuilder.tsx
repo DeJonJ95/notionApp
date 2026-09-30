@@ -10,6 +10,7 @@ type Suggestion = {
   cameTotal: number;
   noShows: number;
   person?: { id: string; name: string; contact: string | null };
+  maybeListedAs: string | null;
 };
 type Data = { events: { id: string; name: string; date: string }[]; from: string[]; suggestions: Suggestion[] };
 
@@ -24,7 +25,7 @@ function SuggestionList({ suggestions, picked, onToggle }: { suggestions: Sugges
                   <input type="checkbox" checked={picked.has(s.personId)} onChange={() => onToggle(s.personId)} />
                   <span className="flex-1 truncate">{s.person?.name}</span>
                   <span className="text-xs text-muted tabular-nums whitespace-nowrap">
-                    came {s.cameTotal}×{s.noShows ? ` · ${s.noShows} no-show` : ''}{s.person?.contact ? '' : ' · no contact'}
+                    {s.maybeListedAs ? `may already be on the list as ${s.maybeListedAs}` : `came ${s.cameTotal}×${s.noShows ? ` · ${s.noShows} no-show` : ''}${s.person?.contact ? '' : ' · no contact'}`}
                   </span>
                 </label>
               </li>
@@ -45,7 +46,7 @@ export function InviteBuilder({ eventId, onAdded }: { eventId: string; onAdded: 
     if (from) q.set('from', from.join(','));
     api<Data>(`/api/events/${eventId}/invites?${q}`).then((d) => {
       setData(d);
-      setPicked(new Set(d.suggestions.map((s) => s.personId)));
+      setPicked(new Set(d.suggestions.filter((s) => !s.maybeListedAs).map((s) => s.personId)));
     }).catch(() => toast.error('Could not load suggestions'));
   }, [eventId, from, include, maxNoShows]);
   useEffect(load, [load]);

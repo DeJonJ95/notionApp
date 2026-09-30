@@ -10,6 +10,7 @@ type Default = { prop: string; value: string };
 const field = 'bg-bg text-text border border-border rounded px-2 py-1 text-sm';
 const ghost = 'px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border text-sm';
 
+const CONTACT_PROPS = ['phone / ig', 'phone', 'contact', 'instagram', 'ig'];
 const PARTIFUL_HEADERS = ['rsvp date', 'is plus one of'];
 const PARTIFUL_DEFAULTS: Default[] = [
   { prop: 'Source', value: 'Partiful' },
@@ -36,7 +37,8 @@ export function ImportModal({ database, onClose, onImported }: { database: ToolD
   const [busy, setBusy] = useState(false);
 
   const editable = database.properties.filter((p) => !['formula', 'relation', 'rollup'].includes(p.type));
-  const parsed = useMemo(() => parseImportText(text, ['Name', editable[0]?.name ?? '']), [text, editable]);
+  const contactProp = editable.find((p) => CONTACT_PROPS.includes(p.name.trim().toLowerCase()))?.name ?? '';
+  const parsed = useMemo(() => parseImportText(text, ['Name', contactProp]), [text, contactProp]);
   const known = new Set(editable.map((p) => p.name.toLowerCase()));
   const matched = parsed.columns.filter((c) => known.has(c.toLowerCase()));
   const skipped = parsed.columns.filter((c) => c && !known.has(c.toLowerCase()));

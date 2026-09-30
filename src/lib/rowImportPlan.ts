@@ -25,10 +25,12 @@ export function planImport(db: ImportDb, userId: string, rows: ImportRow[], defa
     for (const [col, raw] of Object.entries(values)) {
       const prop = propByName.get(col.trim().toLowerCase());
       if (!prop || LINKED.includes(prop.type)) { ignored.add(col); continue; }
-      const value = normalizeCell(prop.type, raw);
+      let value = normalizeCell(prop.type, raw);
       if (value === null || value === '') continue;
-      if (prop.type === 'select' && !optionsOf(prop).some((o) => o.toLowerCase() === String(value).toLowerCase())) {
-        added.set(prop.id, (added.get(prop.id) ?? new Set()).add(String(value)));
+      if (prop.type === 'select') {
+        const known = optionsOf(prop).find((o) => o.toLowerCase() === String(value).toLowerCase());
+        if (known) value = known;
+        else added.set(prop.id, (added.get(prop.id) ?? new Set()).add(String(value)));
       }
       out.push({ propertyId: prop.id, value: value as Prisma.InputJsonValue });
     }

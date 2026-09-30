@@ -19,6 +19,7 @@ export type Guest = {
   missedBefore: number;
   maybeSame: { id: string; name: string }[];
   invitedAt: string | null;
+  contactGiven: string | null;
   person: { id: string; name: string; contact: string | null; isPlaceholder: boolean };
   guestOf: { id: string; name: string } | null;
 };
