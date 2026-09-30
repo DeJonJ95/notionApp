@@ -10,6 +10,12 @@ type Default = { prop: string; value: string };
 const field = 'bg-bg text-text border border-border rounded px-2 py-1 text-sm';
 const ghost = 'px-3 py-1.5 bg-surface text-text border border-border rounded hover:bg-border text-sm';
 
+const PARTIFUL_HEADERS = ['rsvp date', 'is plus one of'];
+const PARTIFUL_DEFAULTS: Default[] = [
+  { prop: 'Source', value: 'Partiful' },
+  { prop: 'Sunday Invite', value: 'Not invited' },
+];
+
 async function postImport(dbId: string, rows: unknown, defaults: Default[]) {
   const res = await fetch(`/api/databases/${dbId}/import`, {
     method: 'POST',
@@ -34,12 +40,15 @@ export function ImportModal({ database, onClose, onImported }: { database: ToolD
   const known = new Set(editable.map((p) => p.name.toLowerCase()));
   const matched = parsed.columns.filter((c) => known.has(c.toLowerCase()));
   const skipped = parsed.columns.filter((c) => c && !known.has(c.toLowerCase()));
+  const isPartiful = PARTIFUL_HEADERS.every((h) => parsed.columns.some((c) => c.toLowerCase() === h));
+  const auto = isPartiful ? PARTIFUL_DEFAULTS.filter((d) => known.has(d.prop.toLowerCase())) : [];
+  const effective = [...auto.filter((a) => !defaults.some((d) => d.prop === a.prop && d.value)), ...defaults];
   const setDefault = (i: number, patch: Partial<Default>) => setDefaults(defaults.map((d, j) => (j === i ? { ...d, ...patch } : d)));
 
   const submit = async () => {
     setBusy(true);
     try {
-      const r = await postImport(database.id, parsed.rows, defaults);
+      const r = await postImport(database.id, parsed.rows, effective);
       toast.success(`Added ${r.created}, updated ${r.updated}`);
       onImported();
       onClose();
@@ -70,6 +79,9 @@ export function ImportModal({ database, onClose, onImported }: { database: ToolD
         )}
         <div className="space-y-1.5">
           <p className="text-sm text-text">Set on new rows</p>
+          {auto.length > 0 && (
+            <p className="text-sm text-text">Partiful export detected: {auto.map((a) => `${a.prop} = ${a.value}`).join(', ')}. Add a default below to override.</p>
+          )}
           {defaults.map((d, i) => (
             <div key={i} className="flex gap-2">
               <select value={d.prop} onChange={(e) => setDefault(i, { prop: e.target.value })} className={field}>
