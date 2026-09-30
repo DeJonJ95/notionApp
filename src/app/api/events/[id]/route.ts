@@ -16,7 +16,7 @@ const patchSchema = z.object({
 async function owned(id: string) {
   const userId = await currentUserId();
   if (!userId) return null;
-  return prisma.event.findFirst({ where: { id, ownerId: userId }, select: { id: true } });
+  return prisma.event.findFirst({ where: { id, ownerId: userId }, select: { id: true, ownerId: true } });
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
@@ -25,7 +25,6 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
     where: { id: params.id },
     include: {
       attendances: {
-        orderBy: [{ attended: 'desc' }, { createdAt: 'asc' }],
         include: {
           person: { select: { id: true, name: true, contact: true, isPlaceholder: true } },
           guestOf: { select: { id: true, name: true } },
@@ -48,7 +47,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Ctx) {
-  if (!(await owned(params.id))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  await prisma.event.delete({ where: { id: params.id } });
+  const event = await owned(params.id);
+  if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // An unnamed "+1" exists only through its event, so it goes with it.
+  await prisma.$transaction([
+    prisma.event.delete({ where: { id: params.id } }),
+    prisma.person.deleteMany({ where: { ownerId: event.ownerId, isPlaceholder: true, attendances: { none: {} } } }),
+  ]);
   return NextResponse.json({ ok: true });
 }

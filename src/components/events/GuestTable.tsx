@@ -63,7 +63,9 @@ export function GuestTable({ guests, ...handlers }: Props) {
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     const test = FILTERS.find((f) => f.key === filter)!.test;
-    return guests.filter((g) => test(g) && (!q || g.person.name.toLowerCase().includes(q) || g.person.contact?.toLowerCase().includes(q)));
+    return guests
+      .filter((g) => test(g) && (!q || g.person.name.toLowerCase().includes(q) || g.person.contact?.toLowerCase().includes(q)))
+      .sort((a, b) => a.person.name.localeCompare(b.person.name, undefined, { sensitivity: 'base' }));
   }, [guests, query, filter]);
 
   return (

@@ -67,7 +67,6 @@ export async function ingestGuests(ownerId: string, eventId: string, rows: Guest
 
 function upsertAttendance(eventId: string, { row, personId, guestOfId }: Resolved) {
   const fields: Prisma.AttendanceUncheckedUpdateInput = {};
-  if (row.source) fields.source = row.source;
   if (row.rsvp) fields.rsvp = row.rsvp;
   const rsvpAt = parseDate(row.rsvpAt);
   if (rsvpAt) fields.rsvpAt = rsvpAt;
@@ -80,6 +79,8 @@ function upsertAttendance(eventId: string, { row, personId, guestOfId }: Resolve
   return prisma.attendance.upsert({
     where: { eventId_personId: { eventId, personId } },
     update: fields,
-    create: { ...(fields as Prisma.AttendanceUncheckedCreateInput), eventId, personId },
+    // How someone first reached this event is kept: checking in a Partiful RSVP
+    // at the door must not relabel them a walk-in.
+    create: { ...(fields as Prisma.AttendanceUncheckedCreateInput), source: row.source ?? null, eventId, personId },
   });
 }
