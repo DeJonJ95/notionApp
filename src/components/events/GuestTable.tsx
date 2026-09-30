@@ -27,14 +27,18 @@ function groupByRsvp(guests: Guest[]): [string, Guest[]][] {
   );
 }
 
+const historyLabel = (g: Guest) =>
+  g.cameBefore ? `Came ${g.cameBefore}× before` : g.missedBefore ? `RSVP'd ${g.missedBefore}×, never came` : 'New';
+
 type Props = {
   guests: Guest[];
   onToggle: (g: Guest) => void;
   onRsvp: (g: Guest, rsvp: string | null) => void;
   onRemove: (g: Guest) => void;
+  onMerge: (g: Guest, into: { id: string; name: string }) => void;
 };
 
-function GuestRow({ g, onToggle, onRsvp, onRemove }: { g: Guest } & Omit<Props, 'guests'>) {
+function GuestRow({ g, onToggle, onRsvp, onRemove, onMerge }: { g: Guest } & Omit<Props, 'guests'>) {
   return (
     <li className="flex items-center gap-3 py-2">
       <button
@@ -52,10 +56,15 @@ function GuestRow({ g, onToggle, onRsvp, onRemove }: { g: Guest } & Omit<Props, 
           <span className="text-text truncate">{g.person.name}</span>
           {!g.person.isPlaceholder && (
             <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted border border-border rounded px-1">
-              {g.cameBefore ? `Came ${g.cameBefore}× before` : 'New'}
+              {historyLabel(g)}
             </span>
           )}
         </div>
+        {g.maybeSame.map((m) => (
+          <button key={m.id} onClick={() => onMerge(g, m)} className="block text-xs text-accent hover:underline">
+            Same person as {m.name}? Merge
+          </button>
+        ))}
         <div className="text-xs text-muted truncate">
           {[g.guestOf && `with ${g.guestOf.name}`, g.person.contact, g.source && SOURCE_LABELS[g.source]].filter(Boolean).join(' · ')}
         </div>

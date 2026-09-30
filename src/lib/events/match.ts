@@ -53,7 +53,7 @@ export function possibleDuplicates(people: MatchablePerson[]): DuplicatePair[] {
   return pairs;
 }
 
-function duplicateReason(a: MatchablePerson, b: MatchablePerson): string | null {
+export function duplicateReason(a: MatchablePerson, b: MatchablePerson): string | null {
   const na = normalizeName(a.name);
   const nb = normalizeName(b.name);
   if (na.replace(/\s/g, '') === nb.replace(/\s/g, '')) return 'Same name';

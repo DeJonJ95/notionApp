@@ -459,17 +459,18 @@ model Person {
 }
 
 model Event {
-  id           String       @id @default(cuid())
-  ownerId      String
-  owner        User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name         String
-  date         DateTime
-  venue        String?
-  link         String?
-  checkInToken String       @unique @default(cuid())
-  checkInOpen  Boolean      @default(false)
-  createdAt    DateTime     @default(now())
-  attendances  Attendance[]
+  id            String       @id @default(cuid())
+  ownerId       String
+  owner         User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  date          DateTime
+  venue         String?
+  link          String?
+  checkInToken  String       @unique @default(cuid())
+  checkInOpen   Boolean      @default(false)
+  inviteMessage String?
+  createdAt     DateTime     @default(now())
+  attendances   Attendance[]
 
   @@index([ownerId, date])
 }
@@ -485,6 +486,7 @@ model Attendance {
   rsvpAt      DateTime?
   attended    Boolean   @default(false)
   checkedInAt DateTime?
+  invitedAt   DateTime?
   invitedBy   String?
   guestOfId   String?
   guestOf     Person?   @relation("AttendanceGuestOf", fields: [guestOfId], references: [id], onDelete: SetNull)

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { currentUserId } from '@/lib/events/session';
+import { loadEventView } from '@/lib/events/eventView';
 
 type Ctx = { params: { id: string } };
 
@@ -11,6 +12,7 @@ const patchSchema = z.object({
   venue: z.string().max(200).nullable().optional(),
   link: z.string().max(500).nullable().optional(),
   checkInOpen: z.boolean().optional(),
+  inviteMessage: z.string().max(1000).nullable().optional(),
 });
 
 async function owned(id: string) {
@@ -20,29 +22,10 @@ async function owned(id: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: Ctx) {
-  if (!(await owned(params.id))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const event = await prisma.event.findUnique({
-    where: { id: params.id },
-    include: {
-      attendances: {
-        include: {
-          person: { select: { id: true, name: true, contact: true, isPlaceholder: true } },
-          guestOf: { select: { id: true, name: true } },
-        },
-      },
-    },
-  });
+  const userId = await currentUserId();
+  const event = userId ? await loadEventView(params.id, userId) : null;
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const prior = await prisma.attendance.groupBy({
-    by: ['personId'],
-    where: { personId: { in: event.attendances.map((a) => a.personId) }, attended: true, event: { date: { lt: event.date } } },
-    _count: { _all: true },
-  });
-  const cameBefore = new Map(prior.map((p) => [p.personId, p._count._all]));
-  return NextResponse.json({
-    ...event,
-    attendances: event.attendances.map((a) => ({ ...a, cameBefore: cameBefore.get(a.personId) ?? 0 })),
-  });
+  return NextResponse.json(event);
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {

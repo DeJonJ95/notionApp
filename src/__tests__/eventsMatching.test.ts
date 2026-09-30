@@ -3,6 +3,8 @@ import { buildIndex, possibleDuplicates, type MatchablePerson } from '@/lib/even
 import { parseGuestText, toRsvp } from '@/lib/events/guestRows';
 import { guestRowsFromDatabase } from '@/lib/events/fromDatabase';
 import { personStats } from '@/lib/events/stats';
+import { suggestInvites } from '@/lib/events/suggest';
+import { contactLink, fillMessage } from '@/lib/events/message';
 
 const person = (id: string, name: string, extra: Partial<MatchablePerson> = {}): MatchablePerson => ({
   id, name, aliases: [], contact: null, isPlaceholder: false, ...extra,
@@ -83,5 +85,37 @@ describe('toRsvp', () => {
   it('accepts curly apostrophes and extra spaces in Partiful statuses', () => {
     expect(toRsvp('Can’t  Go')).toBe('cant-go');
     expect(toRsvp('Invited')).toBe('invited');
+  });
+});
+
+describe('suggestInvites', () => {
+  const d = (s: string) => new Date(s);
+  const history = [
+    { personId: 'reg', eventId: 'e1', eventDate: d('2026-08-01'), rsvp: 'going', attended: true },
+    { personId: 'reg', eventId: 'e2', eventDate: d('2026-09-06'), rsvp: 'going', attended: true },
+    { personId: 'once', eventId: 'e2', eventDate: d('2026-09-06'), rsvp: null, attended: true },
+    { personId: 'flake', eventId: 'e2', eventDate: d('2026-09-06'), rsvp: 'going', attended: false },
+    { personId: 'flake', eventId: 'e1', eventDate: d('2026-08-01'), rsvp: 'going', attended: false },
+    { personId: 'listed', eventId: 'e2', eventDate: d('2026-09-06'), rsvp: 'going', attended: true },
+  ];
+  const now = d('2026-10-01');
+  it('ranks people who came, skipping anyone already listed', () => {
+    const r = suggestInvites(history, { fromEventIds: ['e2'], include: 'came', maxNoShows: null }, new Set(['listed']), now);
+    expect(r.map((s) => s.personId)).toEqual(['reg', 'once']);
+  });
+  it('can include RSVPs who did not come, capped by no-shows', () => {
+    const all = suggestInvites(history, { fromEventIds: ['e2'], include: 'came-or-rsvped', maxNoShows: null }, new Set(), now);
+    expect(all.map((s) => s.personId)).toContain('flake');
+    const capped = suggestInvites(history, { fromEventIds: ['e2'], include: 'came-or-rsvped', maxNoShows: 1 }, new Set(), now);
+    expect(capped.map((s) => s.personId)).not.toContain('flake');
+  });
+});
+
+describe('invite messages', () => {
+  it('fills the template and picks a channel from the contact', () => {
+    expect(fillMessage('Hey {first}! {event} {date} {link}', { name: 'Jordan H', event: 'S+S', date: 'Sun', link: 'x.co' })).toBe('Hey Jordan! S+S Sun x.co');
+    expect(contactLink('(313) 555-0101', 'hi')).toEqual({ kind: 'sms', href: 'sms:+13135550101?&body=hi' });
+    expect(contactLink('@jordan.h', 'hi')?.kind).toBe('instagram');
+    expect(contactLink(null, 'hi')).toBeNull();
   });
 });

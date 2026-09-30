@@ -16,6 +16,9 @@ export type Guest = {
   checkedInAt: string | null;
   invitedBy: string | null;
   cameBefore: number;
+  missedBefore: number;
+  maybeSame: { id: string; name: string }[];
+  invitedAt: string | null;
   person: { id: string; name: string; contact: string | null; isPlaceholder: boolean };
   guestOf: { id: string; name: string } | null;
 };
@@ -28,6 +31,7 @@ export type EventDetailData = {
   link: string | null;
   checkInToken: string;
   checkInOpen: boolean;
+  inviteMessage: string | null;
   attendances: Guest[];
 };
 

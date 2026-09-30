@@ -9,6 +9,7 @@ const patchSchema = z.object({
   attended: z.boolean().optional(),
   rsvp: z.enum(['going', 'maybe', 'cant-go', 'invited']).nullable().optional(),
   source: z.enum(['partiful', 'text', 'dm', 'walk-in', 'qr']).nullable().optional(),
+  sent: z.boolean().optional(),
 });
 
 async function owned(ctx: Ctx) {
@@ -24,9 +25,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   if (!(await owned(ctx))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
-  const { attended, ...rest } = parsed.data;
+  const { attended, sent, ...rest } = parsed.data;
   const checkIn = attended === undefined ? {} : { attended, checkedInAt: attended ? new Date() : null };
-  const row = await prisma.attendance.update({ where: { id: ctx.params.attId }, data: { ...rest, ...checkIn } });
+  const invite = sent === undefined ? {} : { invitedAt: sent ? new Date() : null };
+  const row = await prisma.attendance.update({ where: { id: ctx.params.attId }, data: { ...rest, ...checkIn, ...invite } });
   return NextResponse.json(row);
 }
 
