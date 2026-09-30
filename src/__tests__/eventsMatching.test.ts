@@ -1,6 +1,6 @@
 import { normalizeContact, normalizeName, plusOneHost } from '@/lib/events/names';
 import { buildIndex, possibleDuplicates, type MatchablePerson } from '@/lib/events/match';
-import { parseGuestText } from '@/lib/events/guestRows';
+import { parseGuestText, toRsvp } from '@/lib/events/guestRows';
 import { guestRowsFromDatabase } from '@/lib/events/fromDatabase';
 import { personStats } from '@/lib/events/stats';
 
@@ -76,5 +76,12 @@ describe('personStats', () => {
       { eventDate: new Date('2026-10-04'), rsvp: 'going', attended: false },
     ], now);
     expect(s).toEqual({ attended: 1, rsvps: 3, noShows: 1, lastAttended: new Date('2026-09-06') });
+  });
+});
+
+describe('toRsvp', () => {
+  it('accepts curly apostrophes and extra spaces in Partiful statuses', () => {
+    expect(toRsvp('Can’t  Go')).toBe('cant-go');
+    expect(toRsvp('Invited')).toBe('invited');
   });
 });

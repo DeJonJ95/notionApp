@@ -13,6 +13,20 @@ const FILTERS: { key: Filter; label: string; test: (g: Guest) => boolean }[] = [
   { key: 'walk-in', label: 'Walk-ins', test: (g) => g.attended && (!g.rsvp || g.source === 'walk-in' || g.source === 'qr') },
 ];
 
+const GROUPS: [string, string][] = [
+  ['going', 'Going'],
+  ['maybe', 'Maybe'],
+  ['invited', 'Invited'],
+  ['', 'No RSVP'],
+  ['cant-go', "Can't go"],
+];
+
+function groupByRsvp(guests: Guest[]): [string, Guest[]][] {
+  return GROUPS.map(([key, label]): [string, Guest[]] => [label, guests.filter((g) => (g.rsvp ?? '') === key)]).filter(
+    ([, rows]) => rows.length > 0,
+  );
+}
+
 type Props = {
   guests: Guest[];
   onToggle: (g: Guest) => void;
@@ -97,9 +111,19 @@ export function GuestTable({ guests, ...handlers }: Props) {
           </button>
         ))}
       </div>
-      <ul className="divide-y divide-border">
-        {shown.map((g) => <GuestRow key={g.id} g={g} {...handlers} />)}
-      </ul>
+      {groupByRsvp(shown).map(([label, rows], i, all) => (
+        <div key={label}>
+          {all.length > 1 && (
+            <h3 className={`flex items-baseline justify-between border-b-2 border-text pb-1 ${i ? 'mt-6' : ''}`}>
+              <span className="text-base font-semibold text-text">{label}</span>
+              <span className="text-sm text-text tabular-nums">{rows.length}</span>
+            </h3>
+          )}
+          <ul className="divide-y divide-border">
+            {rows.map((g) => <GuestRow key={g.id} g={g} {...handlers} />)}
+          </ul>
+        </div>
+      ))}
       {shown.length === 0 && <p className="text-sm text-text py-4">Nobody matches.</p>}
     </section>
   );

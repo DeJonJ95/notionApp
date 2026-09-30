@@ -18,6 +18,8 @@ const RSVP: Record<string, string> = {
   "can't go": 'cant-go',
   'cant go': 'cant-go',
   declined: 'cant-go',
+  'not going': 'cant-go',
+  "can't make it": 'cant-go',
   no: 'cant-go',
   invited: 'invited',
 };
@@ -25,7 +27,7 @@ const RSVP: Record<string, string> = {
 const SOURCES = ['partiful', 'text', 'dm', 'walk-in', 'qr'];
 
 export function toRsvp(raw: string | undefined): string | undefined {
-  return raw ? RSVP[raw.trim().toLowerCase()] : undefined;
+  return raw ? RSVP[raw.trim().toLowerCase().replace(/[’‘`]/g, "'").replace(/\s+/g, ' ')] : undefined;
 }
 
 export function toSource(raw: string | undefined): string | undefined {
