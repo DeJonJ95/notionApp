@@ -1,0 +1,439 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String?
+  image               String?
+  emailVerified       DateTime?
+  createdAt           DateTime             @default(now())
+  workspaces          Workspace[]
+  pages               Page[]
+  accounts            Account[]
+  sessions            Session[]
+  recurringRules      RecurringRule[]
+  categorizationRules CategorizationRule[]
+  savingsGoals        SavingsGoal[]
+  clipperTokens       ClipperToken[]
+  calendarTokens      CalendarToken[]
+  journalEntries      JournalEntry[]
+  importLogs          ImportLog[]
+  resumes             Resume[]
+  jobListings         JobListing[]
+  jobApplications     JobApplication[]
+}
+
+// ── ApplyKit: AI job-application assistant ──────────────────────────
+// A base resume the user uploads (expect ~3: e.g. "Frontend",
+// "Full-stack", "Eng Manager"). The original .docx lives in R2; we cache
+// the extracted plain text so the AI match step doesn't re-parse on every
+// analysis. Keys are prefixed with the userId so download auth is a
+// simple prefix check.
+model Resume {
+  id           String           @id @default(cuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label        String
+  r2Key        String // original resume object key in R2
+  fileType     String           @default("docx") // "docx" | "pdf"
+  parsedText   String           @db.Text
+  createdAt    DateTime         @default(now())
+  applications JobApplication[]
+
+  @@index([userId])
+}
+
+// One ingested job posting (from the hiring.cafe extension capture or a
+// manual paste). De-duped per user by source URL so re-capturing the same
+// posting updates rather than duplicates.
+model JobListing {
+  id           String          @id @default(cuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceUrl    String // hiring.cafe (or other) listing URL
+  applyUrl     String? // employer ATS apply link if known
+  company      String
+  title        String
+  location     String?
+  remote       Boolean         @default(true)
+  description  String          @db.Text
+  compMin      Int?
+  compMax      Int?
+  compCurrency String?         @default("USD")
+  field        String? // e.g. "Frontend", "Data", "Eng Manager"
+  rawJson      Json? // whatever the capture scraped, for debugging
+  createdAt    DateTime        @default(now())
+  analysis     Analysis?
+  application  JobApplication?
+
+  @@unique([userId, sourceUrl])
+  @@index([userId])
+}
+
+// DeepSeek's structured read of a listing against the user's resumes.
+// 1:1 with a listing and fully regenerable (re-running replaces it).
+model Analysis {
+  id                  String     @id @default(cuid())
+  listingId           String     @unique
+  listing             JobListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  keywords            Json // string[] of ATS keywords from the JD
+  requirements        Json // string[] of hard requirements
+  recommendedResumeId String?
+  scores              Json // [{ resumeId, label, score, rationale }]
+  suggestedTweaks     Json // [{ original, rewrite, reason, resumeId }]
+  gaps                Json? // string[] requirements no resume covers
+  atsNotes            String?    @db.Text
+  createdAt           DateTime   @default(now())
+}
+
+// Created when the user commits to applying. Holds the tailored .docx key
+// and drives the tracker. Status is a string validated by a zod enum in
+// src/lib/jobs/status.ts.
+model JobApplication {
+  id               String             @id @default(cuid())
+  userId           String
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listingId        String             @unique
+  listing          JobListing         @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  resumeId         String?
+  resume           Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  tailoredR2Key    String?
+  coverLetterR2Key String?
+  recruiterMessage String?            @db.Text
+  status           String             @default("SAVED")
+  field            String?
+  compOfferMin     Int?
+  compOfferMax     Int?
+  notes            String?            @db.Text
+  appliedAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  events           ApplicationEvent[]
+
+  @@index([userId, status])
+}
+
+// Append-only status-change log so the tracker can show a timeline.
+model ApplicationEvent {
+  id            String         @id @default(cuid())
+  applicationId String
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    String?
+  toStatus      String
+  note          String?
+  createdAt     DateTime       @default(now())
+
+  @@index([applicationId])
+}
+
+// Bearer tokens issued to the browser extension. Stored as a SHA-256
+// hash so a database leak doesn't compromise live tokens. The plaintext
+// value is only ever returned to the user once at generation time.
+model ClipperToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // First 8 chars of the raw token, shown in the settings UI so users
+  // can identify which token they're looking at without exposing the
+  // full secret. Indexed for the auth lookup happy path.
+  prefix     String
+  tokenHash  String    @unique
+  label      String? // optional user-supplied name ("My laptop")
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
+// A subscribe-by-URL token for the read-only ICS calendar feed. Calendar
+// apps (Google, Outlook) fetch the feed URL with no Authorization header,
+// so the secret lives in the URL path itself. Stored as a SHA-256 hash —
+// same model as ClipperToken — so a DB leak doesn't expose the live feed
+// URL. One feed per user: generating a new one replaces the old.
+model CalendarToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prefix     String
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
+
+// A daily journal entry — thin index over a Page, one per user per day.
+// Keeps the existing Page+Block storage model (so the TipTap editor
+// works for free) while giving us date-based lookup for the calendar.
+model JournalEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageId    String   @unique // 1:1 with the journal Page
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  date      DateTime // date only — @@unique per user
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
+}
+
+model CategorizationRule {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match     String // lowercased substring matched against vendor
+  category  String // category to force when matched
+  // Optional bounds on the ABSOLUTE amount, so one vendor string can split by
+  // size — e.g. Zelle over $200 is family support, under it is Apple Pay.
+  minAmount Float?
+  maxAmount Float?
+  createdAt DateTime @default(now())
+
+  // No unique on (userId, match) on purpose: the same vendor text needs
+  // several rules when they differ by amount band.
+  @@index([userId])
+}
+
+model SavingsGoal {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  targetAmount  Float
+  currentAmount Float     @default(0)
+  deadline      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model ImportLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filename  String
+  dateFrom  DateTime
+  dateTo    DateTime
+  txCount   Int
+  // Statement header facts, when the file stated them. Nullable so old rows
+  // and statements without a header still import.
+  account        String?
+  openingBalance Float?
+  closingBalance Float?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model RecurringRule {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String // 'income' | 'expense'
+  name              String // e.g. "City of Detroit paycheck", "Rent"
+  category          String // must match a Personal Budget Category option
+  amount            Float // always positive — sign applied based on type
+  frequency         String // 'weekly' | 'biweekly' | 'semimonthly' | 'monthly'
+  anchorDate        DateTime // next-due date (advances after each generation)
+  lastGeneratedDate DateTime? // most recent occurrence we wrote a row for
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Workspace {
+  id        String     @id @default(cuid())
+  name      String
+  slug      String
+  icon      String?
+  color     String?
+  ownerId   String
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  pages     Page[]
+  databases Database[]
+  createdAt DateTime   @default(now())
+
+  @@unique([ownerId, slug])
+  @@index([ownerId])
+}
+
+model Database {
+  id          String     @id @default(cuid())
+  name        String
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pages       Page[]
+  properties  Property[]
+  views       View[]
+  createdAt   DateTime   @default(now())
+
+  @@index([workspaceId])
+}
+
+model Property {
+  id         String          @id @default(cuid())
+  name       String
+  type       String // text, number, date, select, etc.
+  formula    String? // formula expression
+  position   Float           @default(0)
+  databaseId String
+  database   Database        @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  values     PropertyValue[]
+  createdAt  DateTime        @default(now())
+
+  @@index([databaseId, position])
+}
+
+model PropertyValue {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  pageId     String
+  page       Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  value      Json // the value, could be string, number, etc.
+
+  @@unique([propertyId, pageId])
+  @@index([pageId])
+}
+
+model View {
+  id         String   @id @default(cuid())
+  name       String
+  type       String // table, gallery, list, etc.
+  databaseId String
+  database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  filters    Json? // filter conditions
+  sorts      Json? // sort conditions
+  grouping   Json? // group-by config { propertyId }
+  createdAt  DateTime @default(now())
+
+  @@index([databaseId])
+}
+
+model Page {
+  id           String                   @id @default(cuid())
+  title        String                   @default("Untitled")
+  icon         String?
+  cover        String?
+  workspaceId  String
+  searchVector Unsupported("tsvector")? @map("search_vector")
+  workspace    Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  databaseId   String?
+  database     Database?                @relation(fields: [databaseId], references: [id], onDelete: SetNull)
+  parentId     String?
+  parent       Page?                    @relation("PageHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children     Page[]                   @relation("PageHierarchy")
+  authorId     String
+  author       User                     @relation(fields: [authorId], references: [id])
+  blocks       Block[]
+  properties   PropertyValue[]
+  journalEntry JournalEntry?
+  position     Float                    @default(0)
+  isFavorite   Boolean                  @default(false)
+  isArchived   Boolean                  @default(false)
+  viewMode     String?                  @default("document")
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+
+  @@index([workspaceId, parentId])
+  @@index([databaseId])
+  @@index([authorId])
+}
+
+model Block {
+  id           String                   @id @default(cuid())
+  pageId       String
+  page         Page                     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type         String
+  content      Json
+  position     Float
+  canvasX      Float?
+  canvasY      Float?
+  canvasWidth  Float?
+  parentId     String?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  @@index([pageId, position])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model ShopTheLookItem {
+  id          String   @id @default(cuid())
+  userId      String
+  pageId      String
+  blockId     String?
+  imageUrl    String
+  name        String
+  category    String?
+  description String?
+  searchQuery String
+  shopUrl     String?
+  shopTitle   String?
+  confidence  Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([pageId])
+  @@index([userId])
+}
+
+model UsageLog {
+  id           String   @id @default(cuid())
+  service      String
+  operation    String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costUsd      Float    @default(0)
+  userId       String?
+  createdAt    DateTime @default(now())
+
+  @@index([service, createdAt])
+  @@index([createdAt])
+}
