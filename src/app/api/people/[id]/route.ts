@@ -25,3 +25,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const updated = await prisma.person.update({ where: { id: person.id }, data: { ...rest, ...rename } });
   return NextResponse.json(updated);
 }
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const userId = await currentUserId();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const { count } = await prisma.person.deleteMany({ where: { id: params.id, ownerId: userId } });
+  if (count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  return NextResponse.json({ ok: true });
+}

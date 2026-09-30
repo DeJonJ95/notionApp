@@ -32,7 +32,17 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
       },
     },
   });
-  return NextResponse.json(event);
+  if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const prior = await prisma.attendance.groupBy({
+    by: ['personId'],
+    where: { personId: { in: event.attendances.map((a) => a.personId) }, attended: true, event: { date: { lt: event.date } } },
+    _count: { _all: true },
+  });
+  const cameBefore = new Map(prior.map((p) => [p.personId, p._count._all]));
+  return NextResponse.json({
+    ...event,
+    attendances: event.attendances.map((a) => ({ ...a, cameBefore: cameBefore.get(a.personId) ?? 0 })),
+  });
 }
 
 export async function PATCH(req: NextRequest, { params }: Ctx) {

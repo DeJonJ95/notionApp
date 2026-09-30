@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft } from 'lucide-react';
-import { toast } from '@/components/ui/feedback';
+import { ArrowLeft, Trash2 } from 'lucide-react';
+import { confirmDialog, toast } from '@/components/ui/feedback';
 import { DuplicateList, type Pair } from './DuplicateList';
 import { api } from './types';
 
@@ -43,6 +43,18 @@ function NameCell({ p, onSaved }: { p: PersonRow; onSaved: () => void }) {
       <input defaultValue={p.name} onBlur={(e) => save('name', e.target.value.trim())} className={`${input} ${p.isPlaceholder ? 'italic' : ''}`} aria-label="Name" />
       <input defaultValue={p.contact ?? ''} onBlur={(e) => save('contact', e.target.value.trim())} placeholder="add contact" className={`${input} text-xs`} aria-label="Contact" />
     </td>
+  );
+}
+
+function DeleteButton({ p, onDeleted }: { p: PersonRow; onDeleted: () => void }) {
+  const remove = async () => {
+    if (!(await confirmDialog({ message: `Delete ${p.name} and their history at every event?`, danger: true }))) return;
+    await api(`/api/people/${p.id}`, 'DELETE').then(onDeleted, () => toast.error('Could not delete'));
+  };
+  return (
+    <button onClick={remove} aria-label={`Delete ${p.name}`} className="text-muted hover:text-red-500 p-1">
+      <Trash2 size={13} />
+    </button>
   );
 }
 
@@ -86,6 +98,7 @@ export function PeopleView() {
               <th className="py-2 font-medium text-right">No-shows</th>
               <th className="py-2 font-medium text-right">Brought</th>
               <th className="py-2 font-medium text-right pl-3">Last came</th>
+              <th className="py-2"><span className="sr-only">Delete</span></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -99,6 +112,7 @@ export function PeopleView() {
                 <td className="text-right tabular-nums text-text pl-3 whitespace-nowrap">
                   {p.lastAttended ? new Date(p.lastAttended).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '–'}
                 </td>
+                <td className="pl-2"><DeleteButton p={p} onDeleted={load} /></td>
               </tr>
             ))}
           </tbody>

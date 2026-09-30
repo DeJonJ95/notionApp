@@ -34,7 +34,14 @@ function GuestRow({ g, onToggle, onRsvp, onRemove }: { g: Guest } & Omit<Props, 
         <Check size={18} />
       </button>
       <div className="min-w-0 flex-1">
-        <div className="text-text truncate">{g.person.name}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-text truncate">{g.person.name}</span>
+          {!g.person.isPlaceholder && (
+            <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted border border-border rounded px-1">
+              {g.cameBefore ? `Came ${g.cameBefore}× before` : 'New'}
+            </span>
+          )}
+        </div>
         <div className="text-xs text-muted truncate">
           {[g.guestOf && `with ${g.guestOf.name}`, g.person.contact, g.source && SOURCE_LABELS[g.source]].filter(Boolean).join(' · ')}
         </div>

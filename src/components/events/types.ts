@@ -15,6 +15,7 @@ export type Guest = {
   attended: boolean;
   checkedInAt: string | null;
   invitedBy: string | null;
+  cameBefore: number;
   person: { id: string; name: string; contact: string | null; isPlaceholder: boolean };
   guestOf: { id: string; name: string } | null;
 };
