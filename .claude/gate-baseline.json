@@ -586,8 +586,8 @@
       "functionLoc": 228
     },
     "src/components/sidebar/Sidebar.tsx": {
-      "fileLoc": 430,
-      "functionLoc": 400,
+      "fileLoc": 412,
+      "functionLoc": 374,
       "complexity": 16,
       "anyCount": 1,
       "castChain": 1

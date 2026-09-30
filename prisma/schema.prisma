@@ -28,6 +28,8 @@ model User {
   resumes             Resume[]
   jobListings         JobListing[]
   jobApplications     JobApplication[]
+  people              Person[]
+  events              Event[]
 }
 
 // ── ApplyKit: AI job-application assistant ──────────────────────────
@@ -218,19 +220,19 @@ model SavingsGoal {
 }
 
 model ImportLog {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  filename  String
-  dateFrom  DateTime
-  dateTo    DateTime
-  txCount   Int
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  filename       String
+  dateFrom       DateTime
+  dateTo         DateTime
+  txCount        Int
   // Statement header facts, when the file stated them. Nullable so old rows
   // and statements without a header still import.
   account        String?
   openingBalance Float?
   closingBalance Float?
-  createdAt DateTime @default(now())
+  createdAt      DateTime @default(now())
 
   @@index([userId, createdAt])
 }
@@ -436,4 +438,58 @@ model UsageLog {
 
   @@index([service, createdAt])
   @@index([createdAt])
+}
+
+// Guests tracked across events: one Person per human, one Event per party,
+// one Attendance per person per event. See src/lib/events/.
+model Person {
+  id            String       @id @default(cuid())
+  ownerId       String
+  owner         User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  aliases       String[]     @default([])
+  contact       String?
+  notes         String?
+  isPlaceholder Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  attendances   Attendance[] @relation("AttendancePerson")
+  brought       Attendance[] @relation("AttendanceGuestOf")
+
+  @@index([ownerId])
+}
+
+model Event {
+  id           String       @id @default(cuid())
+  ownerId      String
+  owner        User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name         String
+  date         DateTime
+  venue        String?
+  link         String?
+  checkInToken String       @unique @default(cuid())
+  checkInOpen  Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  attendances  Attendance[]
+
+  @@index([ownerId, date])
+}
+
+model Attendance {
+  id          String    @id @default(cuid())
+  eventId     String
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  personId    String
+  person      Person    @relation("AttendancePerson", fields: [personId], references: [id], onDelete: Cascade)
+  source      String? // partiful | text | dm | walk-in | qr
+  rsvp        String? // going | maybe | cant-go | invited
+  rsvpAt      DateTime?
+  attended    Boolean   @default(false)
+  checkedInAt DateTime?
+  invitedBy   String?
+  guestOfId   String?
+  guestOf     Person?   @relation("AttendanceGuestOf", fields: [guestOfId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@unique([eventId, personId])
+  @@index([personId])
 }

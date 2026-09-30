@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase, NotebookPen, CalendarDays, Inbox } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase, NotebookPen, CalendarDays, Inbox, PartyPopper } from 'lucide-react';
 import { useRecentPages } from '@/lib/recentPages';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
@@ -27,6 +27,14 @@ type Page = {
 };
 
 const ADMIN_EMAIL = 'dejonj95@gmail.com';
+
+const NAV_LINKS = [
+  ['/inbox', Inbox, 'Inbox'],
+  ['/events', PartyPopper, 'Events'],
+  ['/budget', Wallet, 'Budget'],
+  ['/jobs', Briefcase, 'Jobs'],
+  ['/docs', BookOpen, 'Docs'],
+] as const;
 
 export function Sidebar() {
   const { data: session } = useSession();
@@ -288,37 +296,11 @@ export function Sidebar() {
             )}
           </Link>
 
-          <Link
-            href="/inbox"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
-          >
-            <Inbox size={14} /> Inbox
-          </Link>
-
-          <Link
-            href="/budget"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
-          >
-            <Wallet size={14} /> Budget
-          </Link>
-
-          <Link
-            href="/jobs"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
-          >
-            <Briefcase size={14} /> Jobs
-          </Link>
-
-          <Link
-            href="/docs"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg"
-          >
-            <BookOpen size={14} /> Docs
-          </Link>
+          {NAV_LINKS.map(([href, Icon, label]) => (
+            <Link key={href} href={href} onClick={() => setOpen(false)} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg">
+              <Icon size={14} /> {label}
+            </Link>
+          ))}
 
           {isAdmin && (
             <Link
