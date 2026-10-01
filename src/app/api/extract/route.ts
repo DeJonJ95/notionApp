@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { logDeepSeek } from '@/lib/logUsage';
+import { DEEPSEEK_MODEL } from '@/lib/deepseekModel';
 
 export type PropertyInfo = { id: string; type: string };
 
@@ -203,7 +204,7 @@ NEW COLUMNS — "newColumns" is OPTIONAL. If the notes contain a meaningful attr
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      ...DEEPSEEK_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },

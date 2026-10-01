@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logDeepSeek } from '@/lib/logUsage';
+import { DEEPSEEK_MODEL } from '@/lib/deepseekModel';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -29,7 +30,7 @@ async function callDeepSeek(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      ...DEEPSEEK_MODEL,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
@@ -37,6 +38,7 @@ async function callDeepSeek(
       temperature: 0.4,
       max_tokens: 600,
     }),
+    signal: AbortSignal.timeout(25_000),
   });
   if (!r.ok) {
     console.error('DeepSeek book-summary error:', await r.text());

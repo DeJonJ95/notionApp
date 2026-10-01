@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logDeepSeek } from '@/lib/logUsage';
 import { checkDailyBudget, budgetExceededResponse } from '@/lib/usageGuard';
+import { DEEPSEEK_MODEL } from '@/lib/deepseekModel';
 
 // Cap input size so a single request can't fan a huge prompt into DeepSeek.
 const MAX_CHARS = 240_000;
@@ -45,7 +46,7 @@ Rules:
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      ...DEEPSEEK_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { logDeepSeek } from '@/lib/logUsage';
+import { DEEPSEEK_MODEL } from '@/lib/deepseekModel';
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -37,7 +38,7 @@ My email on the account: ${userEmail || '(unknown)'}`;
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      ...DEEPSEEK_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContext },

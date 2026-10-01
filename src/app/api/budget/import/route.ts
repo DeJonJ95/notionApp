@@ -5,6 +5,7 @@ import { logDeepSeek } from '@/lib/logUsage';
 import { findOrCreateBudgetDb, getBudgetCategories, matchCategorizationRule } from '@/lib/budgetDb';
 import { fallbackCategory } from '@/lib/budgetCategories';
 import { looksLikePdf, describePdfFailure } from '@/lib/budgetImportFile';
+import { DEEPSEEK_MODEL } from '@/lib/deepseekModel';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -229,7 +230,7 @@ async function callDeepSeek(apiKey: string, systemPrompt: string, userText: stri
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      ...DEEPSEEK_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Extract transactions from this statement:\n\n${userText}` },
@@ -240,8 +241,7 @@ async function callDeepSeek(apiKey: string, systemPrompt: string, userText: stri
     }),
   });
   if (!aiRes.ok) {
-    const errText = await aiRes.text();
-    console.error('DeepSeek import error:', errText);
+    console.error('DeepSeek import error:', await aiRes.text());
     throw new Error('AI extraction failed');
   }
   const aiJson = await aiRes.json();

@@ -1,6 +1,8 @@
 // DeepSeek wiring for ApplyKit. Mirrors the fetch shape used in
-// src/app/api/summarize/route.ts (deepseek-chat, low temperature, usage
+// src/app/api/summarize/route.ts (DEEPSEEK_MODEL, low temperature, usage
 // returned for logUsage). Kept separate so the analyze route stays thin.
+
+import { DEEPSEEK_MODEL } from '@/lib/deepseekModel';
 
 const DS_URL = 'https://api.deepseek.com/chat/completions';
 
@@ -21,7 +23,7 @@ export async function callDeepSeek(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        ...DEEPSEEK_MODEL,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
