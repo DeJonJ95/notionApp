@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Users } from 'lucide-react';
+import { BarChart3, Plus, Users } from 'lucide-react';
 import { toast } from '@/components/ui/feedback';
 import { api, fmtDate, type EventSummary } from './types';
 
@@ -49,9 +49,14 @@ export function EventsView() {
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-text">Events</h1>
-        <Link href="/people" className="flex items-center gap-1.5 text-sm text-accent hover:underline">
-          <Users size={14} /> People
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/events/metrics" className="flex items-center gap-1.5 text-sm text-accent hover:underline">
+            <BarChart3 size={14} /> Metrics
+          </Link>
+          <Link href="/people" className="flex items-center gap-1.5 text-sm text-accent hover:underline">
+            <Users size={14} /> People
+          </Link>
+        </div>
       </div>
       <NewEventForm onCreated={load} />
       {events === null ? null : events.length === 0 ? (
