@@ -24,6 +24,11 @@ function SendRow({ g, body, onSent }: { g: Guest; body: string; onSent: Props['o
         <span className="block text-text truncate">{g.person.name}</span>
         <span className="block text-xs text-muted truncate">{g.person.contact ?? 'No contact: copy and send yourself'}</span>
       </span>
+      {!g.invitedAt && (
+        <button onClick={() => onSent(g, true)} className="text-xs text-accent hover:underline" title="Already texted them yourself">
+          Mark sent
+        </button>
+      )}
       {g.invitedAt ? (
         <button onClick={() => onSent(g, false)} className="flex items-center gap-1 text-sm text-text" title="Mark as not sent">
           <Check size={14} /> Sent

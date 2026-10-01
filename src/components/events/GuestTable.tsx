@@ -4,28 +4,32 @@ import { useMemo, useState } from 'react';
 import { Check, Search, Trash2 } from 'lucide-react';
 import { RSVP_LABELS, SOURCE_LABELS, type Guest } from './types';
 
-type Filter = 'all' | 'came' | 'no-show' | 'walk-in';
+type Filter = 'all' | 'came' | 'no-show' | 'walk-in' | 'twice';
 
 const FILTERS: { key: Filter; label: string; test: (g: Guest) => boolean }[] = [
   { key: 'all', label: 'Everyone', test: () => true },
   { key: 'came', label: 'Came', test: (g) => g.attended },
   { key: 'no-show', label: 'RSVP’d, not here', test: (g) => !g.attended && (g.rsvp === 'going' || g.rsvp === 'maybe') },
   { key: 'walk-in', label: 'Walk-ins', test: (g) => g.attended && (!g.rsvp || g.source === 'walk-in' || g.source === 'qr') },
+  { key: 'twice', label: 'Partiful + texted', test: (g) => g.source === 'partiful' && !!g.invitedAt },
 ];
 
-const GROUPS: [string, string][] = [
-  ['going', 'Going'],
-  ['maybe', 'Maybe'],
-  ['invited', 'Invited'],
-  ['', 'No RSVP'],
-  ['cant-go', "Can't go"],
+// A personal text is recorded as invitedAt; a Partiful invite is the
+// imported "invited" RSVP. Invited guests split on whether they've had both.
+const GROUPS: [string, (g: Guest) => boolean][] = [
+  ['Going', (g) => g.rsvp === 'going'],
+  ['Maybe', (g) => g.rsvp === 'maybe'],
+  ['Invited, texted personally', (g) => g.rsvp === 'invited' && !!g.invitedAt],
+  ['Invited, not texted yet', (g) => g.rsvp === 'invited' && !g.invitedAt],
+  ['No RSVP', (g) => !g.rsvp],
+  ["Can't go", (g) => g.rsvp === 'cant-go'],
 ];
 
 function groupByRsvp(guests: Guest[]): [string, Guest[]][] {
-  return GROUPS.map(([key, label]): [string, Guest[]] => [label, guests.filter((g) => (g.rsvp ?? '') === key)]).filter(
-    ([, rows]) => rows.length > 0,
-  );
+  return GROUPS.map(([label, test]): [string, Guest[]] => [label, guests.filter(test)]).filter(([, rows]) => rows.length > 0);
 }
+
+const textedOn = (iso: string) => `texted ${new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
 
 const historyLabel = (g: Guest) =>
   g.cameBefore ? `Came ${g.cameBefore}× before` : g.missedBefore ? `RSVP'd ${g.missedBefore}×, never came` : 'New';
@@ -74,7 +78,9 @@ function GuestRow({ g, onToggle, onRsvp, onRemove, onMerge, onContact }: { g: Gu
           </button>
         ))}
         <div className="text-xs text-muted truncate">
-          {[g.guestOf && `with ${g.guestOf.name}`, g.person.contact, g.source && SOURCE_LABELS[g.source]].filter(Boolean).join(' · ')}
+          {[g.guestOf && `with ${g.guestOf.name}`, g.person.contact, g.source && SOURCE_LABELS[g.source], g.invitedAt && textedOn(g.invitedAt)]
+            .filter(Boolean)
+            .join(' · ')}
         </div>
       </div>
       <select
