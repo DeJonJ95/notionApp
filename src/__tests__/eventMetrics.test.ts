@@ -14,7 +14,7 @@ describe('eventFunnel', () => {
       row({ personId: 'c', attended: true, source: 'walk-in' }),
       row({ personId: 'd', rsvp: 'going', attended: true, isPlaceholder: true }),
     ], new Set(['a']));
-    expect(f).toMatchObject({ going: 3, came: 3, walkIns: 1, returning: 1, newcomers: 1 });
+    expect(f).toMatchObject({ going: 3, came: 3, walkIns: 1, returning: 1, newcomers: 2 });
     expect(f.showRate).toBeCloseTo(2 / 3);
   });
 });
@@ -68,7 +68,7 @@ describe('trends and people', () => {
   const now = new Date('2026-10-10');
   it('tracks retention and community growth over past events only', () => {
     const t = trends(events, rows, now);
-    expect(t.map((x) => [x.came, x.newcomers, x.returning, x.community])).toEqual([[3, 2, 0, 2], [1, 0, 1, 2]]);
+    expect(t.map((x) => [x.came, x.newcomers, x.returning, x.community])).toEqual([[3, 3, 0, 2], [1, 0, 1, 2]]);
     expect(t[0].retained).toBe(0.5);
     expect(t[1].retained).toBeNull();
   });

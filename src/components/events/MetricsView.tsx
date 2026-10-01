@@ -30,6 +30,7 @@ function EventSection({ data, eventId }: { data: MetricsData; eventId: string })
     return new Set(data.rows.filter((r) => r.attended && earlier.has(r.eventId)).map((r) => r.personId));
   }, [data, event.date]);
   const f = eventFunnel(rows, cameBefore);
+  const upcoming = new Date(event.date) > new Date() && f.came === 0;
   const timing = rsvpTiming(rows, event.date);
   const arrive = arrivals(rows);
 
@@ -38,7 +39,7 @@ function EventSection({ data, eventId }: { data: MetricsData; eventId: string })
       <dl className="grid grid-cols-2 gap-4 border-y border-border py-4 sm:grid-cols-4">
         <Stat label="Going" value={f.going} note={f.maybe ? `+${f.maybe} maybe` : undefined} />
         <Stat label="Came" value={f.came} note={f.walkIns ? `${f.walkIns} without an RSVP` : undefined} />
-        <Stat label="Show rate" value={pct(f.showRate)} note="of going who came" />
+        <Stat label="Show rate" value={upcoming ? '–' : pct(f.showRate)} note={upcoming ? 'after the event' : 'of going who came'} />
         <Stat label="New faces" value={f.newcomers} note={`${f.returning} returning`} />
       </dl>
       <div className="grid gap-8 md:grid-cols-2">

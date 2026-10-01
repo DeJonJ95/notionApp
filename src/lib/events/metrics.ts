@@ -17,11 +17,10 @@ const ms = (iso: string | null) => (iso ? new Date(iso).getTime() : NaN);
 const said = (r: MRow) => r.rsvp === 'going' || r.rsvp === 'maybe';
 const DAY = 86_400_000;
 
-/** Placeholder "+1"s can't come back, so they never count as new or returning. */
+/** An unnamed "+1" can't have come before, so they count as new. */
 export function eventFunnel(rows: MRow[], cameBefore: Set<string>) {
   const going = rows.filter((r) => r.rsvp === 'going');
   const came = rows.filter((r) => r.attended);
-  const named = came.filter((r) => !r.isPlaceholder);
   return {
     listed: rows.length,
     texted: rows.filter((r) => r.invitedAt).length,
@@ -30,8 +29,8 @@ export function eventFunnel(rows: MRow[], cameBefore: Set<string>) {
     came: came.length,
     showRate: going.length ? going.filter((r) => r.attended).length / going.length : null,
     walkIns: came.filter((r) => !said(r)).length,
-    returning: named.filter((r) => cameBefore.has(r.personId)).length,
-    newcomers: named.filter((r) => !cameBefore.has(r.personId)).length,
+    returning: came.filter((r) => !r.isPlaceholder && cameBefore.has(r.personId)).length,
+    newcomers: came.filter((r) => r.isPlaceholder || !cameBefore.has(r.personId)).length,
   };
 }
 
@@ -82,7 +81,8 @@ export function arrivals(rows: MRow[]): { label: string; count: number }[] {
 }
 
 /** One row per past event, oldest first. `retained` is the share of this
- *  event's named attendees who came to the next one (null for the latest). */
+ *  event's named attendees who came to the next one (null for the latest);
+ *  unnamed +1s count as new but can't be tracked into the community. */
 export function trends(events: MEvent[], rows: MRow[], now = new Date()) {
   const past = events.filter((e) => new Date(e.date) < now).sort((a, b) => a.date.localeCompare(b.date));
   const seen = new Set<string>();
@@ -97,7 +97,7 @@ export function trends(events: MEvent[], rows: MRow[], now = new Date()) {
       event: e,
       came,
       returning,
-      newcomers: named.length - returning,
+      newcomers: came - returning,
       community: seen.size,
       retained: next && named.length ? named.filter((id) => next.has(id)).length / named.length : null,
     };
