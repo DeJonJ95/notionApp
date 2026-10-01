@@ -31,6 +31,7 @@ function EventSection({ data, eventId }: { data: MetricsData; eventId: string })
   }, [data, event.date]);
   const f = eventFunnel(rows, cameBefore);
   const upcoming = new Date(event.date) > new Date() && f.came === 0;
+  const partial = event.fullCheckIn === false;
   const timing = rsvpTiming(rows, event.date);
   const arrive = arrivals(rows);
 
@@ -38,8 +39,8 @@ function EventSection({ data, eventId }: { data: MetricsData; eventId: string })
     <section className="space-y-6">
       <dl className="grid grid-cols-2 gap-4 border-y border-border py-4 sm:grid-cols-4">
         <Stat label="Going" value={f.going} note={f.maybe ? `+${f.maybe} maybe` : undefined} />
-        <Stat label="Came" value={f.came} note={f.walkIns ? `${f.walkIns} without an RSVP` : undefined} />
-        <Stat label="Show rate" value={upcoming ? '–' : pct(f.showRate)} note={upcoming ? 'after the event' : 'of going who came'} />
+        <Stat label="Came" value={partial ? `${f.came}+` : f.came} note={partial ? 'not everyone was checked in' : f.walkIns ? `${f.walkIns} without an RSVP` : undefined} />
+        <Stat label="Show rate" value={upcoming || partial ? '–' : pct(f.showRate)} note={partial ? 'needs a full check-in' : upcoming ? 'after the event' : 'of going who came'} />
         <Stat label="New faces" value={f.newcomers} note={`${f.returning} returning`} />
       </dl>
       <div className="grid gap-8 md:grid-cols-2">

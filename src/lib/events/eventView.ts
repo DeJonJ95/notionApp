@@ -20,7 +20,7 @@ export async function loadEventView(eventId: string, ownerId: string) {
   const [prior, people] = await Promise.all([
     prisma.attendance.findMany({
       where: { personId: { in: ids }, event: { date: { lt: event.date < new Date() ? event.date : new Date() } } },
-      select: { personId: true, attended: true, rsvp: true },
+      select: { personId: true, attended: true, rsvp: true, event: { select: { fullCheckIn: true } } },
     }),
     prisma.person.findMany({
       where: { ownerId, isPlaceholder: false },
@@ -31,7 +31,7 @@ export async function loadEventView(eventId: string, ownerId: string) {
   const missed = new Map<string, number>();
   for (const p of prior) {
     if (p.attended) came.set(p.personId, (came.get(p.personId) ?? 0) + 1);
-    else if (p.rsvp === 'going') missed.set(p.personId, (missed.get(p.personId) ?? 0) + 1);
+    else if (p.rsvp === 'going' && p.event.fullCheckIn) missed.set(p.personId, (missed.get(p.personId) ?? 0) + 1);
   }
   const veterans = people.filter((p) => p._count.attendances > 0);
 

@@ -1,4 +1,4 @@
-export type MEvent = { id: string; name: string; date: string };
+export type MEvent = { id: string; name: string; date: string; fullCheckIn?: boolean };
 
 export type MRow = {
   eventId: string;
@@ -92,7 +92,7 @@ export function trends(events: MEvent[], rows: MRow[], now = new Date()) {
     const named = Array.from(cameAt[i]);
     const returning = named.filter((id) => seen.has(id)).length;
     named.forEach((id) => seen.add(id));
-    const next = cameAt[i + 1];
+    const next = past[i + 1]?.fullCheckIn === false ? undefined : cameAt[i + 1];
     return {
       event: e,
       came,

@@ -1,4 +1,4 @@
-export type HistoryRow = { personId: string; eventId: string; eventDate: Date; rsvp: string | null; attended: boolean };
+export type HistoryRow = { personId: string; eventId: string; eventDate: Date; rsvp: string | null; attended: boolean; fullCheckIn?: boolean };
 
 export type SuggestRules = {
   fromEventIds: string[];
@@ -22,7 +22,7 @@ function tallyRow(t: Tally, h: HistoryRow, rules: SuggestRules, now: Date) {
   if (h.attended) {
     t.cameTotal++;
     if (!t.lastCame || h.eventDate > t.lastCame) t.lastCame = h.eventDate;
-  } else if (h.rsvp === 'going' && h.eventDate < now) t.noShows++;
+  } else if (h.rsvp === 'going' && h.eventDate < now && h.fullCheckIn !== false) t.noShows++;
   if (!rules.fromEventIds.includes(h.eventId)) return;
   if (h.attended) t.cameAtSelected++;
   if (h.attended || (rules.include === 'came-or-rsvped' && h.rsvp === 'going')) t.qualifies = true;

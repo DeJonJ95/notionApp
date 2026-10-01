@@ -12,6 +12,7 @@ const patchSchema = z.object({
   venue: z.string().max(200).nullable().optional(),
   link: z.string().max(500).nullable().optional(),
   checkInOpen: z.boolean().optional(),
+  fullCheckIn: z.boolean().optional(),
   inviteMessage: z.string().max(1000).nullable().optional(),
 });
 

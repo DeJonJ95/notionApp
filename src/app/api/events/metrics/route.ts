@@ -8,7 +8,7 @@ export async function GET() {
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const [events, rows, people] = await Promise.all([
-    prisma.event.findMany({ where: { ownerId: userId }, orderBy: { date: 'asc' }, select: { id: true, name: true, date: true } }),
+    prisma.event.findMany({ where: { ownerId: userId }, orderBy: { date: 'asc' }, select: { id: true, name: true, date: true, fullCheckIn: true } }),
     prisma.attendance.findMany({
       where: { event: { ownerId: userId } },
       select: {

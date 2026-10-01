@@ -43,10 +43,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   const history = await prisma.attendance.findMany({
     where: { person: { ownerId: ctx.userId, isPlaceholder: false }, eventId: { not: params.id } },
-    select: { personId: true, eventId: true, rsvp: true, attended: true, event: { select: { date: true } } },
+    select: { personId: true, eventId: true, rsvp: true, attended: true, event: { select: { date: true, fullCheckIn: true } } },
   });
   const suggestions = suggestInvites(
-    history.map((h) => ({ ...h, eventDate: h.event.date })),
+    history.map((h) => ({ ...h, eventDate: h.event.date, fullCheckIn: h.event.fullCheckIn })),
     rules,
     new Set(ctx.event.attendances.map((a) => a.personId)),
   );

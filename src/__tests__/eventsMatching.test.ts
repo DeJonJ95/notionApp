@@ -141,3 +141,15 @@ describe('replacedPlusOnes', () => {
     expect(replacedPlusOnes([{ name: 'Smoke' }], existing)).toEqual([]);
   });
 });
+
+describe('partial check-in events', () => {
+  it('are not no-shows in person stats or invite suggestions', () => {
+    const now = new Date('2026-10-01');
+    expect(personStats([{ eventDate: new Date('2026-09-06'), rsvp: 'going', attended: false, fullCheckIn: false }], now).noShows).toBe(0);
+    const r = suggestInvites(
+      [{ personId: 'p', eventId: 'e', eventDate: new Date('2026-09-06'), rsvp: 'going', attended: false, fullCheckIn: false }],
+      { fromEventIds: ['e'], include: 'came-or-rsvped', maxNoShows: 0 }, new Set(), now,
+    );
+    expect(r.map((s) => s.personId)).toEqual(['p']);
+  });
+});

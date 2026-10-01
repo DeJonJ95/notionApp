@@ -83,3 +83,24 @@ describe('trends and people', () => {
     expect(summarize(peopleFacts(pastFour, withHistory, now)).lapsed.map((f) => f.id)).toEqual(['b']);
   });
 });
+
+describe('events without a full check-in', () => {
+  it('never produce no-shows, lapses, or retention', () => {
+    const events = [
+      { id: 'e1', name: '001', date: '2026-09-06T12:00:00Z', fullCheckIn: false },
+      { id: 'e2', name: '002', date: '2026-09-20T12:00:00Z', fullCheckIn: false },
+    ];
+    const rows = [
+      row({ eventId: 'e1', personId: 'a', rsvp: 'going', attended: true }),
+      row({ eventId: 'e1', personId: 'c', rsvp: 'going' }),
+      row({ eventId: 'e2', personId: 'a', rsvp: 'going', attended: true }),
+      row({ eventId: 'e2', personId: 'c', rsvp: 'going' }),
+    ];
+    const now = new Date('2026-10-10');
+    const s = summarize(peopleFacts(events, rows, now));
+    expect(s.noShowers).toEqual([]);
+    expect(s.lapsed).toEqual([]);
+    expect(s.regulars2).toBe(1);
+    expect(trends(events, rows, now)[0].retained).toBeNull();
+  });
+});

@@ -32,6 +32,7 @@ export type EventDetailData = {
   link: string | null;
   checkInToken: string;
   checkInOpen: boolean;
+  fullCheckIn: boolean;
   inviteMessage: string | null;
   attendances: Guest[];
 };

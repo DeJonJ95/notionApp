@@ -2,22 +2,30 @@ import type { MEvent, MRow } from './metrics';
 
 export type PersonFacts = { id: string; attended: number; noShows: number; brought: number; broughtCame: number; missedLatest: boolean };
 
+function windows(events: MEvent[], now: Date) {
+  const past = events.filter((e) => new Date(e.date) < now);
+  const counted = new Set(past.filter((e) => e.fullCheckIn !== false).map((e) => e.id));
+  const latest = past.filter((e) => counted.has(e.id)).sort((a, b) => b.date.localeCompare(a.date))[0];
+  // Coming to anything on or after the last fully checked-in event clears a lapse.
+  const since = new Set(latest ? past.filter((e) => e.date >= latest.date).map((e) => e.id) : []);
+  return { pastIds: new Set(past.map((e) => e.id)), counted, latest, since };
+}
+
 /** Per-person tallies behind the regulars, lapsed, no-show and connector
- *  lists. Only events already past count, so an upcoming RSVP is never a miss. */
+ *  lists. A miss only counts at a past event where everyone was checked in. */
 export function peopleFacts(events: MEvent[], rows: MRow[], now = new Date()): PersonFacts[] {
-  const pastIds = new Set(events.filter((e) => new Date(e.date) < now).map((e) => e.id));
-  const latest = events.filter((e) => pastIds.has(e.id)).sort((a, b) => b.date.localeCompare(a.date))[0]?.id;
+  const { pastIds, counted, latest, since } = windows(events, now);
   const facts = new Map<string, PersonFacts>();
   const get = (id: string) => {
-    if (!facts.has(id)) facts.set(id, { id, attended: 0, noShows: 0, brought: 0, broughtCame: 0, missedLatest: true });
+    if (!facts.has(id)) facts.set(id, { id, attended: 0, noShows: 0, brought: 0, broughtCame: 0, missedLatest: latest !== undefined });
     return facts.get(id)!;
   };
   for (const r of rows) {
     if (r.isPlaceholder || !pastIds.has(r.eventId)) continue;
     const f = get(r.personId);
     if (r.attended) f.attended++;
-    else if (r.rsvp === 'going') f.noShows++;
-    if (r.eventId === latest && r.attended) f.missedLatest = false;
+    else if (r.rsvp === 'going' && counted.has(r.eventId)) f.noShows++;
+    if (since.has(r.eventId) && r.attended) f.missedLatest = false;
   }
   for (const r of rows) {
     if (!r.guestOfId || !pastIds.has(r.eventId)) continue;

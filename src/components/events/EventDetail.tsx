@@ -97,6 +97,17 @@ export function EventDetail({ id }: { id: string }) {
         <Link href="/events" className="inline-flex items-center gap-1 text-sm text-accent hover:underline"><ArrowLeft size={14} /> Events</Link>
         <h1 className="text-2xl font-semibold text-text">{event.name}</h1>
         <p className="text-sm text-text">{fmtDate(event.date)}{event.venue ? ` · ${event.venue}` : ''}</p>
+        <label className="flex items-center gap-2 text-sm text-text" title="Turn off if some guests came without being checked in, so nobody is marked a no-show from this event">
+          <input
+            type="checkbox"
+            checked={event.fullCheckIn}
+            onChange={(e) => {
+              setEvent({ ...event, fullCheckIn: e.target.checked });
+              api(`/api/events/${id}`, 'PATCH', { fullCheckIn: e.target.checked }).catch(load);
+            }}
+          />
+          Everyone was checked in at the door
+        </label>
       </div>
       <Stats guests={event.attendances} />
       <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">

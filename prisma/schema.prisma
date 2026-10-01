@@ -469,6 +469,8 @@ model Event {
   checkInToken  String       @unique @default(cuid())
   checkInOpen   Boolean      @default(false)
   inviteMessage String?
+  // False when not everyone was checked in, so absence there proves nothing.
+  fullCheckIn   Boolean      @default(true)
   createdAt     DateTime     @default(now())
   attendances   Attendance[]
 
