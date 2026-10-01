@@ -26,6 +26,17 @@ export function plusOneHost(name: string): string | null {
   return m ? m[1].trim() : null;
 }
 
+/** Placeholder keys ("smoke's +1") on the event that a fresh export has
+ *  replaced with the guest's real name: a named row now points at that host
+ *  and the placeholder itself is gone from the file. */
+export function replacedPlusOnes(rows: { name: string; plusOneOf?: string }[], existing: Iterable<string>): string[] {
+  const inFile = new Set(rows.map((r) => normalizeName(r.name)));
+  const hostsWithNamedGuest = new Set(
+    rows.filter((r) => r.plusOneOf && !plusOneHost(r.name)).map((r) => normalizeName(`${r.plusOneOf}'s +1`)),
+  );
+  return Array.from(existing).filter((key) => hostsWithNamedGuest.has(key) && !inFile.has(key));
+}
+
 export function firstToken(name: string): string {
   return normalizeName(name).split(' ')[0] ?? '';
 }

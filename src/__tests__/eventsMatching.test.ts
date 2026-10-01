@@ -1,4 +1,4 @@
-import { normalizeContact, normalizeName, plusOneHost } from '@/lib/events/names';
+import { normalizeContact, normalizeName, plusOneHost, replacedPlusOnes } from '@/lib/events/names';
 import { buildIndex, possibleDuplicates, type MatchablePerson } from '@/lib/events/match';
 import { parseGuestText, toRsvp } from '@/lib/events/guestRows';
 import { guestRowsFromDatabase } from '@/lib/events/fromDatabase';
@@ -125,5 +125,19 @@ describe('emoji-only names', () => {
     expect(normalizeName('🤍')).toBe('🤍');
     expect(buildIndex([person('e', '🤍 ')]).find('🤍')).toBe('e');
     expect(normalizeName('Kynzi 🤍')).toBe('kynzi');
+  });
+});
+
+describe('replacedPlusOnes', () => {
+  it('drops an unnamed +1 only once the export names that guest', () => {
+    const existing = ["smoke's +1", "yaz's +1"];
+    const rows = [
+      { name: 'Smoke' },
+      { name: 'Russ', plusOneOf: 'Smoke' },
+      { name: 'Yaz' },
+      { name: "Yaz's +1", plusOneOf: 'Yaz' },
+    ];
+    expect(replacedPlusOnes(rows, existing)).toEqual(["smoke's +1"]);
+    expect(replacedPlusOnes([{ name: 'Smoke' }], existing)).toEqual([]);
   });
 });
