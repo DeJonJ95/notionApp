@@ -21,7 +21,7 @@ function Stats({ guests }: { guests: Guest[] }) {
     ['Going', going],
     ['Came', came],
     ['Walk-ins', came - guests.filter((g) => g.attended && g.rsvp).length],
-    ['Show rate', going ? `${Math.round((fromRsvp / going) * 100)}%` : '–'],
+    ['Show rate', going && came ? `${Math.round((fromRsvp / going) * 100)}%` : '–'],
   ];
   return (
     <dl className="grid grid-cols-4 gap-2 border-y border-border py-3">
