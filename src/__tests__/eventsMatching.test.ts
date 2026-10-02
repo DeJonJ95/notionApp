@@ -153,3 +153,23 @@ describe('partial check-in events', () => {
     expect(r.map((s) => s.personId)).toEqual(['p']);
   });
 });
+
+describe('adding people by hand', () => {
+  it('puts texted and DMed people under invited and checks walk-ins in', () => {
+    const rows = parseGuestText('Mello, 313-555-0101', 'dm').rows;
+    expect(rows[0]).toMatchObject({ rsvp: 'invited', texted: true, source: 'dm' });
+    expect(parseGuestText('CK', 'walk-in').rows[0]).toMatchObject({ attended: true });
+    const partiful = parseGuestText('Name,Status,RSVP date,Invited By,Is Plus One Of\nYaz,Going,2026-10-01 10:00:00,,\n', 'text').rows[0];
+    expect(partiful).toMatchObject({ rsvp: 'going', source: 'partiful' });
+    expect(partiful.texted).toBeUndefined();
+  });
+  it('never flags two people with different contacts as duplicates', () => {
+    const dupes = possibleDuplicates([
+      person('a', 'Michael', { contact: '313-555-0101' }),
+      person('b', 'Michael', { contact: '@mike.b' }),
+      person('c', 'Briana', { contact: '@bri' }),
+      person('d', 'Briana', { contact: '@BRI' }),
+    ]);
+    expect(dupes).toEqual([{ a: 'c', b: 'd', reason: 'Same contact' }]);
+  });
+});

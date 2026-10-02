@@ -9,7 +9,20 @@ export type GuestRow = {
   attended?: boolean;
   invitedBy?: string;
   plusOneOf?: string;
+  /** You reached them yourself (text or DM): they're invited and marked sent. */
+  texted?: boolean;
+  /** Link to this exact person, skipping name matching. */
+  personId?: string;
+  /** Create a new person even if the name matches someone (two Michaels). */
+  forceNew?: boolean;
 };
+
+/** What adding someone by hand means for each channel. */
+export function channelDefaults(source: string | undefined): Partial<GuestRow> {
+  if (source === 'text' || source === 'dm') return { rsvp: 'invited', texted: true };
+  if (source === 'walk-in') return { attended: true };
+  return {};
+}
 
 const RSVP: Record<string, string> = {
   going: 'going',
@@ -52,13 +65,15 @@ export function parseGuestText(text: string, source?: string): { rows: GuestRow[
   const partiful = cols.includes('rsvp date') && cols.includes('is plus one of');
   const rows = parsed.rows.map(({ title, values }) => {
     const attended = pick(values, 'attended', 'came');
+    const rowSource = toSource(pick(values, 'source')) ?? (partiful ? 'partiful' : toSource(source));
     return {
+      ...(partiful ? {} : channelDefaults(rowSource)),
       name: title,
       contact: pick(values, 'contact', 'phone / ig', 'phone', 'instagram', 'ig'),
-      source: toSource(pick(values, 'source')) ?? (partiful ? 'partiful' : toSource(source)),
-      rsvp: toRsvp(pick(values, 'status', 'rsvp')),
+      source: rowSource,
+      rsvp: toRsvp(pick(values, 'status', 'rsvp')) ?? (partiful ? undefined : channelDefaults(rowSource).rsvp),
       rsvpAt: pick(values, 'rsvp date'),
-      attended: attended === undefined ? undefined : /^(yes|y|true|1|x)$/i.test(attended),
+      attended: attended === undefined ? channelDefaults(rowSource).attended : /^(yes|y|true|1|x)$/i.test(attended),
       invitedBy: pick(values, 'invited by'),
       plusOneOf: pick(values, 'is plus one of', 'plus one of'),
     };

@@ -38,8 +38,14 @@ type Ctx = Awaited<ReturnType<typeof loadContext>> & {
   contactUpdates: { id: string; contact: string }[];
 };
 
+function lookup(ctx: Ctx, name: string, row: GuestRow, isPlusOne: boolean): string | null {
+  if (row.forceNew) return null;
+  if (row.personId && ctx.contacts.has(row.personId)) return row.personId;
+  return isPlusOne ? ctx.placeholders.get(normalizeName(name)) ?? null : ctx.index.find(name, row.contact);
+}
+
 function findOrCreate(ctx: Ctx, name: string, row: GuestRow, isPlusOne: boolean): string {
-  const existing = isPlusOne ? ctx.placeholders.get(normalizeName(name)) ?? null : ctx.index.find(name, row.contact);
+  const existing = lookup(ctx, name, row, isPlusOne);
   if (existing) {
     if (row.contact && !ctx.contacts.get(existing)) {
       ctx.contactUpdates.push({ id: existing, contact: row.contact.slice(0, 120) });
@@ -50,7 +56,7 @@ function findOrCreate(ctx: Ctx, name: string, row: GuestRow, isPlusOne: boolean)
   const id = randomUUID();
   ctx.created.push({ id, ownerId: ctx.ownerId, name, contact: row.contact?.slice(0, 120) ?? null, isPlaceholder: isPlusOne });
   if (isPlusOne) ctx.placeholders.set(normalizeName(name), id);
-  else ctx.index.add(id, name, row.contact);
+  else if (!row.forceNew) ctx.index.add(id, name, row.contact);
   return id;
 }
 
@@ -79,15 +85,25 @@ export async function ingestGuests(ownerId: string, eventId: string, rows: Guest
   await prisma.person.createMany({ data: ctx.created });
   await prisma.$transaction([
     ...ctx.contactUpdates.map((u) => prisma.person.update({ where: { id: u.id }, data: { contact: u.contact } })),
-    ...resolved.map((r) => upsertAttendance(eventId, r)),
+    ...resolved.flatMap((r) => [upsertAttendance(eventId, r), ...markInvited(eventId, r)]),
     prisma.person.deleteMany({ where: { id: { in: dropIds }, ownerId, isPlaceholder: true } }),
   ]);
   return { people: ctx.created.filter((p) => !p.isPlaceholder).length, guests: resolved.length };
 }
 
+/** Being texted never downgrades an answer: "invited" only fills an empty
+ *  RSVP, and the first text date is the one kept. */
+function markInvited(eventId: string, { row, personId }: Resolved) {
+  const where = { eventId, personId };
+  return [
+    ...(row.rsvp === 'invited' ? [prisma.attendance.updateMany({ where: { ...where, rsvp: null }, data: { rsvp: 'invited' } })] : []),
+    ...(row.texted ? [prisma.attendance.updateMany({ where: { ...where, invitedAt: null }, data: { invitedAt: new Date() } })] : []),
+  ];
+}
+
 function upsertAttendance(eventId: string, { row, personId, guestOfId }: Resolved) {
   const fields: Prisma.AttendanceUncheckedUpdateInput = {};
-  if (row.rsvp) fields.rsvp = row.rsvp;
+  if (row.rsvp && row.rsvp !== 'invited') fields.rsvp = row.rsvp;
   const rsvpAt = parseDate(row.rsvpAt);
   if (rsvpAt) fields.rsvpAt = rsvpAt;
   if (row.attended !== undefined) {
@@ -101,6 +117,13 @@ function upsertAttendance(eventId: string, { row, personId, guestOfId }: Resolve
     update: fields,
     // How someone first reached this event is kept: checking in a Partiful RSVP
     // at the door must not relabel them a walk-in.
-    create: { ...(fields as Prisma.AttendanceUncheckedCreateInput), source: row.source ?? null, eventId, personId },
+    create: {
+      ...(fields as Prisma.AttendanceUncheckedCreateInput),
+      rsvp: row.rsvp ?? null,
+      invitedAt: row.texted ? new Date() : null,
+      source: row.source ?? null,
+      eventId,
+      personId,
+    },
   });
 }

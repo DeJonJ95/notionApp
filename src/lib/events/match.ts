@@ -56,8 +56,11 @@ export function possibleDuplicates(people: MatchablePerson[]): DuplicatePair[] {
 export function duplicateReason(a: MatchablePerson, b: MatchablePerson): string | null {
   const na = normalizeName(a.name);
   const nb = normalizeName(b.name);
+  if (a.contact && b.contact) {
+    // Different numbers or handles mean two people who share a name, like two Michaels.
+    return normalizeContact(a.contact) === normalizeContact(b.contact) ? 'Same contact' : null;
+  }
   if (na.replace(/\s/g, '') === nb.replace(/\s/g, '')) return 'Same name';
-  if (a.contact && b.contact && normalizeContact(a.contact) === normalizeContact(b.contact)) return 'Same contact';
   const single = !na.includes(' ') || !nb.includes(' ');
   if (single && na.length > 2 && nb.length > 2 && firstToken(na) === firstToken(nb)) return 'Same first name';
   return null;

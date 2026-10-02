@@ -3,43 +3,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, UserPlus } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { confirmDialog, toast } from '@/components/ui/feedback';
 import { GuestTable } from './GuestTable';
 import { ImportPanel } from './ImportPanel';
 import { CheckInPanel } from './CheckInPanel';
 import { InviteBuilder } from './InviteBuilder';
+import { AddGuestForm } from './AddGuestForm';
 import { InviteSender } from './InviteSender';
 import { api, fmtDate, type EventDetailData, type Guest } from './types';
-
-const field = 'px-3 py-2 bg-bg text-text border border-border rounded text-sm focus:outline-none focus:ring-1 focus:ring-accent';
-
-function WalkInForm({ eventId, onAdded }: { eventId: string; onAdded: () => void }) {
-  const [name, setName] = useState('');
-  const [contact, setContact] = useState('');
-  const add = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await api(`/api/events/${eventId}/guests`, 'POST', {
-        rows: [{ name, contact: contact || undefined, attended: true, source: 'walk-in' }],
-      });
-      setName('');
-      setContact('');
-      onAdded();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not add');
-    }
-  };
-  return (
-    <form onSubmit={add} className="flex flex-wrap gap-2">
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Walk-in name" required className={`flex-1 min-w-[8rem] ${field}`} />
-      <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Phone or @handle" className={`flex-1 min-w-[8rem] ${field}`} />
-      <button type="submit" className="flex items-center gap-1 px-3 py-2 bg-accent text-white rounded text-sm">
-        <UserPlus size={14} /> Check in
-      </button>
-    </form>
-  );
-}
 
 function Stats({ guests }: { guests: Guest[] }) {
   const going = guests.filter((g) => g.rsvp === 'going').length;
@@ -112,7 +84,7 @@ export function EventDetail({ id }: { id: string }) {
       <Stats guests={event.attendances} />
       <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="space-y-4">
-          <WalkInForm eventId={id} onAdded={load} />
+          <AddGuestForm eventId={id} listed={new Set(event.attendances.map((a) => a.person.id))} onAdded={load} />
           <GuestTable
             guests={event.attendances}
             onToggle={(g) => patchGuest(g, { attended: !g.attended })}

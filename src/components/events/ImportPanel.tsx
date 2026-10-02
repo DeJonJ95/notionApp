@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from '@/components/ui/feedback';
-import { api, SOURCE_LABELS, type EventSummary } from './types';
+import { api, type EventSummary } from './types';
 
 const field = 'bg-bg text-text border border-border rounded px-2 py-1.5 text-sm';
 type Db = { id: string; name: string; rows: number };
@@ -77,9 +77,9 @@ export function ImportPanel({ eventId, onDone }: { eventId: string; onDone: () =
       <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} className={`w-full font-mono ${field}`} placeholder={'Jordan H, @jordanh\nMello'} />
       <div className="flex flex-wrap items-center gap-2">
         <label className="text-sm text-text">
-          Source for pasted names{' '}
+          Pasted names were{' '}
           <select value={source} onChange={(e) => setSource(e.target.value)} className={field}>
-            {['text', 'dm', 'walk-in'].map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
+            {[['text', 'texted'], ['dm', 'DMed'], ['walk-in', 'walk-ins']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </label>
         <button onClick={submit} disabled={busy || !text.trim()} className="px-3 py-1.5 bg-accent text-white rounded text-sm disabled:opacity-50">
