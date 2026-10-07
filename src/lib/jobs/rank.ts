@@ -47,10 +47,14 @@ async function resumesWithSkills(userId: string, apiKey: string | undefined, row
 
 // A full Analysis already holds a careful per-resume score, so it stands in
 // for the quick AI score and the listing never costs a second call.
-function fromAnalysis(analysis: ListingRow['analysis']): Pick<MatchResult, 'aiScore' | 'reason' | 'source'> | null {
-  const scores = Array.isArray(analysis?.scores) ? (analysis.scores as { score?: unknown; rationale?: unknown }[]) : [];
+type AnalysisScore = { resumeId?: unknown; label?: unknown; score?: unknown; rationale?: unknown };
+
+function fromAnalysis(analysis: ListingRow['analysis']): Partial<MatchResult> | null {
+  const scores = Array.isArray(analysis?.scores) ? (analysis.scores as AnalysisScore[]) : [];
   const best = scores.filter((s) => typeof s.score === 'number').sort((a, b) => Number(b.score) - Number(a.score))[0];
-  return best ? { aiScore: Number(best.score), reason: String(best.rationale ?? ''), source: 'analysis' } : null;
+  if (!best) return null;
+  const owner = typeof best.resumeId === 'string' ? { resumeId: best.resumeId, label: String(best.label ?? '') } : {};
+  return { ...owner, aiScore: Number(best.score), reason: String(best.rationale ?? ''), source: 'analysis' };
 }
 
 function skillPass(listing: ListingRow, resumes: SkillResume[], resumeKey: string): MatchResult {
