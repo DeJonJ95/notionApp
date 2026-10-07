@@ -46,6 +46,7 @@ model Resume {
   r2Key        String // original resume object key in R2
   fileType     String           @default("docx") // "docx" | "pdf"
   parsedText   String           @db.Text
+  skills       Json? // [{ name, aliases }] extracted once for the skill-match pass
   createdAt    DateTime         @default(now())
   applications JobApplication[]
 
@@ -71,6 +72,7 @@ model JobListing {
   compCurrency String?         @default("USD")
   field        String? // e.g. "Frontend", "Data", "Eng Manager"
   rawJson      Json? // whatever the capture scraped, for debugging
+  match        Json? // MatchResult from lib/jobs/rank.ts: skill overlap plus a quick AI score
   createdAt    DateTime        @default(now())
   analysis     Analysis?
   application  JobApplication?

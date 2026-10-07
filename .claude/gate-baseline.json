@@ -12,8 +12,7 @@
       "banned": 1
     },
     "extension/background.js": {
-      "complexity": 22,
-      "commentRatio": 0.183
+      "commentRatio": 0.168
     },
     "extension/claude.js": {
       "functionLoc": 171,
@@ -546,9 +545,9 @@
       "functionLoc": 251
     },
     "src/components/jobs/JobCard.tsx": {
-      "fileLoc": 532,
-      "functionLoc": 332,
-      "complexity": 42,
+      "fileLoc": 527,
+      "functionLoc": 327,
+      "complexity": 39,
       "anyCount": 7
     },
     "src/components/jobs/JobsDashboard.tsx": {

@@ -6,7 +6,6 @@ importScripts('config.js');
 
 const API = self.NOTES_CLIPPER_CONFIG.apiBase;
 
-// ── Token storage helpers ─────────────────────────────────────────
 async function getToken() {
   const { token } = await chrome.storage.local.get('token');
   return token || '';
@@ -16,7 +15,6 @@ async function setToken(token) {
   await chrome.storage.local.set({ token });
 }
 
-// ── API client ────────────────────────────────────────────────────
 
 // Parses a response as JSON but produces a USEFUL error when the server
 // returns HTML (the common misconfiguration: apiBase points at the wrong
@@ -99,6 +97,18 @@ async function ingestJobText(payload) {
   return readJson(res, 'Capture job');
 }
 
+// After a bulk import: skill-match every job and AI-score the top 10.
+async function rankJobs() {
+  const token = await getToken();
+  if (!token) throw new Error('Not connected — open the extension popup to paste your token.');
+  const res = await fetch(`${API}/api/jobs/match`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ai: 10 }),
+  });
+  return readJson(res, 'Rank jobs');
+}
+
 // Store a claude.ai conversation scraped by claude.js. The server upserts on
 // the conversation id in the source URL, so re-capturing a thread you've
 // added to updates the same page instead of duplicating it.
@@ -113,7 +123,6 @@ async function captureConversation(payload) {
   return readJson(res, 'Capture conversation');
 }
 
-// ── Per-tab activation state ───────────────────────────────────────
 // Clipping is opt-in per tab: the content script ships dormant and only
 // shows hover buttons once the user activates the current tab from the
 // popup. We persist the active tab ids in session storage so the state
@@ -140,7 +149,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   setTabActive(tabId, false).catch(() => {});
 });
 
-// ── Message router ─────────────────────────────────────────────────
+const PAYLOAD_CALLS = { saveImage, shopTheLook, ingestJob, ingestJobText, rankJobs, captureConversation };
+
 // All cross-frame communication goes through this; both content script
 // and popup post messages here and await responses.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -178,32 +188,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // async
   }
-  if (msg?.type === 'saveImage') {
-    saveImage(msg.payload)
-      .then((data) => sendResponse({ ok: true, ...data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
-  if (msg?.type === 'shopTheLook') {
-    shopTheLook(msg.payload)
-      .then((data) => sendResponse({ ok: true, ...data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true;
-  }
-  if (msg?.type === 'ingestJob') {
-    ingestJob(msg.payload)
-      .then((data) => sendResponse({ ok: true, ...data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true; // async
-  }
-  if (msg?.type === 'ingestJobText') {
-    ingestJobText(msg.payload)
-      .then((data) => sendResponse({ ok: true, ...data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true; // async
-  }
-  if (msg?.type === 'captureConversation') {
-    captureConversation(msg.payload)
+  const call = PAYLOAD_CALLS[msg?.type];
+  if (call) {
+    call(msg.payload)
       .then((data) => sendResponse({ ok: true, ...data }))
       .catch((err) => sendResponse({ ok: false, error: err.message }));
     return true; // async
@@ -221,7 +208,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return false;
 });
 
-// ── Context menu integration ──────────────────────────────────────
 // Right-click any image on any page → "Save image to notes". Sends a
 // message to the page's content script to open the picker overlay
 // near the clicked image.

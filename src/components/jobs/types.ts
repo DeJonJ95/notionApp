@@ -57,4 +57,16 @@ export type Listing = {
   createdAt: string;
   analysis: Analysis | null;
   application: Application | null;
+  match: Match | null;
+};
+
+export type Match = {
+  resumeId: string;
+  label: string;
+  skillScore: number;
+  matched: string[];
+  aiScore: number | null;
+  reason: string;
+  missing: string;
+  source: 'skills' | 'ai' | 'analysis';
 };

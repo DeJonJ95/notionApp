@@ -2,11 +2,11 @@
 import { useState } from 'react';
 import {
   Sparkles, Loader2, Download, ExternalLink, ChevronDown, ChevronRight,
-  CheckCircle2, AlertTriangle, FileText, Wand2, Mail, Copy, Check, Trash2,
-} from 'lucide-react';
+  CheckCircle2, AlertTriangle, FileText, Wand2, Mail, Copy, Check, Trash2 } from 'lucide-react';
 import { ALL_STATUSES, STATUS_COLORS, statusLabel } from '@/lib/jobs/status';
 import { downloadFile } from '@/lib/jobs/download';
 import type { Listing, Resume, Tweak, Analysis } from './types';
+import { MatchBadge, MatchReason } from './MatchBadge';
 
 // Filesystem-safe slug for a downloaded tailored resume filename.
 const slug = (s: string) => s.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'resume';
@@ -134,16 +134,11 @@ export function JobCard({
           <div className="font-medium truncate">{listing.title}</div>
           <div className="text-xs text-muted truncate">
             {listing.company}
-            {listing.remote && ' · Remote'}
-            {compStr && ` · ${compStr}`}
-            {listing.field && ` · ${listing.field}`}
+            {[listing.remote && 'Remote', compStr, listing.field].filter(Boolean).map((s) => ` · ${s}`).join('')}
           </div>
+          <MatchReason match={listing.match} />
         </div>
-        {analysis && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-accent/10 text-accent shrink-0" title="Best resume fit score">
-            {Math.max(0, ...analysis.scores.map((s) => s.score))}% fit
-          </span>
-        )}
+        <MatchBadge listing={listing} />
         {app && (
           <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${STATUS_COLORS[app.status as keyof typeof STATUS_COLORS] ?? ''}`}>
             {statusLabel(app.status)}

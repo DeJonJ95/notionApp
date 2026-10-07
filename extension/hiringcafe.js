@@ -19,7 +19,6 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const MONEY = /\$\s?\d[\d.,]*\s?[kK]?(?:\s?[-–]\s?\$?\s?\d[\d.,]*\s?[kK]?)?(?:\s?\/\s?(?:yr|hr|year|hour|mo))?/;
 
-  // ── tiny toast ────────────────────────────────────────────────────
   function toast(msg, kind) {
     let t = document.getElementById('applykit-toast');
     if (!t) {
@@ -44,7 +43,6 @@
     return res;
   }
 
-  // ── scraping helpers ──────────────────────────────────────────────
   function openModal() {
     return document.querySelector('.chakra-modal__content');
   }
@@ -135,7 +133,6 @@
     }
   }
 
-  // ── bulk import from embedded ssrHits ─────────────────────────────
   function readSsrHits() {
     try {
       const nd = JSON.parse(document.getElementById('__NEXT_DATA__').textContent);
@@ -193,10 +190,13 @@
       try { await send(payload); ok++; } catch { fail++; }
       await sleep(120); // be gentle on the API
     }
-    toast(`Imported ${ok} job${ok === 1 ? '' : 's'}${fail ? `, ${fail} skipped` : ''}.`, fail && !ok ? 'err' : 'ok');
+    const imported = `Imported ${ok} job${ok === 1 ? '' : 's'}${fail ? `, ${fail} skipped` : ''}.`;
+    if (!ok) { toast(imported, 'err'); return; }
+    toast(`${imported} Ranking against your resumes…`, 'busy');
+    const res = await chrome.runtime.sendMessage({ type: 'rankJobs' }).catch(() => null);
+    toast(res?.ok ? `${imported} AI-scored the top ${res.aiScored}; open Jobs and sort by Best match.` : `${imported} Ranking failed; use Rank matches on the Jobs page.`, res?.ok ? 'ok' : 'err');
   }
 
-  // ── floating UI ───────────────────────────────────────────────────
   function mkBtn(label, bg) {
     const b = document.createElement('button');
     b.textContent = label;

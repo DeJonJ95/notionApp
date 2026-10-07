@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Plus, Loader2, FileText, Briefcase, X, Globe } from 'lucide-react';
 import { JobCard } from './JobCard';
+import { useMatchRanking } from './useMatchRanking';
 import { PIPELINE_STATUSES, statusLabel } from '@/lib/jobs/status';
 import type { Listing, Resume } from './types';
 
@@ -26,12 +27,9 @@ export function JobsDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Funnel counts across the pipeline stages.
+  const { shown, bar } = useMatchRanking({ listings, hasResumes: resumes.length > 0, loading, reload: load });
   const counts: Record<string, number> = {};
-  for (const l of listings) {
-    const s = l.application?.status;
-    if (s) counts[s] = (counts[s] ?? 0) + 1;
-  }
+  listings.forEach((l) => { if (l.application) counts[l.application.status] = (counts[l.application.status] ?? 0) + 1; });
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
@@ -73,7 +71,8 @@ export function JobsDashboard() {
         <p className="text-sm text-muted text-center py-12">No jobs yet. Click “Add job” to paste a posting.</p>
       ) : (
         <div className="space-y-2">
-          {listings.map((l) => (
+          {bar}
+          {shown.map((l) => (
             <JobCard key={l.id} listing={l} resumes={resumes} onChanged={load} />
           ))}
         </div>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Notes Clipper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Save images from Pinterest, Tumblr, and anywhere else into your notes with one click.",
   "permissions": ["storage", "contextMenus", "activeTab"],
   "host_permissions": ["<all_urls>"],
@@ -30,7 +30,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://hiring.cafe/*"],
+      "matches": ["https://hiring.cafe/*", "https://hiringcafe.com/*"],
       "js": ["hiringcafe.js"],
       "run_at": "document_idle"
     },
@@ -41,7 +41,7 @@
     },
     {
       "matches": ["http://*/*", "https://*/*"],
-      "exclude_matches": ["https://hiring.cafe/*", "https://claude.ai/*"],
+      "exclude_matches": ["https://hiring.cafe/*", "https://hiringcafe.com/*", "https://claude.ai/*"],
       "js": ["jobcapture.js"],
       "run_at": "document_idle"
     }
