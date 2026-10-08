@@ -33,9 +33,9 @@ export type MapEdge = { from: string; to: string; d: string; settled: boolean };
 export type MapModel = { nodes: MapNode[]; lanes: MapLane[]; edges: MapEdge[]; width: number; height: number };
 
 export const NODE_W = 232;
-export const NODE_H = 104;
+export const NODE_H = 116;
 const COL = 296;
-const ROW = 128;
+const ROW = 140;
 const PAD = 48;
 const HEAD = 48;
 const LANE_GAP = 36;
@@ -153,7 +153,7 @@ function laneFrames(nodes: MapNode[], laneOrder: string[]): MapLane[] {
   return laneOrder.map((name, i) => {
     const members = nodes.filter((n) => n.lane === name);
     const xs = members.map((n) => n.at.x), ys = members.map((n) => n.at.y);
-    const x = Math.min(...xs) - 24, y = Math.min(...ys) - HEAD;
+    const x = Math.min(...xs) - 24, y = members[0].laneTop;
     const w = Math.max(...xs) + NODE_W + 24 - x, h = Math.max(...ys) + NODE_H + 24 - y;
     return { name, x, y, w, h, tint: LANE_TINTS[i % LANE_TINTS.length] };
   });
