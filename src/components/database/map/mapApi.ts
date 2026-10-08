@@ -28,3 +28,12 @@ export function createWaitsOn(databaseId: string) {
     formula: JSON.stringify({ targetDatabaseId: databaseId }),
   });
 }
+
+export async function deleteProject(pageId: string, taskDbId?: string) {
+  if (taskDbId) {
+    const res = await fetch(`/api/databases/${taskDbId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`delete database ${taskDbId} failed: ${res.status}`);
+  }
+  const res = await fetch(`/api/pages/${pageId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`delete page ${pageId} failed: ${res.status}`);
+}

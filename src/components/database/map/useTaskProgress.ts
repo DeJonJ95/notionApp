@@ -9,7 +9,7 @@ import { idList, isDoneLabel, parseConfig, selectOptions, valueOf, type MapDb, t
 export type TaskProgress = { done: number; total: number };
 export type TaskItem = { id: string; title: string; done: boolean; dbId: string };
 type TaskRow = { id: string; title: string; properties: { property: { id: string; name: string }; value: unknown }[] };
-type TaskDb = { id: string; workspaceId: string; properties: MapProp[]; pages: TaskRow[] };
+type TaskDb = { id: string; name: string; workspaceId: string; properties: MapProp[]; pages: TaskRow[] };
 
 // A project's tasks are either a whole database it points at ("Task database") or the rows its Tasks relation links.
 export type TaskSource = { dbId: string; whole: boolean };
@@ -40,7 +40,7 @@ function useTaskDbs(ids: string[], reload: number): Record<string, TaskDb> {
     Promise.all(key.split(',').filter(Boolean).map((id) => fetchTargetDb(id, reload > 0))).then((list) => {
       if (!alive) return;
       const next: Record<string, TaskDb> = {};
-      for (const db of list) if (db) next[db.id] = { id: db.id, workspaceId: db.workspaceId ?? '', properties: db.properties ?? [], pages: db.pages };
+      for (const db of list) if (db) next[db.id] = { id: db.id, name: db.name, workspaceId: db.workspaceId ?? '', properties: db.properties ?? [], pages: db.pages };
       setDbs(next);
     });
     return () => { alive = false; };
@@ -98,7 +98,8 @@ export function useTasks(db: MapDb, props: MapProps, link: (projectId: string, i
 
   const sourceFor = (id: string) => {
     const page = db.pages.find((p) => p.id === id);
-    return page ? sourceOf(page, props) : null;
+    const src = page ? sourceOf(page, props) : null;
+    return src ? { ...src, name: dbs[src.dbId]?.name ?? 'its task database', count: dbs[src.dbId]?.pages.length ?? 0 } : null;
   };
 
   return { items, progress, toggle, add, sourceFor };

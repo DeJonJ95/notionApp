@@ -12,6 +12,7 @@ type Props = {
   props: MapProps;
   tasks?: TaskPanel;
   openHref: string;
+  onDelete: (id: string) => void;
   onSet: (pageId: string, prop: MapProp, value: unknown) => void;
   onSelect: (id: string) => void;
   onUnpin: (id: string) => void;
@@ -119,6 +120,9 @@ export function MapInspector(p: Props) {
       <Link href={p.openHref} className="flex items-center justify-center min-h-[44px] rounded-lg bg-text text-bg text-[15px] font-semibold">
         Open project
       </Link>
+      <button type="button" onClick={() => p.onDelete(node.id)} className="min-h-[40px] rounded-lg border border-red-600/50 text-red-600 text-sm font-semibold hover:bg-red-600/10">
+        Delete project
+      </button>
     </section>
   );
 }

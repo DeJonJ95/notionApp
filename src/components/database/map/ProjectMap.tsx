@@ -2,9 +2,9 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
-import { toast } from '@/components/ui/feedback';
+import { confirmDialog, toast } from '@/components/ui/feedback';
 import { buildModel, detectProps, STATUS_STYLE, type MapDb, type MapModel, type MapNode as MapNodeT } from './mapModel';
-import { createPage, createWaitsOn } from './mapApi';
+import { createPage, createWaitsOn, deleteProject } from './mapApi';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
 import type { TaskPanel } from './MapTasks';
@@ -71,6 +71,23 @@ function Lanes({ model }: { model: MapModel }) {
   );
 }
 
+type OwnSource = { dbId: string; whole: boolean; name: string; count: number } | null;
+
+async function confirmAndDelete(title: string, id: string, src: OwnSource): Promise<boolean> {
+  const own = src?.whole ? src : null;
+  const message = own ? `This also deletes its task database “${own.name}” and its ${own.count} tasks.` : 'This deletes the project.';
+  const ok = await confirmDialog({ title: `Delete “${title}”?`, message: `${message} It cannot be undone.`, confirmText: 'Delete project', danger: true });
+  if (!ok) return false;
+  try {
+    await deleteProject(id, own?.dbId);
+    window.dispatchEvent(new Event('kove:refresh-tree'));
+    return true;
+  } catch {
+    toast.error('Couldn’t delete that project.');
+    return false;
+  }
+}
+
 export function ProjectMap({ database, view, onChanged }: Props) {
   const { merged, setValue } = useValueEdits(database, onChanged);
   const props = useMemo(() => detectProps(merged), [merged]);
@@ -97,6 +114,10 @@ export function ProjectMap({ database, view, onChanged }: Props) {
     } : undefined;
     return { items: tasks.items[n.id] ?? [], color: n.color, toggle: tasks.toggle, add: (t) => tasks.add(n.id, t), canAdd: Boolean(tasks.sourceFor(n.id)), picker };
   };
+  const removeProject = (id: string) =>
+    confirmAndDelete(model.nodes.find((n) => n.id === id)?.title ?? 'this project', id, tasks.sourceFor(id))
+      .then((gone) => { if (gone) setSelId(null); })
+      .finally(onChanged);
   const addProject = () => createPage(database.workspaceId, database.id, 'Untitled project')
     .then((id) => { if (id) setSelId(id); onChanged(); })
     .catch(() => toast.error('Couldn’t create a project.'));
@@ -133,7 +154,7 @@ export function ProjectMap({ database, view, onChanged }: Props) {
         </div>
         {selected ? (
           <MapInspector node={selected} nodes={model.nodes} props={props}
-            tasks={taskPanel(selected)} openHref={openHref(selected.id)}
+            tasks={taskPanel(selected)} openHref={openHref(selected.id)} onDelete={removeProject}
             onSet={setValue} onSelect={setSelId} onUnpin={layout.unpin} />
         ) : null}
       </div>

@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase, NotebookPen, CalendarDays, Inbox, PartyPopper } from 'lucide-react';
+import { Menu, X, Home, LogOut, Star, Search, LayoutTemplate, Sparkles, BarChart2, Bell, Wallet, Plus, BookOpen, Chrome, PanelLeftClose, PanelLeftOpen, Clock, Briefcase, NotebookPen, CalendarDays, Inbox, PartyPopper, Network, Eraser } from 'lucide-react';
 import { useRecentPages } from '@/lib/recentPages';
 import { signOut, useSession } from 'next-auth/react';
 import { PageTree } from './PageTree';
@@ -29,11 +29,11 @@ type Page = {
 const ADMIN_EMAIL = 'dejonj95@gmail.com';
 
 const NAV_LINKS = [
-  ['/inbox', Inbox, 'Inbox'],
+  ['/inbox', Inbox, 'Inbox'], ['/projects', Network, 'Projects'],
   ['/events', PartyPopper, 'Events'],
   ['/budget', Wallet, 'Budget'],
   ['/jobs', Briefcase, 'Jobs'],
-  ['/docs', BookOpen, 'Docs'],
+  ['/docs', BookOpen, 'Docs'], ['/cleanup', Eraser, 'Cleanup'],
 ] as const;
 
 export function Sidebar() {
