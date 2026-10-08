@@ -2,7 +2,7 @@ export type DbPropertyDef = {
   name: string;
   type: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'formula' | 'relation';
   options?: string[]; // select options — stored as JSON in property.formula
-  selfRelation?: boolean;
+  relationTo?: 'self' | 'companion';
   formula?: string;  // formula expression for formula type
 };
 
@@ -19,6 +19,7 @@ export type DbTemplate = {
   icon: string;
   properties: DbPropertyDef[];
   views: DbViewDef[];
+  companion?: { name: string; properties: DbPropertyDef[]; views: DbViewDef[] };
 };
 
 export const DB_TEMPLATES: DbTemplate[] = [
@@ -30,7 +31,8 @@ export const DB_TEMPLATES: DbTemplate[] = [
     properties: [
       { name: 'Status', type: 'select', options: ['Planned', 'In progress', 'In review', 'Done'] },
       { name: 'Area', type: 'select', options: ['Work', 'Personal', 'Learning'] },
-      { name: 'Waits on', type: 'relation', selfRelation: true },
+      { name: 'Waits on', type: 'relation', relationTo: 'self' },
+      { name: 'Tasks', type: 'relation', relationTo: 'companion' },
       { name: 'Next action', type: 'text' },
       { name: 'Due Date', type: 'date' },
     ],
@@ -38,6 +40,17 @@ export const DB_TEMPLATES: DbTemplate[] = [
       { name: 'Map', type: 'map' },
       { name: 'All projects', type: 'table' },
     ],
+    companion: {
+      name: 'Tasks',
+      properties: [
+        { name: 'Status', type: 'select', options: ['To do', 'Doing', 'Done'] },
+        { name: 'Due Date', type: 'date' },
+      ],
+      views: [
+        { name: 'Board', type: 'board' },
+        { name: 'All tasks', type: 'table' },
+      ],
+    },
   },
 
   {

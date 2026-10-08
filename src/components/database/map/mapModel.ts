@@ -24,6 +24,7 @@ export type MapNode = {
   deps: string[];
   next: string;
   at: Point;
+  laneTop: number;
   pinned: boolean;
 };
 
@@ -120,24 +121,26 @@ function depthOf(id: string, deps: Map<string, string[]>, memo: Map<string, numb
   return d;
 }
 
-function autoPlace(nodes: MapNode[], laneOrder: string[]): Map<string, Point> {
+// Pinned positions are stored relative to their lane's top, so a lane that grows pushes the lanes below it down.
+function placeNodes(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>): void {
   const deps = new Map(nodes.map((n) => [n.id, n.deps]));
   const memo = new Map<string, number>();
-  const place = new Map<string, Point>();
   let top = PAD;
   for (const lane of laneOrder) {
     const rows = new Map<number, number>();
-    let maxRows = 1;
+    let bottom = top;
     for (const n of nodes.filter((m) => m.lane === lane)) {
       const d = depthOf(n.id, deps, memo);
       const r = rows.get(d) ?? 0;
       rows.set(d, r + 1);
-      maxRows = Math.max(maxRows, r + 1);
-      place.set(n.id, { x: PAD + 24 + d * COL, y: top + HEAD + r * ROW });
+      const p = pinned[n.id];
+      n.pinned = Boolean(p);
+      n.laneTop = top;
+      n.at = p ? { x: Math.max(8, p.x), y: top + Math.max(HEAD, p.y) } : { x: PAD + 24 + d * COL, y: top + HEAD + r * ROW };
+      bottom = Math.max(bottom, n.at.y + NODE_H);
     }
-    top += HEAD + maxRows * ROW + LANE_GAP;
+    top = bottom + 24 + LANE_GAP;
   }
-  return place;
 }
 
 export function edgePath(a: Point, b: Point): string {
@@ -176,16 +179,12 @@ export function buildModel(db: MapDb, props: MapProps, pinned: Record<string, Po
     return {
       id: p.id, title: p.title || 'Untitled', lane, rawStatus: raw, deps,
       status: st.status, label: st.label, color: STATUS_STYLE[st.status].color,
-      next: String(valueOf(p, props.next) ?? ''), at: { x: 0, y: 0 }, pinned: false,
+      next: String(valueOf(p, props.next) ?? ''), at: { x: 0, y: 0 }, laneTop: 0, pinned: false,
     };
   });
   const used = new Set(nodes.map((n) => n.lane));
   const laneOrder = [...laneOpts, ...Array.from(used).filter((l) => !laneOpts.includes(l))].filter((l) => used.has(l));
-  const auto = autoPlace(nodes, laneOrder);
-  for (const n of nodes) {
-    n.pinned = Boolean(pinned[n.id]);
-    n.at = pinned[n.id] ?? auto.get(n.id) ?? { x: PAD, y: PAD };
-  }
+  placeNodes(nodes, laneOrder, pinned);
   const at = new Map(nodes.map((n) => [n.id, n.at]));
   const edges = nodes.flatMap((n) =>
     n.deps.map((d) => ({ from: d, to: n.id, d: edgePath(at.get(d)!, n.at), settled: isDoneLabel(rawById.get(d) ?? '') })),

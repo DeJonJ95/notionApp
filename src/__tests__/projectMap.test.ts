@@ -59,11 +59,15 @@ describe('project map model', () => {
     expect(m.edges).toHaveLength(2);
   });
 
-  it('lets a hand-placed position override the auto layout', () => {
-    const m = buildModel(db, p, { c: { x: 900, y: 20 } });
+  it('places a pinned node relative to its lane and pushes later lanes down', () => {
+    const before = buildModel(db, p, {});
+    const m = buildModel(db, p, { c: { x: 900, y: 400 } });
     const c = m.nodes.find((n) => n.id === 'c')!;
-    expect(c.at).toEqual({ x: 900, y: 20 });
+    expect(c.at).toEqual({ x: 900, y: c.laneTop + 400 });
     expect(c.pinned).toBe(true);
+    const [work, home] = m.lanes;
+    expect(home.y).toBeGreaterThanOrEqual(work.y + work.h);
+    expect(home.y).toBeGreaterThan(before.lanes[1].y);
   });
 
   it('survives a dependency cycle', () => {
