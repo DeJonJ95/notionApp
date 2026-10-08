@@ -8,6 +8,8 @@ import { X, Plus, Search } from 'lucide-react';
 type TargetDb = {
   id: string;
   name: string;
+  workspaceId?: string;
+  properties?: { id: string; name: string; type: string; formula?: string | null }[];
   pages: { id: string; title: string; properties: { property: { id: string; name: string }; value: any }[] }[];
 };
 const cache = new Map<string, Promise<TargetDb | null>>();

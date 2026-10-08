@@ -11,6 +11,7 @@ export type MapProps = {
   waitsOn?: MapProp;
   next?: MapProp;
   tasks?: MapProp;
+  taskDb?: MapProp;
 };
 
 export type MapNode = {
@@ -86,6 +87,7 @@ export function detectProps(db: MapDb): MapProps {
     lane: byName(rest, /area|lane|group|category|client|team/i),
     waitsOn: byName(selfRel, /wait|block|depend|after|needs/i) ?? selfRel[0],
     next: byName(db.properties.filter((p) => p.type === 'text'), /next/i),
+    taskDb: byName(db.properties.filter((p) => p.type === 'text'), /task\s*(database|db)/i),
     tasks: byName(otherRel, /task/i),
   };
 }

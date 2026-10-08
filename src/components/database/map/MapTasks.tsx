@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { TaskItem } from './useTaskProgress';
 
 export type TaskPanel = {
@@ -8,9 +8,32 @@ export type TaskPanel = {
   color: string;
   toggle: (task: TaskItem) => void;
   add: (title: string) => Promise<void>;
+  canAdd: boolean;
+  picker?: SourcePicker;
 };
 
-export function MapTasks({ items, color, toggle, add }: TaskPanel) {
+type SourcePicker = { value: string; workspaceId: string; selfId: string; onChange: (dbId: string) => void };
+
+function TaskDbPicker({ value, workspaceId, selfId, onChange }: SourcePicker) {
+  const [dbs, setDbs] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/databases?workspaceId=${workspaceId}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list) => { if (alive && Array.isArray(list)) setDbs(list.filter((d) => d.id !== selfId)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [workspaceId, selfId]);
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Task database"
+      className="w-full min-h-[40px] rounded-lg border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent">
+      <option value="">Task database: none</option>
+      {dbs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+    </select>
+  );
+}
+
+export function MapTasks({ items, color, toggle, add, canAdd, picker }: TaskPanel) {
   const [draft, setDraft] = useState('');
   const done = items.filter((t) => t.done).length;
   const pct = items.length ? Math.round((100 * done) / items.length) : 0;
@@ -29,6 +52,7 @@ export function MapTasks({ items, color, toggle, add }: TaskPanel) {
       {items.length ? (
         <div className="h-1.5 rounded bg-border overflow-hidden"><div className="h-1.5" style={{ width: `${pct}%`, background: color }} /></div>
       ) : null}
+      {picker ? <TaskDbPicker {...picker} /> : null}
       <ul className="flex flex-col m-0 p-0 list-none">
         {items.map((t) => (
           <li key={t.id}>
@@ -39,14 +63,14 @@ export function MapTasks({ items, color, toggle, add }: TaskPanel) {
           </li>
         ))}
       </ul>
-      <input
+      {canAdd ? <input
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         placeholder="Add a task and press Enter"
         aria-label="Add a task"
         className="w-full min-h-[40px] rounded-lg border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
-      />
+      /> : null}
     </div>
   );
 }

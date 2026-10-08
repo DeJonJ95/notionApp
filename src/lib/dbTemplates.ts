@@ -33,6 +33,7 @@ export const DB_TEMPLATES: DbTemplate[] = [
       { name: 'Area', type: 'select', options: ['Work', 'Personal', 'Learning'] },
       { name: 'Waits on', type: 'relation', relationTo: 'self' },
       { name: 'Tasks', type: 'relation', relationTo: 'companion' },
+      { name: 'Task database', type: 'text' },
       { name: 'Next action', type: 'text' },
       { name: 'Due Date', type: 'date' },
     ],

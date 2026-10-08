@@ -1,4 +1,5 @@
 import { buildModel, detectProps, downstreamOf, type MapDb } from '@/components/database/map/mapModel';
+import { sourceOf } from '@/components/database/map/useTaskProgress';
 
 const DB = 'db1';
 const props = [
@@ -78,5 +79,17 @@ describe('project map model', () => {
   it('collects everything downstream so a cycle cannot be added', () => {
     const m = buildModel(db, p, {});
     expect(Array.from(downstreamOf('a', m.nodes)).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('prefers a row\'s own task database over the Tasks relation', () => {
+    const withSource: MapDb = {
+      ...db,
+      properties: [...props, { id: 'tk', name: 'Tasks', type: 'relation', formula: JSON.stringify({ targetDatabaseId: 'tasksDb' }) }, { id: 'td', name: 'Task database', type: 'text' }],
+    };
+    const sp = detectProps(withSource);
+    expect(sp.taskDb?.id).toBe('td');
+    const own = { id: 'x', title: 'X', properties: [{ property: { id: 'td' }, value: 'ownDb' }] };
+    expect(sourceOf(own, sp)).toEqual({ dbId: 'ownDb', whole: true });
+    expect(sourceOf({ id: 'y', title: 'Y', properties: [] }, sp)).toEqual({ dbId: 'tasksDb', whole: false });
   });
 });

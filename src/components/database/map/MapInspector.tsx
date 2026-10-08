@@ -11,6 +11,7 @@ type Props = {
   nodes: MapNode[];
   props: MapProps;
   tasks?: TaskPanel;
+  openHref: string;
   onSet: (pageId: string, prop: MapProp, value: unknown) => void;
   onSelect: (id: string) => void;
   onUnpin: (id: string) => void;
@@ -115,7 +116,7 @@ export function MapInspector(p: Props) {
           <button type="button" onClick={() => onUnpin(node.id)} className="min-h-[32px] px-2.5 rounded-md border border-border bg-bg text-[13px]">Snap back</button>
         </div>
       ) : null}
-      <Link href={`/page/${node.id}`} className="flex items-center justify-center min-h-[44px] rounded-lg bg-text text-bg text-[15px] font-semibold">
+      <Link href={p.openHref} className="flex items-center justify-center min-h-[44px] rounded-lg bg-text text-bg text-[15px] font-semibold">
         Open project
       </Link>
     </section>

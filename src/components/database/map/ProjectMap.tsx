@@ -3,10 +3,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { toast } from '@/components/ui/feedback';
-import { buildModel, detectProps, STATUS_STYLE, type MapDb, type MapModel } from './mapModel';
+import { buildModel, detectProps, STATUS_STYLE, type MapDb, type MapModel, type MapNode as MapNodeT } from './mapModel';
 import { createPage, createWaitsOn } from './mapApi';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
+import type { TaskPanel } from './MapTasks';
 import { usePositions, useValueEdits } from './useMapEdits';
 import { useMapPointer } from './useMapPointer';
 import { useTasks } from './useTaskProgress';
@@ -75,7 +76,7 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const props = useMemo(() => detectProps(merged), [merged]);
   const layout = usePositions(database.id, view.id, view.grouping);
   const model = useMemo(() => buildModel(merged, props, layout.positions), [merged, props, layout.positions]);
-  const tasks = useTasks(merged, props.tasks, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
+  const tasks = useTasks(merged, props, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
   const progress = tasks.progress;
   const [selId, setSelId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -83,6 +84,19 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const pointer = useMapPointer({ model, zoom, plane, waitsOn: props.waitsOn, setValue, select: setSelId, layout });
   const selected = model.nodes.find((n) => n.id === selId) ?? model.nodes[0];
 
+  const openHref = (id: string) => {
+    const src = tasks.sourceFor(id);
+    return src?.whole ? `/database/${src.dbId}` : `/page/${id}`;
+  };
+  const taskPanel = (n: MapNodeT): TaskPanel | undefined => {
+    if (!props.taskDb && !props.tasks) return undefined;
+    const taskDbProp = props.taskDb;
+    const picker = taskDbProp ? {
+      value: String(merged.pages.find((p) => p.id === n.id)?.properties.find((pv) => pv.property.id === taskDbProp.id)?.value ?? ''),
+      workspaceId: database.workspaceId, selfId: database.id, onChange: (dbId: string) => setValue(n.id, taskDbProp, dbId),
+    } : undefined;
+    return { items: tasks.items[n.id] ?? [], color: n.color, toggle: tasks.toggle, add: (t) => tasks.add(n.id, t), canAdd: Boolean(tasks.sourceFor(n.id)), picker };
+  };
   const addProject = () => createPage(database.workspaceId, database.id, 'Untitled project')
     .then((id) => { if (id) setSelId(id); onChanged(); })
     .catch(() => toast.error('Couldn’t create a project.'));
@@ -119,7 +133,7 @@ export function ProjectMap({ database, view, onChanged }: Props) {
         </div>
         {selected ? (
           <MapInspector node={selected} nodes={model.nodes} props={props}
-            tasks={tasks.enabled ? { items: tasks.items[selected.id] ?? [], color: selected.color, toggle: tasks.toggle, add: (t) => tasks.add(selected.id, t) } : undefined}
+            tasks={taskPanel(selected)} openHref={openHref(selected.id)}
             onSet={setValue} onSelect={setSelId} onUnpin={layout.unpin} />
         ) : null}
       </div>
