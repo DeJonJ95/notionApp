@@ -50,18 +50,25 @@ export function useValueEdits(db: MapDb, onChanged: () => void) {
 export function usePositions(dbId: string, viewId: string, grouping: unknown) {
   const [positions, setPositions] = useState<Record<string, Point>>(() => readPositions(grouping));
   const latest = useRef(positions);
-  useEffect(() => setPositions(readPositions(grouping)), [viewId, grouping]);
+  const busy = useRef(0);
+  const dragging = useRef(false);
+  const serverJson = JSON.stringify(readPositions(grouping));
+  // A refetch that lands mid-drag or before the PATCH would snap nodes back to stale positions.
+  useEffect(() => { if (busy.current === 0 && !dragging.current) setPositions(JSON.parse(serverJson)); }, [viewId, serverJson]);
   useEffect(() => { latest.current = positions; }, [positions]);
 
   const persist = (next: Record<string, Point>) => {
     setPositions(next);
-    savePositions(dbId, viewId, next).catch(() => toast.error('Couldn’t save the layout.'));
+    busy.current += 1;
+    savePositions(dbId, viewId, next)
+      .catch(() => toast.error('Couldn’t save the layout.'))
+      .finally(() => { busy.current -= 1; });
   };
 
   return {
     positions,
-    move: (id: string, at: Point) => setPositions((p) => ({ ...p, [id]: at })),
-    commit: () => persist(latest.current),
+    move: (id: string, at: Point) => { dragging.current = true; setPositions((p) => ({ ...p, [id]: at })); },
+    commit: () => { dragging.current = false; persist(latest.current); },
     unpin: (id: string) => { const { [id]: _drop, ...rest } = positions; persist(rest); },
     tidy: () => persist({}),
   };
