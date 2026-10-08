@@ -123,22 +123,37 @@ function depthOf(id: string, deps: Map<string, string[]>, memo: Map<string, numb
   return d;
 }
 
+const MAX_ROWS = 3;
+
+// Each dependency depth gets enough sub-columns that no lane stacks more than MAX_ROWS deep; offsets are shared by all lanes so arrows still run left to right.
+function columnStarts(nodes: MapNode[], depth: Map<string, number>): number[] {
+  const counts = new Map<string, number>();
+  for (const n of nodes) { const k = `${n.lane}|${depth.get(n.id)}`; counts.set(k, (counts.get(k) ?? 0) + 1); }
+  const maxDepth = Math.max(0, ...Array.from(depth.values()));
+  const sub = Array.from({ length: maxDepth + 1 }, () => 1);
+  for (const [k, c] of Array.from(counts)) { const d = Number(k.split('|')[1]); sub[d] = Math.max(sub[d], Math.ceil(c / MAX_ROWS)); }
+  return sub.map((_, d) => sub.slice(0, d).reduce((a, b) => a + b, 0));
+}
+
 // Pinned positions are stored relative to their lane's top, so a lane that grows pushes the lanes below it down.
 function placeNodes(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>): void {
   const deps = new Map(nodes.map((n) => [n.id, n.deps]));
   const memo = new Map<string, number>();
+  const depth = new Map(nodes.map((n) => [n.id, depthOf(n.id, deps, memo)]));
+  const start = columnStarts(nodes, depth);
   let top = PAD;
   for (const lane of laneOrder) {
-    const rows = new Map<number, number>();
+    const seen = new Map<number, number>();
     let bottom = top;
     for (const n of nodes.filter((m) => m.lane === lane)) {
-      const d = depthOf(n.id, deps, memo);
-      const r = rows.get(d) ?? 0;
-      rows.set(d, r + 1);
+      const d = depth.get(n.id) ?? 0;
+      const i = seen.get(d) ?? 0;
+      seen.set(d, i + 1);
       const p = pinned[n.id];
+      const col = start[d] + Math.floor(i / MAX_ROWS);
       n.pinned = Boolean(p);
       n.laneTop = top;
-      n.at = p ? { x: Math.max(8, p.x), y: top + Math.max(HEAD, p.y) } : { x: PAD + 24 + d * COL, y: top + HEAD + r * ROW };
+      n.at = p ? { x: Math.max(8, p.x), y: top + Math.max(HEAD, p.y) } : { x: PAD + 24 + col * COL, y: top + HEAD + (i % MAX_ROWS) * ROW };
       bottom = Math.max(bottom, n.at.y + NODE_H);
     }
     top = bottom + 24 + LANE_GAP;

@@ -92,4 +92,13 @@ describe('project map model', () => {
     expect(sourceOf(own, sp)).toEqual({ dbId: 'ownDb', whole: true });
     expect(sourceOf({ id: 'y', title: 'Y', properties: [] }, sp)).toEqual({ dbId: 'tasksDb', whole: false });
   });
+
+  it('wraps a tall stack into extra columns while keeping dependents to the right', () => {
+    const many: MapDb = { ...db, pages: [...['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => page(id, 'Planned', 'Work')), page('z', 'Planned', 'Home', ['p1'])] };
+    const m = buildModel(many, p, {});
+    const by = Object.fromEntries(m.nodes.map((n) => [n.id, n.at]));
+    expect(new Set(['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => by[id].x)).size).toBe(2);
+    expect(Math.max(...['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => by[id].y)) - by.p1.y).toBeLessThan(3 * 140);
+    expect(by.z.x).toBeGreaterThan(Math.max(...['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => by[id].x)));
+  });
 });
