@@ -4,13 +4,13 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { downstreamOf, selectOptions, type MapNode, type MapProp, type MapProps } from './mapModel';
-import type { TaskProgress } from './useTaskProgress';
+import { MapTasks, type TaskPanel } from './MapTasks';
 
 type Props = {
   node: MapNode;
   nodes: MapNode[];
   props: MapProps;
-  progress?: TaskProgress;
+  tasks?: TaskPanel;
   onSet: (pageId: string, prop: MapProp, value: unknown) => void;
   onSelect: (id: string) => void;
   onUnpin: (id: string) => void;
@@ -95,8 +95,7 @@ function Dependencies({ node, nodes, props, onSet, onSelect }: Props) {
 }
 
 export function MapInspector(p: Props) {
-  const { node, props, progress, onSet, onUnpin } = p;
-  const pct = progress && progress.total ? Math.round((100 * progress.done) / progress.total) : 0;
+  const { node, props, tasks, onSet, onUnpin } = p;
   return (
     <section aria-label="Selected project" className="flex flex-col gap-5 p-6 border-l border-border bg-bg w-full lg:w-[320px] shrink-0 overflow-y-auto">
       <div className="flex flex-col gap-2">
@@ -105,12 +104,7 @@ export function MapInspector(p: Props) {
           <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: node.color }} />{node.label}
         </div>
       </div>
-      {progress && progress.total > 0 ? (
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between text-sm"><span className="font-semibold">Tasks</span><span>{progress.done} of {progress.total}</span></div>
-          <div className="h-1.5 rounded bg-border overflow-hidden"><div className="h-1.5" style={{ width: `${pct}%`, background: node.color }} /></div>
-        </div>
-      ) : null}
+      {tasks ? <MapTasks {...tasks} /> : null}
       {props.status ? <SelectField label={props.status.name} prop={props.status} value={node.rawStatus} onChange={(v) => onSet(node.id, props.status!, v)} /> : null}
       {props.lane ? <SelectField label={props.lane.name} prop={props.lane} value={node.lane === 'No area' ? '' : node.lane} onChange={(v) => onSet(node.id, props.lane!, v)} /> : null}
       {props.next ? <NextField node={node} prop={props.next} onSet={onSet} /> : null}

@@ -14,8 +14,8 @@ export function savePositions(databaseId: string, viewId: string, positions: Rec
   return send(`/api/databases/${databaseId}/views/${viewId}`, 'PATCH', { grouping: { positions } });
 }
 
-export async function createProject(workspaceId: string, databaseId: string): Promise<string | null> {
-  const res = await send('/api/pages', 'POST', { workspaceId, databaseId, title: 'Untitled project' });
+export async function createPage(workspaceId: string, databaseId: string, title: string): Promise<string | null> {
+  const res = await send('/api/pages', 'POST', { workspaceId, databaseId, title });
   const page = await res.json().catch(() => null);
   return typeof page?.id === 'string' ? page.id : null;
 }

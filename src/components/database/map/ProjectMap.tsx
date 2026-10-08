@@ -4,12 +4,12 @@ import { useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { toast } from '@/components/ui/feedback';
 import { buildModel, detectProps, STATUS_STYLE, type MapDb, type MapModel } from './mapModel';
-import { createProject, createWaitsOn } from './mapApi';
+import { createPage, createWaitsOn } from './mapApi';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
 import { usePositions, useValueEdits } from './useMapEdits';
 import { useMapPointer } from './useMapPointer';
-import { useTaskProgress } from './useTaskProgress';
+import { useTasks } from './useTaskProgress';
 
 type Props = { database: MapDb; view: { id: string; grouping?: unknown }; onChanged: () => void };
 
@@ -75,14 +75,15 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const props = useMemo(() => detectProps(merged), [merged]);
   const layout = usePositions(database.id, view.id, view.grouping);
   const model = useMemo(() => buildModel(merged, props, layout.positions), [merged, props, layout.positions]);
-  const progress = useTaskProgress(merged.pages, props.tasks);
+  const tasks = useTasks(merged, props.tasks, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
+  const progress = tasks.progress;
   const [selId, setSelId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const plane = useRef<HTMLDivElement>(null);
   const pointer = useMapPointer({ model, zoom, plane, waitsOn: props.waitsOn, setValue, select: setSelId, layout });
   const selected = model.nodes.find((n) => n.id === selId) ?? model.nodes[0];
 
-  const addProject = () => createProject(database.workspaceId, database.id)
+  const addProject = () => createPage(database.workspaceId, database.id, 'Untitled project')
     .then((id) => { if (id) setSelId(id); onChanged(); })
     .catch(() => toast.error('Couldn’t create a project.'));
   const addWaitsOn = () => createWaitsOn(database.id).then(onChanged).catch(() => toast.error('Couldn’t add the relation.'));
@@ -117,7 +118,8 @@ export function ProjectMap({ database, view, onChanged }: Props) {
           <ZoomControls zoom={zoom} setZoom={setZoom} />
         </div>
         {selected ? (
-          <MapInspector node={selected} nodes={model.nodes} props={props} progress={progress[selected.id]}
+          <MapInspector node={selected} nodes={model.nodes} props={props}
+            tasks={tasks.enabled ? { items: tasks.items[selected.id] ?? [], color: selected.color, toggle: tasks.toggle, add: (t) => tasks.add(selected.id, t) } : undefined}
             onSet={setValue} onSelect={setSelId} onUnpin={layout.unpin} />
         ) : null}
       </div>
