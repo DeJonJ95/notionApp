@@ -1,13 +1,14 @@
 export type DbPropertyDef = {
   name: string;
-  type: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'formula';
+  type: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'formula' | 'relation';
   options?: string[]; // select options — stored as JSON in property.formula
+  selfRelation?: boolean;
   formula?: string;  // formula expression for formula type
 };
 
 export type DbViewDef = {
   name: string;
-  type: 'table' | 'board' | 'calendar' | 'gallery' | 'list' | 'budget-summary' | 'spending-breakdown';
+  type: 'table' | 'board' | 'calendar' | 'gallery' | 'list' | 'budget-summary' | 'spending-breakdown' | 'map';
   filters?: { property: string; op: 'contains' | 'eq' | 'gte' | 'lte'; value: string }[];
 };
 
@@ -21,6 +22,24 @@ export type DbTemplate = {
 };
 
 export const DB_TEMPLATES: DbTemplate[] = [
+  {
+    id: 'projects-map',
+    name: 'Projects',
+    description: 'Whole projects on a map, wired by what each one waits on.',
+    icon: '🗺️',
+    properties: [
+      { name: 'Status', type: 'select', options: ['Planned', 'In progress', 'In review', 'Done'] },
+      { name: 'Area', type: 'select', options: ['Work', 'Personal', 'Learning'] },
+      { name: 'Waits on', type: 'relation', selfRelation: true },
+      { name: 'Next action', type: 'text' },
+      { name: 'Due Date', type: 'date' },
+    ],
+    views: [
+      { name: 'Map', type: 'map' },
+      { name: 'All projects', type: 'table' },
+    ],
+  },
+
   {
     id: 'project-tracker',
     name: 'Project Tracker',

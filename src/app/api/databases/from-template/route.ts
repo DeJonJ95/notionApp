@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { DB_TEMPLATES } from '@/lib/dbTemplates';
+import { DB_TEMPLATES, type DbPropertyDef } from '@/lib/dbTemplates';
+
+function templateFormula(prop: DbPropertyDef, databaseId: string): string | null {
+  if (prop.type === 'formula') return prop.formula ?? null;
+  if (prop.selfRelation) return JSON.stringify({ targetDatabaseId: databaseId });
+  return prop.options ? JSON.stringify(prop.options) : null;
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -39,9 +45,7 @@ export async function POST(req: NextRequest) {
         data: {
           name: prop.name,
           type: prop.type,
-          formula: prop.type === 'formula'
-            ? (prop.formula ?? null)
-            : (prop.options ? JSON.stringify(prop.options) : null),
+          formula: templateFormula(prop, db.id),
           position: (i + 1) * 1024,
           databaseId: db.id,
         },

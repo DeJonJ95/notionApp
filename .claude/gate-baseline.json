@@ -483,8 +483,8 @@
       "anyCount": 2
     },
     "src/components/database/DatabaseView.tsx": {
-      "fileLoc": 2938,
-      "functionLoc": 2725,
+      "fileLoc": 2931,
+      "functionLoc": 2717,
       "complexity": 47,
       "banned": 1,
       "anyCount": 19,

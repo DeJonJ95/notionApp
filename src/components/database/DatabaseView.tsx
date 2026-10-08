@@ -12,8 +12,8 @@ import { RelationCell, RollupCell } from './RelationCell';
 import { RowTools } from './RowTools';
 import { confirmDialog, toast } from '@/components/ui/feedback';
 import { EntityIcon } from '@/components/icons/registry';
+import { ProjectMap } from './map/ProjectMap';
 
-// Parse a relation/rollup config out of the overloaded Property.formula JSON.
 function parseRelConfig(formula?: string): any {
   if (!formula) return {};
   try { const j = JSON.parse(formula); return j && typeof j === 'object' && !Array.isArray(j) ? j : {}; }
@@ -209,6 +209,7 @@ const VIEW_TYPE_LABELS: Record<string, string> = {
   heatmap: 'Heatmap',
   'budget-summary': 'Budget',
   'spending-breakdown': 'Spending',
+  map: 'Map',
 };
 
 export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: DatabaseViewProps) {
@@ -2158,26 +2159,18 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
     );
   };
 
-  // Views with their own purpose-built layout and toolbar. Everything else —
-  // including a type this build doesn't recognize — falls through to the table
-  // renderer, so it must also get the filter/sort/group bar. Keeping this as a
-  // deny-list rather than an allow-list is what stops the two disagreeing: a
-  // view stored as anything but exactly 'table' used to render as a table with
-  // no way to filter it.
-  const SPECIALIZED_VIEW_TYPES = ['calendar', 'heatmap', 'budget-summary', 'spending-breakdown'];
+  // Deny-list on purpose: an unknown type renders as a table, so it must keep the filter/sort/group bar.
+  const SPECIALIZED_VIEW_TYPES = ['calendar', 'heatmap', 'budget-summary', 'spending-breakdown', 'map'];
   const viewTypeKey = (view: View) => String(view.type ?? '').trim().toLowerCase();
 
   const renderViewContent = (view: View) => {
-    switch (viewTypeKey(view)) {
-      case 'gallery': return renderGalleryView();
-      case 'list': return renderListView();
-      case 'board': return renderBoardView();
-      case 'calendar': return renderCalendarView();
-      case 'heatmap': return renderHeatmapView();
-      case 'budget-summary': return renderBudgetSummaryView();
-      case 'spending-breakdown': return renderSpendingBreakdownView();
-      default: return renderTableView();
-    }
+    const renderers: Record<string, () => JSX.Element> = {
+      gallery: renderGalleryView, list: renderListView, board: renderBoardView,
+      calendar: renderCalendarView, heatmap: renderHeatmapView,
+      'budget-summary': renderBudgetSummaryView, 'spending-breakdown': renderSpendingBreakdownView,
+      map: () => <ProjectMap database={database} view={view} onChanged={onUpdate} />,
+    };
+    return (renderers[viewTypeKey(view)] ?? renderTableView)();
   };
 
   const renderViewConfigBar = (view: View) => {
@@ -2540,7 +2533,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                     className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     <option value="">Choose a database…</option>
-                    {allDbs.filter((d) => d.id !== database.id).map((d) => (
+                    {allDbs.map((d) => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>
@@ -2689,7 +2682,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
                     className="w-full bg-bg text-text border border-border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     <option value="">Choose a database…</option>
-                    {allDbs.filter((d) => d.id !== database.id).map((d) => (
+                    {allDbs.map((d) => (
                       <option key={d.id} value={d.id}>{d.name}</option>
                     ))}
                   </select>
@@ -2845,7 +2838,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
               <div>
                 <label className="text-xs text-muted font-medium uppercase tracking-wide block mb-1">Type</label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['table', 'board', 'calendar', 'heatmap', 'gallery', 'list', 'budget-summary', 'spending-breakdown'] as const).map((t) => (
+                  {(['table', 'board', 'map', 'calendar', 'heatmap', 'gallery', 'list', 'budget-summary', 'spending-breakdown'] as const).map((t) => (
                     <button
                       key={t}
                       onClick={() => setNewViewType(t)}
