@@ -58,7 +58,7 @@ export function MapNodeCard({ node, selected, progress, handlers }: Props) {
             <span className="text-xs whitespace-nowrap">{progress.done} of {progress.total}</span>
           </span>
         ) : null}
-        <span className="text-[13px] truncate w-full">{node.next || node.rawStatus || ' '}</span>
+        <span className="text-[13px] truncate w-full">{node.next || 'No next action yet'}</span>
       </button>
       <span className="absolute w-2.5 h-2.5 rounded-full bg-bg border-[1.5px] border-muted" style={{ left: -6, top: NODE_H / 2 - 5 }} />
       <button

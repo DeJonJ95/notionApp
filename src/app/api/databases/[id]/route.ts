@@ -84,7 +84,7 @@ export async function GET(
         properties: {
           orderBy: { position: 'asc' },
         },
-        views: true,
+        views: { orderBy: { createdAt: 'asc' } },
         pages: {
           where: { isArchived: false },
           orderBy: { position: 'asc' },
