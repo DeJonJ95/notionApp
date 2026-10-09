@@ -32,10 +32,6 @@ function columnStarts(nodes: MapNode[], depth: Map<string, number>, rows: number
   return sub.map((_, d) => sub.slice(0, d).reduce((a, b) => a + b, 0));
 }
 
-// Within a wrapped column, cards that feed others go in the right-most sub-column so their arrows never pass behind a card.
-function feedersLast(list: MapNode[], feeders: Set<string>): MapNode[] {
-  return [...list.filter((n) => !feeders.has(n.id)), ...list.filter((n) => feeders.has(n.id))];
-}
 
 const clash = (a: Point, b: Point) => Math.abs(a.x - b.x) < NODE_W + 16 && Math.abs(a.y - b.y) < NODE_H + 16;
 
@@ -53,16 +49,16 @@ function depths(nodes: MapNode[], sameLaneOnly: boolean): Map<string, number> {
   return new Map(nodes.map((n) => [n.id, depthOf(n.id, deps, memo)]));
 }
 
+// Cards keep creation order inside a column so adding one never shifts the others.
 // Stacked: lanes run top to bottom, depth columns are shared across lanes. Pinned offsets are relative to the lane's top.
 function placeStacked(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>): void {
   const depth = depths(nodes, false);
   const start = columnStarts(nodes, depth, STACK_ROWS);
-  const feeders = new Set(nodes.flatMap((n) => n.deps));
   let top = PAD;
   for (const lane of laneOrder) {
     const seen = new Map<number, number>();
     let bottom = top;
-    const members = feedersLast(nodes.filter((m) => m.lane === lane), feeders);
+    const members = nodes.filter((m) => m.lane === lane);
     const taken = members.filter((n) => pinned[n.id]).map((n) => ({ x: Math.max(8, pinned[n.id].x), y: top + Math.max(HEAD, pinned[n.id].y) }));
     for (const n of members) {
       const d = depth.get(n.id) ?? 0;
@@ -82,10 +78,9 @@ function placeStacked(nodes: MapNode[], laneOrder: string[], pinned: Record<stri
 // Across: lanes (phases) run left to right; inside a lane, cards flow by their dependencies within that lane. Pinned offsets are relative to the lane's left edge.
 function placeAcross(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>): void {
   const depth = depths(nodes, true);
-  const feeders = new Set(nodes.flatMap((n) => n.deps));
   let left = PAD;
   for (const lane of laneOrder) {
-    const members = feedersLast(nodes.filter((m) => m.lane === lane), feeders);
+    const members = nodes.filter((m) => m.lane === lane);
     const start = columnStarts(members, depth, ROW_LANE_ROWS);
     const seen = new Map<number, number>();
     let right = left + NODE_W + 48;
