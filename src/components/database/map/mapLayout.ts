@@ -49,19 +49,25 @@ function depths(nodes: MapNode[], sameLaneOnly: boolean): Map<string, number> {
   return new Map(nodes.map((n) => [n.id, depthOf(n.id, deps, memo)]));
 }
 
-export type Saved = Point & { auto?: boolean };
+export type Saved = Point & { auto?: boolean; lane?: string };
 type SlotAt = (depth: number, i: number) => Point;
 
 const pinAt = (o: Point, p: Point): Point => ({ x: o.x + Math.max(24, p.x), y: o.y + Math.max(HEAD, p.y) });
 
 // Saved offsets are relative to the lane origin, the same in every view, so a card keeps its spot across tabs and the All timeline.
 // Only cards with no saved spot are auto-placed, into the first free slot, so adding a card never moves the others.
+// A spot saved while the card sat in another lane no longer applies; the card gets a fresh free slot.
+const spotFor = (n: MapNode, saved: Record<string, Saved>) => {
+  const p = saved[n.id];
+  return p && (!p.lane || p.lane === n.lane) ? p : undefined;
+};
+
 function placeLane(members: MapNode[], lane: { origin: Point; slotAt: SlotAt }, depth: Map<string, number>, saved: Record<string, Saved>): void {
   const { origin, slotAt } = lane;
-  const taken = members.filter((n) => saved[n.id]).map((n) => pinAt(origin, saved[n.id]));
+  const taken = members.map((n) => spotFor(n, saved)).filter((p): p is Saved => Boolean(p)).map((p) => pinAt(origin, p));
   const seen = new Map<number, number>();
   for (const n of members) {
-    const p = saved[n.id];
+    const p = spotFor(n, saved);
     const d = depth.get(n.id) ?? 0;
     n.laneOrigin = origin;
     n.pinned = Boolean(p && !p.auto);

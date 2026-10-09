@@ -181,4 +181,15 @@ describe('project map placement stability', () => {
     expect(first.nodes.some((n) => n.at.x === z.at.x && n.at.y === z.at.y)).toBe(false);
     expect(next.nodes.every((n) => !n.pinned)).toBe(true);
   });
+
+  it('re-places a card whose saved spot belongs to a different lane', () => {
+    const two: MapDb = { ...db, pages: [page('a', 'Planned', 'Work'), page('b', 'Planned', 'Work')] };
+    const first = buildModel(two, p, {});
+    const a = first.nodes.find((n) => n.id === 'a')!;
+    const saved = { a: { x: a.at.x - a.laneOrigin.x, y: a.at.y - a.laneOrigin.y, auto: true, lane: 'Work' }, b: { x: a.at.x - a.laneOrigin.x, y: a.at.y - a.laneOrigin.y, auto: true, lane: 'Home' } };
+    const m = buildModel(two, p, saved);
+    const [ma, mb] = ['a', 'b'].map((id) => m.nodes.find((n) => n.id === id)!.at);
+    expect(ma).toEqual(a.at);
+    expect(mb).not.toEqual(ma);
+  });
 });

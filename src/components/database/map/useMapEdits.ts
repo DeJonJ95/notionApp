@@ -70,7 +70,7 @@ export function usePositions(dbId: string, viewId: string, grouping: unknown) {
   return {
     positions,
     handPlaced: Object.values(positions).filter((p) => !p.auto).length,
-    move: (id: string, at: Point) => { dragging.current = true; setPositions((p) => ({ ...p, [id]: at })); },
+    move: (id: string, at: Saved) => { dragging.current = true; setPositions((p) => ({ ...p, [id]: at })); },
     commit: () => { dragging.current = false; persist(latest.current); },
     unpin: (id: string) => { const { [id]: _drop, ...rest } = positions; persist(rest); },
     tidy: () => persist({}),
@@ -81,8 +81,8 @@ export function usePositions(dbId: string, viewId: string, grouping: unknown) {
 
 export function useFrozenLayout(nodes: MapNode[], layout: ReturnType<typeof usePositions>) {
   useEffect(() => {
-    const fresh = nodes.filter((n) => !layout.positions[n.id]);
+    const fresh = nodes.filter((n) => { const p = layout.positions[n.id]; return !p || (p.lane !== undefined && p.lane !== n.lane); });
     if (!fresh.length) return;
-    layout.freeze(Object.fromEntries(fresh.map((n) => [n.id, { x: n.at.x - n.laneOrigin.x, y: n.at.y - n.laneOrigin.y, auto: true }])));
+    layout.freeze(Object.fromEntries(fresh.map((n) => [n.id, { x: n.at.x - n.laneOrigin.x, y: n.at.y - n.laneOrigin.y, auto: true, lane: n.lane }])));
   }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 }
