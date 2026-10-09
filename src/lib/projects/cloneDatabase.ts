@@ -11,7 +11,7 @@ function loadSource(tx: Tx, id: string) {
     include: {
       properties: true,
       views: true,
-      pages: { where: { isArchived: false }, include: { properties: true, blocks: true } },
+      pages: { where: { isArchived: false }, orderBy: { createdAt: 'asc' }, include: { properties: true, blocks: true } },
     },
   });
 }
