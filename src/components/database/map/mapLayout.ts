@@ -49,58 +49,59 @@ function depths(nodes: MapNode[], sameLaneOnly: boolean): Map<string, number> {
   return new Map(nodes.map((n) => [n.id, depthOf(n.id, deps, memo)]));
 }
 
-// Cards keep creation order inside a column so adding one never shifts the others.
-// Stacked: lanes run top to bottom, depth columns are shared across lanes. Pinned offsets are relative to the lane's top.
-function placeStacked(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>): void {
+export type Saved = Point & { auto?: boolean };
+type SlotAt = (depth: number, i: number) => Point;
+
+const pinAt = (o: Point, p: Point): Point => ({ x: o.x + Math.max(24, p.x), y: o.y + Math.max(HEAD, p.y) });
+
+// Saved offsets are relative to the lane origin, the same in every view, so a card keeps its spot across tabs and the All timeline.
+// Only cards with no saved spot are auto-placed, into the first free slot, so adding a card never moves the others.
+function placeLane(members: MapNode[], lane: { origin: Point; slotAt: SlotAt }, depth: Map<string, number>, saved: Record<string, Saved>): void {
+  const { origin, slotAt } = lane;
+  const taken = members.filter((n) => saved[n.id]).map((n) => pinAt(origin, saved[n.id]));
+  const seen = new Map<number, number>();
+  for (const n of members) {
+    const p = saved[n.id];
+    const d = depth.get(n.id) ?? 0;
+    n.laneOrigin = origin;
+    n.pinned = Boolean(p && !p.auto);
+    if (p) { n.at = pinAt(origin, p); continue; }
+    const i = freeSlot((k) => slotAt(d, k), seen.get(d) ?? 0, taken);
+    seen.set(d, i + 1);
+    n.at = slotAt(d, i);
+    taken.push(n.at);
+  }
+}
+
+// Stacked: lanes run top to bottom, depth columns are shared across lanes.
+function placeStacked(nodes: MapNode[], laneOrder: string[], saved: Record<string, Saved>): void {
   const depth = depths(nodes, false);
   const start = columnStarts(nodes, depth, STACK_ROWS);
   let top = PAD;
   for (const lane of laneOrder) {
-    const seen = new Map<number, number>();
-    let bottom = top;
     const members = nodes.filter((m) => m.lane === lane);
-    const taken = members.filter((n) => pinned[n.id]).map((n) => ({ x: Math.max(8, pinned[n.id].x), y: top + Math.max(HEAD, pinned[n.id].y) }));
-    for (const n of members) {
-      const d = depth.get(n.id) ?? 0;
-      const p = pinned[n.id];
-      const slotAt = (i: number) => ({ x: PAD + 24 + (start[d] + Math.floor(i / STACK_ROWS)) * COL, y: top + HEAD + (i % STACK_ROWS) * ROW });
-      const i = p ? 0 : freeSlot(slotAt, seen.get(d) ?? 0, taken);
-      if (!p) seen.set(d, i + 1);
-      n.pinned = Boolean(p);
-      n.laneOrigin = { x: 0, y: top };
-      n.at = p ? { x: Math.max(8, p.x), y: top + Math.max(HEAD, p.y) } : slotAt(i);
-      bottom = Math.max(bottom, n.at.y + NODE_H);
-    }
-    top = bottom + 24 + LANE_GAP;
+    const y0 = top;
+    const slotAt: SlotAt = (d, i) => ({ x: PAD + 24 + (start[d] + Math.floor(i / STACK_ROWS)) * COL, y: y0 + HEAD + (i % STACK_ROWS) * ROW });
+    placeLane(members, { origin: { x: PAD, y: y0 }, slotAt }, depth, saved);
+    top = Math.max(top, ...members.map((n) => n.at.y + NODE_H)) + 24 + LANE_GAP;
   }
 }
 
-// Across: lanes (phases) run left to right; inside a lane, cards flow by their dependencies within that lane. Pinned offsets are relative to the lane's left edge.
-function placeAcross(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>): void {
+// Across: lanes (phases) run left to right; inside a lane, cards flow by their dependencies within that lane.
+function placeAcross(nodes: MapNode[], laneOrder: string[], saved: Record<string, Saved>): void {
   const depth = depths(nodes, true);
   let left = PAD;
   for (const lane of laneOrder) {
     const members = nodes.filter((m) => m.lane === lane);
     const start = columnStarts(members, depth, ROW_LANE_ROWS);
-    const seen = new Map<number, number>();
-    let right = left + NODE_W + 48;
-    const taken = members.filter((n) => pinned[n.id]).map((n) => ({ x: left + Math.max(24, pinned[n.id].x), y: Math.max(PAD + HEAD, pinned[n.id].y) }));
-    for (const n of members) {
-      const d = depth.get(n.id) ?? 0;
-      const p = pinned[n.id];
-      const slotAt = (i: number) => ({ x: left + 24 + (start[d] + Math.floor(i / ROW_LANE_ROWS)) * COL, y: PAD + HEAD + (i % ROW_LANE_ROWS) * ROW });
-      const i = p ? 0 : freeSlot(slotAt, seen.get(d) ?? 0, taken);
-      if (!p) seen.set(d, i + 1);
-      n.pinned = Boolean(p);
-      n.laneOrigin = { x: left, y: 0 };
-      n.at = p ? { x: left + Math.max(24, p.x), y: Math.max(PAD + HEAD, p.y) } : slotAt(i);
-      right = Math.max(right, n.at.x + NODE_W + 24);
-    }
-    left = right + LANE_GAP;
+    const x0 = left;
+    const slotAt: SlotAt = (d, i) => ({ x: x0 + 24 + (start[d] + Math.floor(i / ROW_LANE_ROWS)) * COL, y: PAD + HEAD + (i % ROW_LANE_ROWS) * ROW });
+    placeLane(members, { origin: { x: x0, y: PAD }, slotAt }, depth, saved);
+    left = Math.max(left + NODE_W + 48, ...members.map((n) => n.at.x + NODE_W + 24)) + LANE_GAP;
   }
 }
 
-export function placeNodes(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>, across: boolean): void {
+export function placeNodes(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Saved>, across: boolean): void {
   if (across) placeAcross(nodes, laneOrder, pinned);
   else placeStacked(nodes, laneOrder, pinned);
 }
@@ -111,7 +112,7 @@ export function laneFrames(nodes: MapNode[], laneOrder: string[], across: boolea
     const members = nodes.filter((n) => n.lane === name);
     const xs = members.map((n) => n.at.x), ys = members.map((n) => n.at.y);
     const x = across ? members[0].laneOrigin.x : Math.min(...xs) - 24;
-    const y = across ? PAD : members[0].laneOrigin.y;
+    const y = members[0].laneOrigin.y;
     const w = Math.max(...xs) + NODE_W + 24 - x;
     const h = (across ? bottom : Math.max(...ys) + NODE_H + 24) - y;
     return { name, x, y, w, h, tint: LANE_TINTS[i % LANE_TINTS.length] };

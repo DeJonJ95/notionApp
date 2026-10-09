@@ -41,7 +41,7 @@ export type MapTab = { name: string; done: number; total: number };
 export type MapModel = { nodes: MapNode[]; all: MapNode[]; lanes: MapLane[]; edges: MapEdge[]; width: number; height: number; across: boolean };
 
 export { NODE_W, NODE_H } from './mapLayout';
-import { NODE_W, NODE_H, PAD, laneFrames, placeNodes } from './mapLayout';
+import { NODE_W, NODE_H, PAD, laneFrames, placeNodes, type Saved } from './mapLayout';
 
 export const STATUS_STYLE: Record<StatusKey, { label: string; color: string }> = {
   done: { label: 'Done', color: '#2f7d4f' },
@@ -182,7 +182,7 @@ function makeNodes(db: MapDb, props: MapProps): { nodes: MapNode[]; rawById: Map
 }
 
 // `only` narrows the canvas to one lane (a phase tab); statuses and the tab counts still see every card.
-export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, Point>, opts: BuildOptions = {}): MapModel {
+export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, Saved>, opts: BuildOptions = {}): MapModel {
   const db = visiblePages(all, props, opts.showArchived);
   const { nodes: every, rawById } = makeNodes(db, props);
   const laneOpts = selectOptions(props.lane);

@@ -64,7 +64,7 @@ describe('project map model', () => {
     const before = buildModel(db, p, {});
     const m = buildModel(db, p, { c: { x: 900, y: 400 } });
     const c = m.nodes.find((n) => n.id === 'c')!;
-    expect(c.at).toEqual({ x: 900, y: c.laneOrigin.y + 400 });
+    expect(c.at).toEqual({ x: c.laneOrigin.x + 900, y: c.laneOrigin.y + 400 });
     expect(c.pinned).toBe(true);
     const [work, home] = m.lanes;
     expect(home.y).toBeGreaterThanOrEqual(work.y + work.h);
@@ -146,6 +146,11 @@ describe('project map wrapping and grouping', () => {
     expect(laneTabs(phased, pp)).toEqual([{ name: 'Setup', done: 1, total: 2 }, { name: 'Training', done: 0, total: 1 }]);
   });
 
+});
+
+describe('project map placement stability', () => {
+  const p = detectProps(db);
+
   it('puts a newly created card after the existing ones instead of bumping them', () => {
     const older = { ...page('old', 'Planned', 'Work'), createdAt: '2026-01-01T00:00:00Z' };
     const newer = { ...page('new', 'Planned', 'Work'), createdAt: '2026-10-09T00:00:00Z' };
@@ -160,8 +165,20 @@ describe('project map wrapping and grouping', () => {
     const solo: MapDb = { ...db, pages: [page('a', 'Planned', 'Work'), page('b', 'Planned', 'Work')] };
     const free = buildModel(solo, p, {});
     const slot = free.nodes.find((n) => n.id === 'a')!;
-    const m = buildModel(solo, p, { b: { x: slot.at.x, y: slot.at.y - slot.laneOrigin.y } });
+    const m = buildModel(solo, p, { b: { x: slot.at.x - slot.laneOrigin.x, y: slot.at.y - slot.laneOrigin.y } });
     const [a, b] = ['a', 'b'].map((id) => m.nodes.find((n) => n.id === id)!.at);
     expect(Math.abs(a.x - b.x) >= 232 || Math.abs(a.y - b.y) >= 116).toBe(true);
+  });
+
+  it('keeps every frozen card in place when a new card arrives, and marks only dragged cards as placed by hand', () => {
+    const solo: MapDb = { ...db, pages: ['a', 'b', 'c', 'd'].map((id, i) => ({ ...page(id, 'Planned', 'Work'), createdAt: `2026-01-0${i + 1}T00:00:00Z` })) };
+    const first = buildModel(solo, p, {});
+    const frozen = Object.fromEntries(first.nodes.map((n) => [n.id, { x: n.at.x - n.laneOrigin.x, y: n.at.y - n.laneOrigin.y, auto: true }]));
+    const grown: MapDb = { ...solo, pages: [{ ...page('z', 'Planned', 'Work'), createdAt: '2026-02-01T00:00:00Z' }, ...solo.pages] };
+    const next = buildModel(grown, p, frozen);
+    for (const n of first.nodes) expect(next.nodes.find((m) => m.id === n.id)!.at).toEqual(n.at);
+    const z = next.nodes.find((n) => n.id === 'z')!;
+    expect(first.nodes.some((n) => n.at.x === z.at.x && n.at.y === z.at.y)).toBe(false);
+    expect(next.nodes.every((n) => !n.pinned)).toBe(true);
   });
 });

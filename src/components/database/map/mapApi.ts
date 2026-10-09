@@ -1,4 +1,4 @@
-import type { Point } from './mapModel';
+import type { Saved } from './mapLayout';
 
 async function send(url: string, method: string, body: unknown): Promise<Response> {
   const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -10,7 +10,7 @@ export function saveValue(pageId: string, propertyId: string, value: unknown) {
   return send('/api/property-values', 'PUT', { pageId, propertyId, value: value === '' ? null : value });
 }
 
-export function savePositions(databaseId: string, viewId: string, positions: Record<string, Point>) {
+export function savePositions(databaseId: string, viewId: string, positions: Record<string, Saved>) {
   return send(`/api/databases/${databaseId}/views/${viewId}`, 'PATCH', { grouping: { positions } });
 }
 

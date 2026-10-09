@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '@/components/ui/feedback';
 import { saveValue, savePositions } from './mapApi';
-import type { MapDb, MapProp, Point } from './mapModel';
+import type { MapDb, MapNode, MapProp, Point } from './mapModel';
+import type { Saved } from './mapLayout';
 
 type Overrides = Record<string, { pageId: string; propertyId: string; value: unknown }>;
 
-function readPositions(grouping: unknown): Record<string, Point> {
+function readPositions(grouping: unknown): Record<string, Saved> {
   const raw = grouping && typeof grouping === 'object' ? (grouping as { positions?: unknown }).positions : null;
-  return raw && typeof raw === 'object' ? { ...(raw as Record<string, Point>) } : {};
+  return raw && typeof raw === 'object' ? { ...(raw as Record<string, Saved>) } : {};
 }
 
 export function useValueEdits(db: MapDb, onChanged: () => void) {
@@ -48,7 +49,7 @@ export function useValueEdits(db: MapDb, onChanged: () => void) {
 }
 
 export function usePositions(dbId: string, viewId: string, grouping: unknown) {
-  const [positions, setPositions] = useState<Record<string, Point>>(() => readPositions(grouping));
+  const [positions, setPositions] = useState<Record<string, Saved>>(() => readPositions(grouping));
   const latest = useRef(positions);
   const busy = useRef(0);
   const dragging = useRef(false);
@@ -57,8 +58,9 @@ export function usePositions(dbId: string, viewId: string, grouping: unknown) {
   useEffect(() => { if (busy.current === 0 && !dragging.current) setPositions(JSON.parse(serverJson)); }, [viewId, serverJson]);
   useEffect(() => { latest.current = positions; }, [positions]);
 
-  const persist = (next: Record<string, Point>) => {
+  const persist = (next: Record<string, Saved>) => {
     setPositions(next);
+    latest.current = next;
     busy.current += 1;
     savePositions(dbId, viewId, next)
       .catch(() => toast.error('Couldn’t save the layout.'))
@@ -67,9 +69,20 @@ export function usePositions(dbId: string, viewId: string, grouping: unknown) {
 
   return {
     positions,
+    handPlaced: Object.values(positions).filter((p) => !p.auto).length,
     move: (id: string, at: Point) => { dragging.current = true; setPositions((p) => ({ ...p, [id]: at })); },
     commit: () => { dragging.current = false; persist(latest.current); },
     unpin: (id: string) => { const { [id]: _drop, ...rest } = positions; persist(rest); },
     tidy: () => persist({}),
+    // Remembers where auto-placed cards landed so later additions can't move them.
+    freeze: (spots: Record<string, Saved>) => { if (!dragging.current) persist({ ...latest.current, ...spots }); },
   };
+}
+
+export function useFrozenLayout(nodes: MapNode[], layout: ReturnType<typeof usePositions>) {
+  useEffect(() => {
+    const fresh = nodes.filter((n) => !layout.positions[n.id]);
+    if (!fresh.length) return;
+    layout.freeze(Object.fromEntries(fresh.map((n) => [n.id, { x: n.at.x - n.laneOrigin.x, y: n.at.y - n.laneOrigin.y, auto: true }])));
+  }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 }

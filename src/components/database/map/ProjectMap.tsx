@@ -13,7 +13,7 @@ import { PhaseTabs } from './PhaseTabs';
 import { PhaseDialog } from './PhaseDialog';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
-import { usePositions, useValueEdits } from './useMapEdits';
+import { useFrozenLayout, usePositions, useValueEdits } from './useMapEdits';
 import { useMapPointer } from './useMapPointer';
 import { useTasks } from './useTaskProgress';
 import { mapPanels } from './mapPanels';
@@ -111,6 +111,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
   const [dialog, setDialog] = useState<'cycle' | 'phase' | null>(null);
   const phaseTab = usePhaseTabs(merged, props, showArchived, setValue);
   const model = useMemo(() => buildModel(merged, props, layout.positions, { showArchived, only: phaseTab.only }), [merged, props, layout.positions, showArchived, phaseTab.only]);
+  useFrozenLayout(model.nodes, layout);
   const archivedCount = merged.pages.filter((p) => isArchived(p, props)).length;
   const tasks = useTasks(merged, props, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
   const progress = tasks.progress;
@@ -146,7 +147,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
   return (
     <div className="flex flex-col border border-border rounded-xl overflow-hidden">
       <MapToolbar {...toolbarFor({
-        pinned: Object.keys(layout.positions).length, cycles: cycleProjects.length, hasWaitsOn: Boolean(props.waitsOn), phase: panels.phase,
+        pinned: layout.handPlaced, cycles: cycleProjects.length, hasWaitsOn: Boolean(props.waitsOn), phase: panels.phase,
       }, {
         tidy: layout.tidy, add: addProject, addWaitsOn, addPhaseField, open: setDialog,
       })} noun={noun} archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }} />
