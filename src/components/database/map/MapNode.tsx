@@ -11,6 +11,7 @@ type Props = {
   node: Node;
   selected: boolean;
   progress?: TaskProgress;
+  empty: string;
   handlers: {
     onGrab: (id: string, e: MouseEvent) => void;
     onLinkStart: (id: string, e: MouseEvent) => void;
@@ -19,7 +20,7 @@ type Props = {
   };
 };
 
-export function MapNodeCard({ node, selected, progress, handlers }: Props) {
+export function MapNodeCard({ node, selected, progress, empty, handlers }: Props) {
   const Icon = ICONS[node.status];
   const waiting = node.status === 'waiting';
   const border = selected ? '2px solid rgb(var(--accent))' : waiting ? '1.5px dashed rgb(var(--muted))' : '1px solid rgb(var(--border))';
@@ -58,7 +59,7 @@ export function MapNodeCard({ node, selected, progress, handlers }: Props) {
             <span className="text-xs whitespace-nowrap">{progress.done} of {progress.total}</span>
           </span>
         ) : null}
-        <span className="text-[13px] truncate w-full">{node.next || 'No next action yet'}</span>
+        <span className="text-[13px] truncate w-full">{node.subtitle || empty}</span>
       </button>
       <span className="absolute w-2.5 h-2.5 rounded-full bg-bg border-[1.5px] border-muted" style={{ left: -6, top: NODE_H / 2 - 5 }} />
       <button

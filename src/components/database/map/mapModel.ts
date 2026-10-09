@@ -12,6 +12,8 @@ export type MapProps = {
   next?: MapProp;
   tasks?: MapProp;
   taskDb?: MapProp;
+  due?: MapProp;
+  owner?: MapProp;
 };
 
 export type MapNode = {
@@ -24,6 +26,7 @@ export type MapNode = {
   color: string;
   deps: string[];
   next: string;
+  subtitle: string;
   at: Point;
   laneTop: number;
   pinned: boolean;
@@ -88,6 +91,8 @@ export function detectProps(db: MapDb): MapProps {
     waitsOn: byName(selfRel, /wait|block|depend|after|needs/i) ?? selfRel[0],
     next: byName(db.properties.filter((p) => p.type === 'text'), /next/i),
     taskDb: byName(db.properties.filter((p) => p.type === 'text'), /task\s*(database|db)/i),
+    due: byName(db.properties.filter((p) => p.type === 'date'), /due|deadline|date/i),
+    owner: byName(db.properties.filter((p) => p.type === 'text'), /assignee|owner|who/i),
     tasks: byName(otherRel, /task/i),
   };
 }
@@ -185,6 +190,14 @@ function resolveStatus(raw: string, deps: string[], rawById: Map<string, string>
   return { status: 'waiting', label: `Waiting on ${open}` };
 }
 
+function subtitleOf(page: MapPage, props: MapProps): string {
+  const next = String(valueOf(page, props.next) ?? '').trim();
+  if (next) return next;
+  const due = String(valueOf(page, props.due) ?? '').slice(0, 10);
+  const when = /^\d{4}-\d{2}-\d{2}$/.test(due) ? `Due ${new Date(`${due}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : '';
+  return [when, String(valueOf(page, props.owner) ?? '').trim()].filter(Boolean).join(' · ');
+}
+
 export function isArchived(page: MapPage, props: MapProps): boolean {
   return /^archived$/i.test(String(valueOf(page, props.status) ?? '').trim());
 }
@@ -202,7 +215,7 @@ export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, P
     return {
       id: p.id, title: p.title || 'Untitled', lane, rawStatus: raw, deps,
       status: st.status, label: st.label, color: STATUS_STYLE[st.status].color,
-      next: String(valueOf(p, props.next) ?? ''), at: { x: 0, y: 0 }, laneTop: 0, pinned: false,
+      next: String(valueOf(p, props.next) ?? ''), subtitle: subtitleOf(p, props), at: { x: 0, y: 0 }, laneTop: 0, pinned: false,
     };
   });
   const used = new Set(nodes.map((n) => n.lane));

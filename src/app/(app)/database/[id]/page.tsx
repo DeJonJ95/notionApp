@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Trash2, ChevronRight, FolderOutput, Edit3, Check, X } from 'lucide-react';
 import { DatabaseView } from '@/components/database/DatabaseView';
@@ -53,7 +53,19 @@ interface PropertyValue {
   value: any;
 }
 
+// ?view=map opens a database on its map, adding a Map view the first time a project's task list is opened that way.
+async function withMapFirst<T extends { id: string; views: { type: string }[] }>(db: T, wantsMap: boolean): Promise<T> {
+  if (!wantsMap) return db;
+  let views = db.views;
+  if (!views.some((v) => v.type === 'map')) {
+    const res = await fetch(`/api/databases/${db.id}/views`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Map', type: 'map' }) });
+    if (res.ok) views = [...views, await res.json()];
+  }
+  return { ...db, views: [...views.filter((v) => v.type === 'map'), ...views.filter((v) => v.type !== 'map')] };
+}
+
 export default function DatabasePage({ params }: { params: { id: string } }) {
+  const wantsMap = useSearchParams().get('view') === 'map';
   const router = useRouter();
   const [database, setDatabase] = useState<Database | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +82,6 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) setDbZoom(0.75);
   }, []);
-
   useEffect(() => {
     fetchDatabase();
     fetch('/api/workspaces')
@@ -110,7 +121,7 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
       const res = await fetch(`/api/databases/${params.id}`);
       if (res.ok) {
         const data = await res.json();
-        setDatabase(data);
+        setDatabase(await withMapFirst(data, wantsMap));
       }
     } catch (error) {
       console.error('Error fetching database:', error);

@@ -10,6 +10,7 @@ type Props = {
   onCycle?: () => void;
   archived: { count: number; shown: boolean; toggle: () => void };
   onAddWaitsOn?: () => void;
+  noun: string;
 };
 
 function Legend() {
@@ -25,7 +26,7 @@ function Legend() {
   );
 }
 
-export function MapToolbar({ onTidy, onAdd, onCycle, archived, onAddWaitsOn }: Props) {
+export function MapToolbar({ onTidy, onAdd, onCycle, archived, onAddWaitsOn, noun }: Props) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border">
@@ -38,11 +39,11 @@ export function MapToolbar({ onTidy, onAdd, onCycle, archived, onAddWaitsOn }: P
         ) : null}
         {onTidy ? <button type="button" onClick={onTidy} className={btn}>Tidy layout</button> : null}
         {onCycle ? <button type="button" onClick={onCycle} className={btn}>Start next cycle</button> : null}
-        <button type="button" onClick={onAdd} className="min-h-[36px] px-3.5 rounded-lg bg-accent text-white text-sm font-semibold">New project</button>
+        <button type="button" onClick={onAdd} className="min-h-[36px] px-3.5 rounded-lg bg-accent text-white text-sm font-semibold">New {noun}</button>
       </div>
       {onAddWaitsOn ? (
         <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border bg-surface text-sm">
-          <span className="flex-1">Arrows come from a “Waits on” relation that links projects in this database to each other.</span>
+          <span className="flex-1">Arrows come from a “Waits on” relation that links {noun}s in this database to each other.</span>
           <button type="button" onClick={onAddWaitsOn} className={btn}>Add “Waits on”</button>
         </div>
       ) : null}

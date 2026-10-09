@@ -3,16 +3,16 @@
 import { useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { confirmDialog, toast } from '@/components/ui/feedback';
-import { buildModel, detectProps, isArchived, type MapDb, type MapModel, type MapNode as MapNodeT } from './mapModel';
+import { buildModel, detectProps, isArchived, type MapDb, type MapModel } from './mapModel';
 import { MapToolbar } from './MapToolbar';
 import { CycleDialog } from './CycleDialog';
 import { createPage, createWaitsOn, deleteProject } from './mapApi';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
-import type { TaskPanel } from './MapTasks';
 import { usePositions, useValueEdits } from './useMapEdits';
 import { useMapPointer } from './useMapPointer';
 import { useTasks } from './useTaskProgress';
+import { mapPanels } from './mapPanels';
 
 type Props = { database: MapDb; view: { id: string; grouping?: unknown }; onChanged: () => void };
 
@@ -61,10 +61,10 @@ function Lanes({ model }: { model: MapModel }) {
 
 type OwnSource = { dbId: string; whole: boolean; name: string; count: number } | null;
 
-async function confirmAndDelete(title: string, id: string, src: OwnSource): Promise<boolean> {
+async function confirmAndDelete(title: string, id: string, src: OwnSource, noun: string): Promise<boolean> {
   const own = src?.whole ? src : null;
-  const message = own ? `This also deletes its task database “${own.name}” and its ${own.count} tasks.` : 'This deletes the project.';
-  const ok = await confirmDialog({ title: `Delete “${title}”?`, message: `${message} It cannot be undone.`, confirmText: 'Delete project', danger: true });
+  const message = own ? `This also deletes its task database “${own.name}” and its ${own.count} tasks.` : `This deletes the ${noun}.`;
+  const ok = await confirmDialog({ title: `Delete “${title}”?`, message: `${message} It cannot be undone.`, confirmText: `Delete ${noun}`, danger: true });
   if (!ok) return false;
   try {
     await deleteProject(id, own?.dbId);
@@ -91,28 +91,17 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const plane = useRef<HTMLDivElement>(null);
   const pointer = useMapPointer({ model, zoom, plane, waitsOn: props.waitsOn, setValue, select: setSelId, layout });
   const selected = model.nodes.find((n) => n.id === selId) ?? model.nodes[0];
-  const cycleProjects = model.nodes.filter((n) => n.label !== 'Archived' && tasks.sourceFor(n.id)?.whole).map((n) => ({ id: n.id, title: n.title, lane: n.lane }));
+  const panels = mapPanels({ db: merged, props, tasks, setValue });
+  const noun = panels.noun;
+  const cycleProjects = panels.cycleProjects(model.nodes);
 
-  const openHref = (id: string) => {
-    const src = tasks.sourceFor(id);
-    return src?.whole ? `/database/${src.dbId}` : `/page/${id}`;
-  };
-  const taskPanel = (n: MapNodeT): TaskPanel | undefined => {
-    if (!props.taskDb && !props.tasks) return undefined;
-    const taskDbProp = props.taskDb;
-    const picker = taskDbProp ? {
-      value: String(merged.pages.find((p) => p.id === n.id)?.properties.find((pv) => pv.property.id === taskDbProp.id)?.value ?? ''),
-      workspaceId: database.workspaceId, selfId: database.id, onChange: (dbId: string) => setValue(n.id, taskDbProp, dbId),
-    } : undefined;
-    return { items: tasks.items[n.id] ?? [], color: n.color, toggle: tasks.toggle, add: (t) => tasks.add(n.id, t), canAdd: Boolean(tasks.sourceFor(n.id)), picker };
-  };
   const removeProject = (id: string) =>
-    confirmAndDelete(model.nodes.find((n) => n.id === id)?.title ?? 'this project', id, tasks.sourceFor(id))
+    confirmAndDelete(model.nodes.find((n) => n.id === id)?.title ?? `this ${noun}`, id, tasks.sourceFor(id), noun)
       .then((gone) => { if (gone) setSelId(null); })
       .finally(onChanged);
-  const addProject = () => createPage(database.workspaceId, database.id, 'Untitled project')
+  const addProject = () => createPage(database.workspaceId, database.id, `Untitled ${noun}`)
     .then((id) => { if (id) setSelId(id); onChanged(); })
-    .catch(() => toast.error('Couldn’t create a project.'));
+    .catch(() => toast.error(`Couldn’t create a ${noun}.`));
   const addWaitsOn = () => createWaitsOn(database.id).then(onChanged).catch(() => toast.error('Couldn’t add the relation.'));
 
   return (
@@ -123,6 +112,7 @@ export function ProjectMap({ database, view, onChanged }: Props) {
         onCycle={cycleProjects.length ? () => setCycleOpen(true) : undefined}
         archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }}
         onAddWaitsOn={props.waitsOn ? undefined : addWaitsOn}
+        noun={noun}
       />
       {cycleOpen ? (
         <CycleDialog mapDbId={database.id} projects={cycleProjects} initialLane={selected?.lane ?? null}
@@ -136,17 +126,18 @@ export function ProjectMap({ database, view, onChanged }: Props) {
                 <Lanes model={model} />
                 <Edges model={model} linkPath={pointer.linkPath} />
                 {model.nodes.map((n) => (
-                  <MapNodeCard key={n.id} node={n} selected={n.id === selected?.id} progress={progress[n.id]} handlers={pointer.handlers} />
+                  <MapNodeCard key={n.id} node={n} selected={n.id === selected?.id} progress={progress[n.id]} empty={panels.emptySubtitle} handlers={pointer.handlers} />
                 ))}
               </div>
             </div>
-            {model.nodes.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-sm">No projects yet. Add one to start the map.</div> : null}
+            {model.nodes.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-sm">No {noun}s yet. Add one to start the map.</div> : null}
           </div>
           <ZoomControls zoom={zoom} setZoom={setZoom} />
         </div>
         {selected ? (
           <MapInspector node={selected} nodes={model.nodes} props={props}
-            tasks={taskPanel(selected)} openHref={openHref(selected.id)} onDelete={removeProject}
+            tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun}
+            openLabel={panels.openLabel(selected.id)}
             onSet={setValue} onSelect={setSelId} onUnpin={layout.unpin} />
         ) : null}
       </div>
