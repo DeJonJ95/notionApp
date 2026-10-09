@@ -19,12 +19,15 @@ function fmt(d: string | null) {
   return d ? new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
 }
 
-function PreviewList({ rows, days }: { rows: Preview[]; days: number }) {
+type Names = { get: (r: Preview) => string; set: (id: string, v: string) => void };
+
+function PreviewList({ rows, days, names }: { rows: Preview[]; days: number; names: Names }) {
   return (
     <ul className="m-0 p-0 list-none flex flex-col gap-2 text-sm">
       {rows.map((r) => (
-        <li key={r.id} className="border border-border rounded-lg px-3 py-2">
-          <div className="font-semibold">{r.newTitle}</div>
+        <li key={r.id} className="border border-border rounded-lg px-3 py-2 flex flex-col gap-1.5">
+          <input value={names.get(r)} onChange={(e) => names.set(r.id, e.target.value)} aria-label="New project name"
+            className="w-full min-h-[36px] rounded-md border border-border bg-bg px-2 font-semibold" />
           <div>
             {r.tasks} tasks{r.from ? `, ${fmt(r.from)} – ${fmt(r.to)}` : ', no due dates'}
             {r.from && days ? ` → ${fmt(r.shiftedFrom)} – ${fmt(r.shiftedTo)}` : ''}
@@ -42,12 +45,14 @@ export function CycleDialog({ mapDbId, projects, initialId, onClose }: Props) {
   const [toDate, setToDate] = useState('');
   const [preview, setPreview] = useState<PreviewRes | null>(null);
   const [busy, setBusy] = useState(false);
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const names: Names = { get: (r) => edited[r.id] ?? r.newTitle, set: (id, v) => setEdited((e) => ({ ...e, [id]: v })) };
   const ids = Array.from(picked);
 
   useEffect(() => {
     if (!ids.length) { setPreview(null); return; }
     const t = setTimeout(() => {
-      post({ mapDbId, projectIds: ids, label: label || 'Next cycle', fromDate: fromDate || undefined, toDate: toDate || undefined, dryRun: true })
+      post({ mapDbId, projectIds: ids, label, fromDate: fromDate || undefined, toDate: toDate || undefined, dryRun: true })
         .then((res: PreviewRes) => { setPreview(res); if (!fromDate && res.suggestedFrom) setFromDate(res.suggestedFrom); })
         .catch(() => setPreview(null));
     }, 250);
@@ -55,11 +60,12 @@ export function CycleDialog({ mapDbId, projects, initialId, onClose }: Props) {
   }, [mapDbId, ids.join(','), label, fromDate, toDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (id: string) => setPicked((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const ready = ids.length > 0 && label.trim() && fromDate && toDate && !busy;
+  const ready = ids.length > 0 && fromDate && toDate && !busy;
   const create = () => {
     setBusy(true);
-    post({ mapDbId, projectIds: ids, label: label.trim(), fromDate, toDate })
-      .then((res: { created: string[] }) => { toast.success(`Started ${res.created.length} projects for ${label.trim()}.`); onClose(true); })
+    const chosenNames = Object.fromEntries((preview?.projects ?? []).filter((r) => ids.includes(r.id)).map((r) => [r.id, names.get(r)]));
+    post({ mapDbId, projectIds: ids, label: label.trim(), fromDate, toDate, names: chosenNames })
+      .then((res: { created: string[] }) => { toast.success(`Started the next cycle for ${res.created.length} project${res.created.length === 1 ? '' : 's'}.`); onClose(true); })
       .catch(() => { toast.error('Couldn’t start the new cycle. Nothing was changed.'); setBusy(false); });
   };
 
@@ -67,7 +73,7 @@ export function CycleDialog({ mapDbId, projects, initialId, onClose }: Props) {
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Start next cycle">
       <div className="bg-bg text-text border border-border rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 flex flex-col gap-4">
         <h2 className="m-0 text-xl font-bold">Start next cycle</h2>
-        <p className="m-0 text-sm">Copies each project’s task list, resets progress, and moves every due date by the gap between the two dates. Old runs are archived, not deleted.</p>
+        <p className="m-0 text-sm">Copies each project’s task list, resets progress, and moves every due date by the gap between the two dates. Name each new run below. Old runs are archived, not deleted.</p>
         <fieldset className="border-0 p-0 m-0 flex flex-wrap gap-x-4 gap-y-1">
           <legend className="text-sm font-semibold mb-1">Projects</legend>
           {projects.map((p) => (
@@ -76,8 +82,8 @@ export function CycleDialog({ mapDbId, projects, initialId, onClose }: Props) {
             </label>
           ))}
         </fieldset>
-        <label className="flex flex-col gap-1 text-sm font-semibold">Cycle name
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nov 2026 General" className={`${field} font-normal`} />
+        <label className="flex flex-col gap-1 text-sm font-semibold">Cycle name (optional)
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Spring 2027" className={`${field} font-normal`} />
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="flex flex-col gap-1 text-sm font-semibold">Last cycle’s key date
@@ -87,7 +93,7 @@ export function CycleDialog({ mapDbId, projects, initialId, onClose }: Props) {
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={`${field} font-normal`} />
           </label>
         </div>
-        {preview ? <PreviewList rows={preview.projects} days={preview.days} /> : null}
+        {preview ? <PreviewList rows={preview.projects} days={preview.days} names={names} /> : null}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={() => onClose(false)} className="min-h-[40px] px-4 rounded-lg border border-border text-sm">Cancel</button>
           <button type="button" onClick={create} disabled={!ready} className="min-h-[40px] px-4 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-40">

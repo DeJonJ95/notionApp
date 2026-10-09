@@ -7,7 +7,8 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const schema = z.object({
   mapDbId: z.string(),
   projectIds: z.array(z.string()).min(1).max(50),
-  label: z.string().trim().min(1).max(60),
+  label: z.string().trim().max(60).default(''),
+  names: z.record(z.string().trim().max(200)).optional(),
   fromDate: date.optional(),
   toDate: date.optional(),
   dryRun: z.boolean().default(false),

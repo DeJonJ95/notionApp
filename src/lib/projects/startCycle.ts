@@ -1,10 +1,10 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { detectProps, idList, valueOf, type MapDb, type MapPage, type MapProps } from '@/components/database/map/mapModel';
-import { baseTitle, dateRange, daysBetween, shiftDate } from './cycle';
+import { dateRange, nextTitle, daysBetween, shiftDate } from './cycle';
 import { cloneForCycle } from './cloneDatabase';
 
-export type CycleInput = { mapDbId: string; projectIds: string[]; label: string; fromDate?: string; toDate?: string };
+export type CycleInput = { mapDbId: string; projectIds: string[]; label: string; fromDate?: string; toDate?: string; names?: Record<string, string> };
 export type CyclePreview = { id: string; title: string; newTitle: string; tasks: number; from: string | null; to: string | null; shiftedTo: string | null; shiftedFrom: string | null };
 
 async function loadMap(userId: string, mapDbId: string): Promise<MapDb | null> {
@@ -40,7 +40,7 @@ export async function previewCycle(userId: string, input: CycleInput) {
   const from = input.fromDate || suggestedFrom;
   const days = from && input.toDate ? daysBetween(from, input.toDate) : 0;
   const projects: CyclePreview[] = rows.map(({ page, tasks, range }) => ({
-    id: page.id, title: page.title, newTitle: `${baseTitle(page.title)} · ${input.label}`, tasks,
+    id: page.id, title: page.title, newTitle: nextTitle(page.title, input.label, days), tasks,
     from: range?.first ?? null, to: range?.last ?? null,
     shiftedFrom: range ? String(shiftDate(range.first, days)) : null, shiftedTo: range ? String(shiftDate(range.last, days)) : null,
   }));
@@ -66,7 +66,7 @@ export async function runCycle(userId: string, input: CycleInput) {
   return prisma.$transaction(async (tx) => {
     const fresh = new Map<string, string>();
     for (const p of chosen) {
-      const title = `${baseTitle(p.title)} · ${input.label}`;
+      const title = input.names?.[p.id]?.trim() || nextTitle(p.title, input.label, days);
       const newDb = await cloneForCycle(tx, taskDbOf(p, props), title, days);
       const row = await tx.page.create({ data: { title, workspaceId: map.workspaceId, databaseId: map.id, authorId: userId } });
       fresh.set(p.id, row.id);

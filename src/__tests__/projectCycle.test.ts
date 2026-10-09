@@ -1,4 +1,4 @@
-import { baseTitle, dateRange, daysBetween, nextCycleValue, remapIds, shiftDate } from '@/lib/projects/cycle';
+import { baseTitle, dateRange, daysBetween, nextCycleValue, nextTitle, remapIds, shiftDate } from '@/lib/projects/cycle';
 
 describe('project cycle helpers', () => {
   it('measures the gap between two key dates in days', () => {
@@ -41,5 +41,12 @@ describe('project cycle helpers', () => {
   it('finds the first and last due date', () => {
     expect(dateRange(['2026-06-05', null, '2026-05-07', 'x'])).toEqual({ first: '2026-05-07', last: '2026-06-05' });
     expect(dateRange([])).toBeNull();
+  });
+
+  it('suggests a next-run name that moves a year in the title, or appends the label', () => {
+    expect(nextTitle('Company Retreat 2026', '', 364)).toBe('Company Retreat 2027');
+    expect(nextTitle('Company Retreat 2026 · Spring', 'Fall', 730)).toBe('Company Retreat 2028');
+    expect(nextTitle('Office Move', 'Phase 2', 364)).toBe('Office Move · Phase 2');
+    expect(nextTitle('Budget 2026', 'Q2', 90)).toBe('Budget 2026 · Q2');
   });
 });

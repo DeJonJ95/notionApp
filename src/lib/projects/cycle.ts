@@ -17,6 +17,14 @@ export function baseTitle(title: string): string {
   return title.replace(/\s+·\s+[^·]+$/, '').trim();
 }
 
+// The suggested name for a project's next run: a year in the title moves with the dates, otherwise the cycle label is appended.
+export function nextTitle(title: string, label: string, days: number): string {
+  const base = baseTitle(title);
+  const years = Math.round(days / 365.25);
+  if (years && /\b(19|20)\d{2}\b/.test(base)) return base.replace(/\b((?:19|20)\d{2})\b/g, (y) => String(Number(y) + years));
+  return label.trim() ? `${base} · ${label.trim()}` : base;
+}
+
 function firstOpenOption(prop: PropShape): string | null {
   try {
     const opts: unknown = JSON.parse(prop.formula || '[]');
