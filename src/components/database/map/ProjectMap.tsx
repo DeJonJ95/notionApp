@@ -3,7 +3,9 @@
 import { useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { confirmDialog, toast } from '@/components/ui/feedback';
-import { buildModel, detectProps, STATUS_STYLE, type MapDb, type MapModel, type MapNode as MapNodeT } from './mapModel';
+import { buildModel, detectProps, isArchived, type MapDb, type MapModel, type MapNode as MapNodeT } from './mapModel';
+import { MapToolbar } from './MapToolbar';
+import { CycleDialog } from './CycleDialog';
 import { createPage, createWaitsOn, deleteProject } from './mapApi';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
@@ -14,22 +16,8 @@ import { useTasks } from './useTaskProgress';
 
 type Props = { database: MapDb; view: { id: string; grouping?: unknown }; onChanged: () => void };
 
-const btn = 'min-h-[36px] px-3.5 rounded-lg border border-border bg-bg text-sm hover:bg-surface';
 const zoomBtn = 'h-11 rounded-[10px] border border-border bg-bg flex items-center justify-center';
 const dots = { backgroundColor: 'rgb(var(--surface))', backgroundImage: 'radial-gradient(rgb(var(--border)) 1px, transparent 1px)', backgroundSize: '20px 20px' };
-
-function Legend() {
-  return (
-    <div className="flex flex-wrap gap-3.5 text-xs flex-1">
-      {(Object.keys(STATUS_STYLE) as (keyof typeof STATUS_STYLE)[]).map((k) => (
-        <span key={k} className="flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 rounded-[3px]" style={k === 'waiting' ? { border: `1px dashed ${STATUS_STYLE[k].color}` } : { background: STATUS_STYLE[k].color }} />
-          {STATUS_STYLE[k].label}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 function Edges({ model, linkPath }: { model: MapModel; linkPath: string | null }) {
   return (
@@ -92,7 +80,10 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const { merged, setValue } = useValueEdits(database, onChanged);
   const props = useMemo(() => detectProps(merged), [merged]);
   const layout = usePositions(database.id, view.id, view.grouping);
-  const model = useMemo(() => buildModel(merged, props, layout.positions), [merged, props, layout.positions]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [cycleOpen, setCycleOpen] = useState(false);
+  const model = useMemo(() => buildModel(merged, props, layout.positions, showArchived), [merged, props, layout.positions, showArchived]);
+  const archivedCount = merged.pages.filter((p) => isArchived(p, props)).length;
   const tasks = useTasks(merged, props, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
   const progress = tasks.progress;
   const [selId, setSelId] = useState<string | null>(null);
@@ -100,6 +91,7 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const plane = useRef<HTMLDivElement>(null);
   const pointer = useMapPointer({ model, zoom, plane, waitsOn: props.waitsOn, setValue, select: setSelId, layout });
   const selected = model.nodes.find((n) => n.id === selId) ?? model.nodes[0];
+  const cycleProjects = model.nodes.filter((n) => n.label !== 'Archived' && tasks.sourceFor(n.id)?.whole).map((n) => ({ id: n.id, title: n.title, lane: n.lane }));
 
   const openHref = (id: string) => {
     const src = tasks.sourceFor(id);
@@ -125,16 +117,16 @@ export function ProjectMap({ database, view, onChanged }: Props) {
 
   return (
     <div className="flex flex-col border border-border rounded-xl overflow-hidden">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border">
-        <Legend />
-        {Object.keys(layout.positions).length > 0 ? <button type="button" onClick={layout.tidy} className={btn}>Tidy layout</button> : null}
-        <button type="button" onClick={addProject} className="min-h-[36px] px-3.5 rounded-lg bg-accent text-white text-sm font-semibold">New project</button>
-      </div>
-      {!props.waitsOn ? (
-        <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border bg-surface text-sm">
-          <span className="flex-1">Arrows come from a “Waits on” relation that links projects in this database to each other.</span>
-          <button type="button" onClick={addWaitsOn} className={btn}>Add “Waits on”</button>
-        </div>
+      <MapToolbar
+        onTidy={Object.keys(layout.positions).length > 0 ? layout.tidy : undefined}
+        onAdd={addProject}
+        onCycle={cycleProjects.length ? () => setCycleOpen(true) : undefined}
+        archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }}
+        onAddWaitsOn={props.waitsOn ? undefined : addWaitsOn}
+      />
+      {cycleOpen ? (
+        <CycleDialog mapDbId={database.id} projects={cycleProjects} initialLane={selected?.lane ?? null}
+          onClose={(changed) => { setCycleOpen(false); if (changed) onChanged(); }} />
       ) : null}
       <div className="flex flex-col lg:flex-row min-h-[560px] lg:h-[72vh]">
         <div className="relative flex-1 min-w-0 min-h-[420px]">

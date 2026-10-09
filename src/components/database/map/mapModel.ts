@@ -102,7 +102,7 @@ export function idList(v: unknown): string[] {
 }
 
 export function isDoneLabel(s: string): boolean {
-  return /^(done|complete|completed|shipped|finished|closed)$/i.test(s.trim());
+  return /^(done|complete|completed|shipped|finished|closed|archived)$/i.test(s.trim());
 }
 
 function baseStatus(raw: string): StatusKey | null {
@@ -177,6 +177,7 @@ function laneFrames(nodes: MapNode[], laneOrder: string[]): MapLane[] {
 }
 
 function resolveStatus(raw: string, deps: string[], rawById: Map<string, string>): { status: StatusKey; label: string } {
+  if (/^archived$/i.test(raw.trim())) return { status: 'done', label: 'Archived' };
   const base = baseStatus(raw);
   if (base) return { status: base, label: STATUS_STYLE[base].label };
   const open = deps.filter((d) => !isDoneLabel(rawById.get(d) ?? '')).length;
@@ -184,7 +185,12 @@ function resolveStatus(raw: string, deps: string[], rawById: Map<string, string>
   return { status: 'waiting', label: `Waiting on ${open}` };
 }
 
-export function buildModel(db: MapDb, props: MapProps, pinned: Record<string, Point>): MapModel {
+export function isArchived(page: MapPage, props: MapProps): boolean {
+  return /^archived$/i.test(String(valueOf(page, props.status) ?? '').trim());
+}
+
+export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, Point>, showArchived = false): MapModel {
+  const db = showArchived ? all : { ...all, pages: all.pages.filter((p) => !isArchived(p, props)) };
   const ids = new Set(db.pages.map((p) => p.id));
   const rawById = new Map(db.pages.map((p) => [p.id, String(valueOf(p, props.status) ?? '')]));
   const laneOpts = selectOptions(props.lane);
