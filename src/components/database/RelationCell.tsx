@@ -10,7 +10,7 @@ type TargetDb = {
   name: string;
   workspaceId?: string;
   properties?: { id: string; name: string; type: string; formula?: string | null }[];
-  pages: { id: string; title: string; properties: { property: { id: string; name: string }; value: any }[] }[];
+  pages: { id: string; title: string; createdAt?: string; properties: { property: { id: string; name: string }; value: any }[] }[];
 };
 const cache = new Map<string, Promise<TargetDb | null>>();
 

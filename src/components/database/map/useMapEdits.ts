@@ -74,6 +74,8 @@ export function usePositions(dbId: string, viewId: string, grouping: unknown) {
     commit: () => { dragging.current = false; persist(latest.current); },
     unpin: (id: string) => { const { [id]: _drop, ...rest } = positions; persist(rest); },
     tidy: () => persist({}),
+    // An auto-placed card that gains a dependency re-flows to the right of it instead of staying put.
+    release: (id: string) => { if (latest.current[id]?.auto) { const { [id]: _drop, ...rest } = latest.current; persist(rest); } },
     // Remembers where auto-placed cards landed so later additions can't move them.
     freeze: (spots: Record<string, Saved>) => { if (!dragging.current) persist({ ...latest.current, ...spots }); },
   };
@@ -85,4 +87,14 @@ export function useFrozenLayout(nodes: MapNode[], layout: ReturnType<typeof useP
     if (!fresh.length) return;
     layout.freeze(Object.fromEntries(fresh.map((n) => [n.id, { x: n.at.x - n.laneOrigin.x, y: n.at.y - n.laneOrigin.y, auto: true, lane: n.lane }])));
   }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps
+}
+
+type SetValue = (pageId: string, prop: MapProp, value: unknown) => void;
+
+// Writing a Waits on value also lets an auto-placed card re-flow next to what it now waits on.
+export function linkAware(setValue: SetValue, waitsOn: MapProp | undefined, release: (id: string) => void): SetValue {
+  return (pageId, prop, value) => {
+    setValue(pageId, prop, value);
+    if (prop.id === waitsOn?.id) release(pageId);
+  };
 }

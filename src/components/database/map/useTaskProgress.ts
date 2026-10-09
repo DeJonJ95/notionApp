@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/components/ui/feedback';
 import { fetchTargetDb, invalidateTargetDb } from '../RelationCell';
-import { createPage, saveValue } from './mapApi';
-import { idList, isDoneLabel, parseConfig, selectOptions, valueOf, type MapDb, type MapPage, type MapProp, type MapProps } from './mapModel';
+import { createTask, saveValue } from './mapApi';
+import { byAge, idList, isDoneLabel, openOption, parseConfig, selectOptions, valueOf, type MapDb, type MapPage, type MapProp, type MapProps } from './mapModel';
 
 export type TaskProgress = { done: number; total: number };
 export type TaskItem = { id: string; title: string; done: boolean; dbId: string };
-type TaskRow = { id: string; title: string; properties: { property: { id: string; name: string }; value: unknown }[] };
+type TaskRow = { id: string; title: string; createdAt?: string; properties: { property: { id: string; name: string }; value: unknown }[] };
 type TaskDb = { id: string; name: string; workspaceId: string; properties: MapProp[]; pages: TaskRow[] };
 
 // A project's tasks are either a whole database it points at ("Task database") or the rows its Tasks relation links.
@@ -53,7 +53,7 @@ function itemsFor(page: MapPage, props: MapProps, dbs: Record<string, TaskDb>, f
   const db = src ? dbs[src.dbId] : undefined;
   if (!src || !db) return [];
   const linked = src.whole ? null : new Set(idList(valueOf(page, props.tasks)));
-  return db.pages
+  return [...db.pages].sort((a, b) => byAge(a.createdAt) - byAge(b.createdAt))
     .filter((t) => !linked || linked.has(t.id))
     .map((t) => ({ id: t.id, title: t.title || 'Untitled', done: flips[t.id] ?? taskIsDone(t), dbId: db.id }));
 }
@@ -90,7 +90,8 @@ export function useTasks(db: MapDb, props: MapProps, link: (projectId: string, i
     const target = src && dbs[src.dbId];
     if (!src || !target) return;
     try {
-      const id = await createPage(target.workspaceId, target.id, title);
+      const st = statusProp(target);
+      const id = await createTask(target.workspaceId, target.id, title, st ? { id: st.id, value: openOption(st) } : undefined);
       if (id && !src.whole) link(projectId, [...(items[projectId] ?? []).map((t) => t.id), id]);
       refresh(target.id);
     } catch { toast.error('Couldn’t add that task.'); }

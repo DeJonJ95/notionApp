@@ -1,6 +1,6 @@
-import { selectOptions, valueOf, type MapDb, type MapNode, type MapProp, type MapProps } from './mapModel';
+import { openOption, selectOptions, valueOf, type MapDb, type MapNode, type MapProp, type MapProps } from './mapModel';
 import type { TaskPanel } from './MapTasks';
-import { createPage, createProjectWithTasks, renameDatabase, renamePage } from './mapApi';
+import { createProjectWithTasks, createTask, renameDatabase, renamePage } from './mapApi';
 import type { useTasks } from './useTaskProgress';
 
 type Tasks = ReturnType<typeof useTasks>;
@@ -31,16 +31,19 @@ export function mapPanels({ db, props, tasks, setValue }: Deps) {
     const src = tasks.sourceFor(id);
     if (src?.whole) await renameDatabase(src.dbId, title);
   };
-  const create = () => (isProjects && props.taskDb ? createProjectWithTasks(db.id) : createPage(db.workspaceId, db.id, `Untitled ${noun}`));
+  const status = props.status ? { id: props.status.id, value: openOption(props.status) } : undefined;
+  const create = () => (isProjects && props.taskDb ? createProjectWithTasks(db.id) : createTask(db.workspaceId, db.id, `Untitled ${noun}`, status));
+  const createNamed = (title: string) => createTask(db.workspaceId, db.id, title, status);
 
   return {
     noun,
     rename,
     create,
+    createNamed,
     phase: isProjects ? null : { prop: phaseProp, options: selectOptions(phaseProp) },
     emptySubtitle: isProjects ? 'No next action yet' : '',
     taskPanel,
-    openHref: (id: string) => (owns(id) ? `/database/${tasks.sourceFor(id)!.dbId}?view=map` : `/page/${id}`),
+    openHref: (id: string) => (owns(id) ? `/database/${tasks.sourceFor(id)!.dbId}?view=map&from=projects` : `/page/${id}`),
     openLabel: (id: string) => (owns(id) ? 'Open its map' : `Open ${noun}`),
     cycleProjects: (nodes: MapNode[]) => nodes.filter((n) => n.label !== 'Archived' && owns(n.id)).map((n) => ({ id: n.id, title: n.title, lane: n.lane })),
   };

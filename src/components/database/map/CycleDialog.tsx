@@ -6,7 +6,7 @@ import { toast } from '@/components/ui/feedback';
 export type CycleProject = { id: string; title: string; lane: string };
 type Preview = { id: string; newTitle: string; tasks: number; from: string | null; to: string | null; shiftedFrom: string | null; shiftedTo: string | null };
 type PreviewRes = { projects: Preview[]; suggestedFrom: string | null; days: number };
-type Props = { mapDbId: string; projects: CycleProject[]; initialLane: string | null; onClose: (changed: boolean) => void };
+type Props = { mapDbId: string; projects: CycleProject[]; initialId: string | null; onClose: (changed: boolean) => void };
 
 const field = 'w-full min-h-[40px] rounded-lg border border-border bg-bg px-3 text-sm';
 
@@ -35,8 +35,8 @@ function PreviewList({ rows, days }: { rows: Preview[]; days: number }) {
   );
 }
 
-export function CycleDialog({ mapDbId, projects, initialLane, onClose }: Props) {
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(projects.filter((p) => p.lane === initialLane).map((p) => p.id)));
+export function CycleDialog({ mapDbId, projects, initialId, onClose }: Props) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(projects.filter((p) => p.id === initialId).map((p) => p.id)));
   const [label, setLabel] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');

@@ -20,6 +20,13 @@ export async function createPage(workspaceId: string, databaseId: string, title:
   return typeof page?.id === 'string' ? page.id : null;
 }
 
+// Creates a task with its Status set to the first "not begun" option, so it never starts blank.
+export async function createTask(workspaceId: string, databaseId: string, title: string, status?: { id: string; value: string | null }) {
+  const id = await createPage(workspaceId, databaseId, title);
+  if (id && status?.value) await saveValue(id, status.id, status.value);
+  return id;
+}
+
 export async function createProjectWithTasks(mapDbId: string): Promise<string | null> {
   const res = await send('/api/projects/new', 'POST', { mapDbId });
   const made = await res.json().catch(() => null);

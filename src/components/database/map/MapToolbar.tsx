@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { STATUS_STYLE } from './mapModel';
 
 const btn = 'min-h-[36px] px-3.5 rounded-lg border border-border bg-bg text-sm hover:bg-surface';
@@ -12,6 +13,7 @@ type Props = {
   archived: { count: number; shown: boolean; toggle: () => void };
   onAddWaitsOn?: () => void;
   noun: string;
+  backHref?: string;
 };
 
 function Legend() {
@@ -27,10 +29,11 @@ function Legend() {
   );
 }
 
-export function MapToolbar({ onTidy, onAdd, onCycle, phase, archived, onAddWaitsOn, noun }: Props) {
+export function MapToolbar({ onTidy, onAdd, onCycle, phase, archived, onAddWaitsOn, noun, backHref }: Props) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border">
+        {backHref ? <Link href={backHref} className={btn + ' flex items-center'}>← All projects</Link> : null}
         <Legend />
         {archived.count > 0 ? (
           <label className="flex items-center gap-2 text-sm min-h-[36px]">

@@ -1,6 +1,8 @@
 export type MapProp = { id: string; name: string; type: string; formula?: string | null };
 export type MapValue = { property: { id: string }; value: unknown };
 export type MapPage = { id: string; title: string; properties: MapValue[]; createdAt?: string | Date };
+
+export const byAge = (t?: string | Date) => (t ? new Date(t).getTime() : 0);
 export type MapDb = { id: string; workspaceId: string; properties: MapProp[]; pages: MapPage[] };
 export type Point = { x: number; y: number };
 export type StatusKey = 'done' | 'active' | 'review' | 'ready' | 'waiting';
@@ -106,7 +108,16 @@ export function isDoneLabel(s: string): boolean {
   return /^(done|complete|completed|shipped|finished|closed|archived)$/i.test(s.trim());
 }
 
+const NOT_BEGUN = /^\s*(not\s*started|to\s*do|todo|planned|backlog|not\s*begun)\s*$/i;
+
+// The first option that means "not begun yet", used as a new card's starting status.
+export function openOption(prop?: MapProp): string | null {
+  const opts = selectOptions(prop);
+  return opts.find((o) => NOT_BEGUN.test(o)) ?? opts.find((o) => !isDoneLabel(o)) ?? null;
+}
+
 function baseStatus(raw: string): StatusKey | null {
+  if (NOT_BEGUN.test(raw)) return null;
   if (isDoneLabel(raw)) return 'done';
   if (/review/i.test(raw)) return 'review';
   if (/progress|active|doing|started|building/i.test(raw)) return 'active';

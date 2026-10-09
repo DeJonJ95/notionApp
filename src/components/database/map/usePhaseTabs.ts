@@ -1,14 +1,18 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { laneTabs, type MapDb, type MapProp, type MapProps } from './mapModel';
+import { laneTabs, selectOptions, type MapDb, type MapProp, type MapProps } from './mapModel';
 
 export const ALL_PHASES = '__all__';
 
 // Phase maps open on the first phase that still has unfinished work; other maps have no tabs.
 export function usePhaseTabs(db: MapDb, props: MapProps, showArchived: boolean, setValue: (pageId: string, prop: MapProp, value: unknown) => void) {
   const isPhased = Boolean(props.lane && /phase/i.test(props.lane.name));
-  const tabs = useMemo(() => (isPhased ? laneTabs(db, props, showArchived) : []), [db, props, showArchived, isPhased]);
+  // A map whose only tab would be "No phase" shows no tabs at all.
+  const tabs = useMemo(() => {
+    const all = isPhased ? laneTabs(db, props, showArchived) : [];
+    return all.length === 1 && !selectOptions(props.lane).includes(all[0].name) ? [] : all;
+  }, [db, props, showArchived, isPhased]);
   const [picked, setPicked] = useState<string | null>(null);
   const current = tabs.find((t) => t.done < t.total)?.name ?? tabs[0]?.name ?? null;
   const active = picked === ALL_PHASES || (picked && tabs.some((t) => t.name === picked)) ? picked : current;

@@ -1,4 +1,4 @@
-import { buildModel, detectProps, downstreamOf, laneTabs, type MapDb } from '@/components/database/map/mapModel';
+import { buildModel, detectProps, downstreamOf, laneTabs, openOption, type MapDb } from '@/components/database/map/mapModel';
 import { sourceOf } from '@/components/database/map/useTaskProgress';
 
 const DB = 'db1';
@@ -191,5 +191,12 @@ describe('project map placement stability', () => {
     const [ma, mb] = ['a', 'b'].map((id) => m.nodes.find((n) => n.id === id)!.at);
     expect(ma).toEqual(a.at);
     expect(mb).not.toEqual(ma);
+  });
+
+  it('reads "Not Started" as not begun, and picks it as a new card\'s status', () => {
+    const st = { id: 'st', name: 'Status', type: 'select', formula: '["Not Started","In Progress","Complete"]' };
+    const fresh: MapDb = { ...db, properties: [st, ...props.slice(1)], pages: [page('n', 'Not Started', 'Work')] };
+    expect(buildModel(fresh, detectProps(fresh), {}).nodes[0].status).toBe('ready');
+    expect(openOption(st)).toBe('Not Started');
   });
 });

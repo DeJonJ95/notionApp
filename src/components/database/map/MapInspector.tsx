@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import { downstreamOf, selectOptions, type MapNode, type MapProp, type MapProps } from './mapModel';
+import { downstreamOf, isDoneLabel, selectOptions, type MapNode, type MapProp, type MapProps } from './mapModel';
 import { MapTasks, type TaskPanel } from './MapTasks';
 import { DateField, TextField, TitleField } from './MapFields';
 
@@ -95,6 +95,9 @@ function Dependencies({ node, nodes, props, onSet, onSelect, noun, onAddPrereq }
   );
 }
 
+const doneOption = (prop: MapProp) => selectOptions(prop).find(isDoneLabel) ?? 'Done';
+const finishable = (p: Props) => Boolean(p.props.status && p.tasks && p.tasks.items.length && p.tasks.items.every((t) => t.done) && p.node.status !== 'done');
+
 const openCls = 'flex items-center justify-center min-h-[44px] rounded-lg bg-text text-bg text-[15px] font-semibold';
 
 export function MapInspector(p: Props) {
@@ -108,6 +111,11 @@ export function MapInspector(p: Props) {
         </div>
       </div>
       {tasks ? <MapTasks {...tasks} /> : null}
+      {finishable(p) ? (
+        <button type="button" onClick={() => onSet(node.id, props.status!, doneOption(props.status!))} className="min-h-[40px] rounded-lg border border-border bg-surface text-sm font-semibold hover:bg-border">
+          All tasks done · Mark {p.noun} Done
+        </button>
+      ) : null}
       {props.status ? <SelectField label={props.status.name} prop={props.status} value={node.rawStatus} onChange={(v) => onSet(node.id, props.status!, v)} /> : null}
       {props.lane ? <SelectField label={props.lane.name} prop={props.lane} value={node.laneValue} onChange={(v) => onSet(node.id, props.lane!, v)} /> : null}
       {props.due ? <DateField label={props.due.name} value={node.due} onSave={(v) => onSet(node.id, props.due!, v)} /> : null}
