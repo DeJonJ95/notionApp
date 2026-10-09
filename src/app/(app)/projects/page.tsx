@@ -8,11 +8,13 @@ export const dynamic = 'force-dynamic';
 export default async function ProjectsPage() {
   const userId = await sessionUserId();
   if (!userId) redirect('/signin');
-  const map = await prisma.database.findFirst({
+  // Every project's own task list has a map too; the Projects map is the one whose rows point at task databases.
+  const maps = await prisma.database.findMany({
     where: { workspace: { ownerId: userId }, views: { some: { type: 'map' } } },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, properties: { select: { name: true, type: true } } },
   });
+  const map = maps.find((m) => m.properties.some((p) => p.type === 'text' && /task\s*(database|db)/i.test(p.name))) ?? maps[maps.length - 1];
   if (map) redirect(`/database/${map.id}`);
   return <NoProjectsMap />;
 }
