@@ -94,6 +94,7 @@ export async function GET(
             title: true,
             icon: true,
             position: true,
+            createdAt: true,
             properties: {
               select: {
                 property: true,

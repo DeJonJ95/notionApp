@@ -151,4 +151,23 @@ describe('project map wrapping and grouping', () => {
     expect(m.all).toHaveLength(3);
     expect(laneTabs(phased, pp)).toEqual([{ name: 'Setup', done: 1, total: 2 }, { name: 'Training', done: 0, total: 1 }]);
   });
+
+  it('puts a newly created card after the existing ones instead of bumping them', () => {
+    const older = { ...page('old', 'Planned', 'Work'), createdAt: '2026-01-01T00:00:00Z' };
+    const newer = { ...page('new', 'Planned', 'Work'), createdAt: '2026-10-09T00:00:00Z' };
+    const before = buildModel({ ...db, pages: [older] }, p, {});
+    const after = buildModel({ ...db, pages: [newer, older] }, p, {});
+    const at = (m: ReturnType<typeof buildModel>, id: string) => m.nodes.find((n) => n.id === id)!.at;
+    expect(at(after, 'old')).toEqual(at(before, 'old'));
+    expect(at(after, 'new')).not.toEqual(at(after, 'old'));
+  });
+
+  it('never drops an auto-placed card on a hand-placed one', () => {
+    const solo: MapDb = { ...db, pages: [page('a', 'Planned', 'Work'), page('b', 'Planned', 'Work')] };
+    const free = buildModel(solo, p, {});
+    const slot = free.nodes.find((n) => n.id === 'a')!;
+    const m = buildModel(solo, p, { b: { x: slot.at.x, y: slot.at.y - slot.laneOrigin.y } });
+    const [a, b] = ['a', 'b'].map((id) => m.nodes.find((n) => n.id === id)!.at);
+    expect(Math.abs(a.x - b.x) >= 232 || Math.abs(a.y - b.y) >= 116).toBe(true);
+  });
 });

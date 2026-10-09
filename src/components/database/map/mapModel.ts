@@ -1,6 +1,6 @@
 export type MapProp = { id: string; name: string; type: string; formula?: string | null };
 export type MapValue = { property: { id: string }; value: unknown };
-export type MapPage = { id: string; title: string; properties: MapValue[] };
+export type MapPage = { id: string; title: string; properties: MapValue[]; createdAt?: string | Date };
 export type MapDb = { id: string; workspaceId: string; properties: MapProp[]; pages: MapPage[] };
 export type Point = { x: number; y: number };
 export type StatusKey = 'done' | 'active' | 'review' | 'ready' | 'waiting';
@@ -157,11 +157,17 @@ export function laneTabs(all: MapDb, props: MapProps, showArchived?: boolean): M
   });
 }
 
+// Auto-placement follows creation order, so a new card lands after the existing ones instead of taking the first slot.
+function byCreation(pages: MapPage[]): MapPage[] {
+  const t = (p: MapPage) => (p.createdAt ? new Date(p.createdAt).getTime() : 0);
+  return [...pages].sort((a, b) => t(a) - t(b));
+}
+
 function makeNodes(db: MapDb, props: MapProps): { nodes: MapNode[]; rawById: Map<string, string> } {
   const ids = new Set(db.pages.map((p) => p.id));
   const rawById = new Map(db.pages.map((p) => [p.id, String(valueOf(p, props.status) ?? '')]));
   const noLane = `No ${(props.lane?.name ?? 'area').toLowerCase()}`;
-  const nodes: MapNode[] = db.pages.map((p) => {
+  const nodes: MapNode[] = byCreation(db.pages).map((p) => {
     const deps = idList(valueOf(p, props.waitsOn)).filter((d) => ids.has(d) && d !== p.id);
     const raw = rawById.get(p.id) ?? '';
     const st = resolveStatus(raw, deps, rawById);

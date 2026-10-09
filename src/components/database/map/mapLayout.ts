@@ -37,6 +37,15 @@ function feedersLast(list: MapNode[], feeders: Set<string>): MapNode[] {
   return [...list.filter((n) => !feeders.has(n.id)), ...list.filter((n) => feeders.has(n.id))];
 }
 
+const clash = (a: Point, b: Point) => Math.abs(a.x - b.x) < NODE_W + 16 && Math.abs(a.y - b.y) < NODE_H + 16;
+
+// The first slot at or after `from` that no hand-placed card already covers.
+function freeSlot(slotAt: (i: number) => Point, from: number, taken: Point[]): number {
+  let i = from;
+  while (taken.some((t) => clash(t, slotAt(i))) && i < from + 200) i += 1;
+  return i;
+}
+
 function depths(nodes: MapNode[], sameLaneOnly: boolean): Map<string, number> {
   const laneOf = new Map(nodes.map((n) => [n.id, n.lane]));
   const deps = new Map(nodes.map((n) => [n.id, sameLaneOnly ? n.deps.filter((d) => laneOf.get(d) === n.lane) : n.deps]));
@@ -53,15 +62,17 @@ function placeStacked(nodes: MapNode[], laneOrder: string[], pinned: Record<stri
   for (const lane of laneOrder) {
     const seen = new Map<number, number>();
     let bottom = top;
-    for (const n of feedersLast(nodes.filter((m) => m.lane === lane), feeders)) {
+    const members = feedersLast(nodes.filter((m) => m.lane === lane), feeders);
+    const taken = members.filter((n) => pinned[n.id]).map((n) => ({ x: Math.max(8, pinned[n.id].x), y: top + Math.max(HEAD, pinned[n.id].y) }));
+    for (const n of members) {
       const d = depth.get(n.id) ?? 0;
-      const i = seen.get(d) ?? 0;
-      seen.set(d, i + 1);
       const p = pinned[n.id];
-      const col = start[d] + Math.floor(i / STACK_ROWS);
+      const slotAt = (i: number) => ({ x: PAD + 24 + (start[d] + Math.floor(i / STACK_ROWS)) * COL, y: top + HEAD + (i % STACK_ROWS) * ROW });
+      const i = p ? 0 : freeSlot(slotAt, seen.get(d) ?? 0, taken);
+      if (!p) seen.set(d, i + 1);
       n.pinned = Boolean(p);
       n.laneOrigin = { x: 0, y: top };
-      n.at = p ? { x: Math.max(8, p.x), y: top + Math.max(HEAD, p.y) } : { x: PAD + 24 + col * COL, y: top + HEAD + (i % STACK_ROWS) * ROW };
+      n.at = p ? { x: Math.max(8, p.x), y: top + Math.max(HEAD, p.y) } : slotAt(i);
       bottom = Math.max(bottom, n.at.y + NODE_H);
     }
     top = bottom + 24 + LANE_GAP;
@@ -78,15 +89,16 @@ function placeAcross(nodes: MapNode[], laneOrder: string[], pinned: Record<strin
     const start = columnStarts(members, depth, ROW_LANE_ROWS);
     const seen = new Map<number, number>();
     let right = left + NODE_W + 48;
+    const taken = members.filter((n) => pinned[n.id]).map((n) => ({ x: left + Math.max(24, pinned[n.id].x), y: Math.max(PAD + HEAD, pinned[n.id].y) }));
     for (const n of members) {
       const d = depth.get(n.id) ?? 0;
-      const i = seen.get(d) ?? 0;
-      seen.set(d, i + 1);
       const p = pinned[n.id];
-      const col = start[d] + Math.floor(i / ROW_LANE_ROWS);
+      const slotAt = (i: number) => ({ x: left + 24 + (start[d] + Math.floor(i / ROW_LANE_ROWS)) * COL, y: PAD + HEAD + (i % ROW_LANE_ROWS) * ROW });
+      const i = p ? 0 : freeSlot(slotAt, seen.get(d) ?? 0, taken);
+      if (!p) seen.set(d, i + 1);
       n.pinned = Boolean(p);
       n.laneOrigin = { x: left, y: 0 };
-      n.at = p ? { x: left + Math.max(24, p.x), y: Math.max(PAD + HEAD, p.y) } : { x: left + 24 + col * COL, y: PAD + HEAD + (i % ROW_LANE_ROWS) * ROW };
+      n.at = p ? { x: left + Math.max(24, p.x), y: Math.max(PAD + HEAD, p.y) } : slotAt(i);
       right = Math.max(right, n.at.x + NODE_W + 24);
     }
     left = right + LANE_GAP;
