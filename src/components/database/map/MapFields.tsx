@@ -19,9 +19,14 @@ const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key ==
 export function TitleField({ id, value, onSave }: { id: string; value: string; onSave: (v: string) => void }) {
   const [draft, setDraft] = useDraft(id, value);
   const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => { if (FRESH.test(value.trim())) { ref.current?.focus(); ref.current?.select(); } }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!FRESH.test(value.trim())) return;
+    const t = setTimeout(() => ref.current?.focus(), 60);
+    return () => clearTimeout(t);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <input ref={ref} value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={blurOnEnter}
+      onFocus={(e) => { if (FRESH.test(e.currentTarget.value.trim())) e.currentTarget.select(); }}
       onBlur={() => { const t = draft.trim(); if (t && t !== value) onSave(t); else setDraft(value); }}
       aria-label="Name" className="m-0 w-full bg-transparent text-2xl font-bold leading-tight rounded-md px-1 -mx-1 hover:bg-surface focus:bg-surface focus:outline-none" />
   );
