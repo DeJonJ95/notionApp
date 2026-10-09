@@ -12,9 +12,9 @@ export type TaskPanel = {
   picker?: SourcePicker;
 };
 
-type SourcePicker = { value: string; workspaceId: string; selfId: string; onChange: (dbId: string) => void };
+type SourcePicker = { value: string; workspaceId: string; selfId: string; onChange: (dbId: string) => void; title?: string };
 
-function TaskDbPicker({ value, workspaceId, selfId, onChange }: SourcePicker) {
+function TaskDbPicker({ value, workspaceId, selfId, onChange, title }: SourcePicker) {
   const [dbs, setDbs] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
     let alive = true;
@@ -23,7 +23,7 @@ function TaskDbPicker({ value, workspaceId, selfId, onChange }: SourcePicker) {
       .then((list) => { if (alive && Array.isArray(list)) setDbs(list.filter((d) => d.id !== selfId)); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [workspaceId, selfId, value && !dbs.some((d) => d.id === value) ? value : '']); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [workspaceId, selfId, title, value && !dbs.some((d) => d.id === value) ? value : '']); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Task database"
       className="w-full min-h-[40px] rounded-lg border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent">

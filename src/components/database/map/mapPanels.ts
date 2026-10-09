@@ -18,7 +18,7 @@ export function mapPanels({ db, props, tasks, setValue }: Deps) {
     const page = db.pages.find((p) => p.id === n.id);
     const picker = prop && page ? {
       value: String(valueOf(page, prop) ?? ''),
-      workspaceId: db.workspaceId, selfId: db.id, onChange: (dbId: string) => setValue(n.id, prop, dbId),
+      workspaceId: db.workspaceId, selfId: db.id, title: n.title, onChange: (dbId: string) => setValue(n.id, prop, dbId),
     } : undefined;
     return { items: tasks.items[n.id] ?? [], color: n.color, toggle: tasks.toggle, add: (t) => tasks.add(n.id, t), canAdd: Boolean(tasks.sourceFor(n.id)), picker };
   };
