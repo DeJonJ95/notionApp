@@ -20,13 +20,14 @@ export async function createPage(workspaceId: string, databaseId: string, title:
   return typeof page?.id === 'string' ? page.id : null;
 }
 
-export function createWaitsOn(databaseId: string) {
-  return send(`/api/databases/${databaseId}/properties`, 'POST', {
+export async function createWaitsOn(databaseId: string): Promise<{ id: string; name: string; type: string; formula: string }> {
+  const res = await send(`/api/databases/${databaseId}/properties`, 'POST', {
     name: 'Waits on',
     type: 'relation',
     databaseId,
     formula: JSON.stringify({ targetDatabaseId: databaseId }),
   });
+  return res.json();
 }
 
 export async function deleteProject(pageId: string, taskDbId?: string) {

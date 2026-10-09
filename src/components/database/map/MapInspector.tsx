@@ -14,6 +14,7 @@ type Props = {
   openHref: string;
   openLabel: string;
   onDelete: (id: string) => void;
+  onAddPrereq: (id: string, title: string) => void;
   noun: string;
   onSet: (pageId: string, prop: MapProp, value: unknown) => void;
   onSelect: (id: string) => void;
@@ -67,7 +68,16 @@ function NextField({ node, prop, onSet }: { node: MapNode; prop: MapProp; onSet:
   );
 }
 
-function Dependencies({ node, nodes, props, onSet, onSelect }: Props) {
+function NewPrereq({ noun, onAdd }: { noun: string; onAdd: (title: string) => void }) {
+  const [draft, setDraft] = useState('');
+  const submit = () => { const t = draft.trim(); if (t) { setDraft(''); onAdd(t); } };
+  return (
+    <input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()}
+      placeholder={`New ${noun} it waits on, then Enter`} aria-label={`Create a new ${noun} this waits on`} className={fieldCls} />
+  );
+}
+
+function Dependencies({ node, nodes, props, onSet, onSelect, noun, onAddPrereq }: Props) {
   const waitsOn = props.waitsOn;
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const feeds = nodes.filter((n) => n.deps.includes(node.id));
@@ -83,11 +93,12 @@ function Dependencies({ node, nodes, props, onSet, onSelect }: Props) {
           <Chip key={n.id} node={n} onSelect={onSelect} onRemove={() => setDeps(node.deps.filter((d) => d !== n.id))} />
         ))}
         {waitsOn && addable.length > 0 ? (
-          <select value="" onChange={(e) => e.target.value && setDeps([...node.deps, e.target.value])} className={fieldCls} aria-label="Add a project this waits on">
-            <option value="">Add a project it waits on…</option>
+          <select value="" onChange={(e) => e.target.value && setDeps([...node.deps, e.target.value])} className={fieldCls} aria-label={`Add an existing ${noun} this waits on`}>
+            <option value="">{`Add an existing ${noun} it waits on…`}</option>
             {addable.map((n) => <option key={n.id} value={n.id}>{n.title}</option>)}
           </select>
         ) : null}
+        <NewPrereq noun={noun} onAdd={(title) => onAddPrereq(node.id, title)} />
       </div>
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Feeds into</div>

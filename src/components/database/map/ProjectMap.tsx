@@ -102,6 +102,14 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const addProject = () => createPage(database.workspaceId, database.id, `Untitled ${noun}`)
     .then((id) => { if (id) setSelId(id); onChanged(); })
     .catch(() => toast.error(`Couldn’t create a ${noun}.`));
+  const addPrereq = async (id: string, title: string) => {
+    try {
+      const prop = props.waitsOn ?? await createWaitsOn(database.id);
+      const newId = await createPage(database.workspaceId, database.id, title);
+      const deps = model.nodes.find((n) => n.id === id)?.deps ?? [];
+      if (newId) setValue(id, prop, [...deps, newId]);
+    } catch { toast.error(`Couldn’t add that ${noun}.`); onChanged(); }
+  };
   const addWaitsOn = () => createWaitsOn(database.id).then(onChanged).catch(() => toast.error('Couldn’t add the relation.'));
 
   return (
@@ -136,7 +144,7 @@ export function ProjectMap({ database, view, onChanged }: Props) {
         </div>
         {selected ? (
           <MapInspector node={selected} nodes={model.nodes} props={props}
-            tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun}
+            tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun} onAddPrereq={addPrereq}
             openLabel={panels.openLabel(selected.id)}
             onSet={setValue} onSelect={setSelId} onUnpin={layout.unpin} />
         ) : null}
