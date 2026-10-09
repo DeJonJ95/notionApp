@@ -23,7 +23,7 @@ function TaskDbPicker({ value, workspaceId, selfId, onChange }: SourcePicker) {
       .then((list) => { if (alive && Array.isArray(list)) setDbs(list.filter((d) => d.id !== selfId)); })
       .catch(() => {});
     return () => { alive = false; };
-  }, [workspaceId, selfId]);
+  }, [workspaceId, selfId, value && !dbs.some((d) => d.id === value) ? value : '']); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Task database"
       className="w-full min-h-[40px] rounded-lg border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent">
