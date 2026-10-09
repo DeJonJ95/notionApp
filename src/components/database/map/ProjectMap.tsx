@@ -6,7 +6,7 @@ import { confirmDialog, toast } from '@/components/ui/feedback';
 import { buildModel, detectProps, isArchived, type MapDb, type MapModel } from './mapModel';
 import { MapToolbar } from './MapToolbar';
 import { CycleDialog, type CycleProject } from './CycleDialog';
-import { createPage, createPhaseField, createWaitsOn, deleteProject, renamePage } from './mapApi';
+import { createPage, createPhaseField, createWaitsOn, deleteProject } from './mapApi';
 import { useAutoZoom } from './useAutoZoom';
 import { usePhaseTabs } from './usePhaseTabs';
 import { PhaseTabs } from './PhaseTabs';
@@ -130,7 +130,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
     confirmAndDelete(model.nodes.find((n) => n.id === id)?.title ?? `this ${noun}`, id, tasks.sourceFor(id), noun)
       .then((gone) => { if (gone) setSelId(null); })
       .finally(onChanged);
-  const addProject = () => createPage(database.workspaceId, database.id, `Untitled ${noun}`)
+  const addProject = () => panels.create()
     .then((id) => { if (id) { setSelId(id); phaseTab.stamp(id); } onChanged(); })
     .catch(() => toast.error(`Couldn’t create a ${noun}.`));
   const addPrereq = async (id: string, title: string) => {
@@ -173,7 +173,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
         {selected ? (
           <MapInspector node={selected} nodes={model.all} props={props}
             tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun} onOpenPage={onOpenPage}
-            onRename={(id, t) => renamePage(id, t).then(onChanged).catch(() => toast.error('Couldn’t rename that.'))} onAddPrereq={addPrereq}
+            onRename={(id, t) => panels.rename(id, t).then(onChanged).catch(() => toast.error('Couldn’t rename that.'))} onAddPrereq={addPrereq}
             openLabel={panels.openLabel(selected.id)}
             onSet={setValue} onSelect={setSelId} onUnpin={layout.unpin} />
         ) : null}

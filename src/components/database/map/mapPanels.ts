@@ -1,5 +1,6 @@
 import { selectOptions, valueOf, type MapDb, type MapNode, type MapProp, type MapProps } from './mapModel';
 import type { TaskPanel } from './MapTasks';
+import { createPage, createProjectWithTasks, renameDatabase, renamePage } from './mapApi';
 import type { useTasks } from './useTaskProgress';
 
 type Tasks = ReturnType<typeof useTasks>;
@@ -24,8 +25,18 @@ export function mapPanels({ db, props, tasks, setValue }: Deps) {
 
   const phaseProp = props.lane && /phase/i.test(props.lane.name) ? props.lane : undefined;
 
+  // A project's task database shares its name, so renaming one renames both.
+  const rename = async (id: string, title: string) => {
+    await renamePage(id, title);
+    const src = tasks.sourceFor(id);
+    if (src?.whole) await renameDatabase(src.dbId, title);
+  };
+  const create = () => (isProjects && props.taskDb ? createProjectWithTasks(db.id) : createPage(db.workspaceId, db.id, `Untitled ${noun}`));
+
   return {
     noun,
+    rename,
+    create,
     phase: isProjects ? null : { prop: phaseProp, options: selectOptions(phaseProp) },
     emptySubtitle: isProjects ? 'No next action yet' : '',
     taskPanel,

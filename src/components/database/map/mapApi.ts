@@ -20,6 +20,16 @@ export async function createPage(workspaceId: string, databaseId: string, title:
   return typeof page?.id === 'string' ? page.id : null;
 }
 
+export async function createProjectWithTasks(mapDbId: string): Promise<string | null> {
+  const res = await send('/api/projects/new', 'POST', { mapDbId });
+  const made = await res.json().catch(() => null);
+  return typeof made?.id === 'string' ? made.id : null;
+}
+
+export function renameDatabase(databaseId: string, name: string) {
+  return send(`/api/databases/${databaseId}`, 'PATCH', { name });
+}
+
 export function renamePage(pageId: string, title: string) {
   return send(`/api/pages/${pageId}`, 'PATCH', { title });
 }
