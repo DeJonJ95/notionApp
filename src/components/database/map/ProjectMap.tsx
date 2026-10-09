@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { confirmDialog, toast } from '@/components/ui/feedback';
-import { buildModel, detectProps, isArchived, type MapDb, type MapModel } from './mapModel';
+import { buildModel, detectProps, downstreamOf, isArchived, type MapDb, type MapModel } from './mapModel';
 import { MapToolbar } from './MapToolbar';
 import { CycleDialog, type CycleProject } from './CycleDialog';
 import { createPhaseField, createWaitsOn, deleteProject } from './mapApi';
@@ -110,7 +110,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
   const layout = usePositions(database.id, view.id, view.grouping);
   const [showArchived, setShowArchived] = useState(false);
   const [dialog, setDialog] = useState<'cycle' | 'phase' | null>(null);
-  const setLinked = linkAware(setValue, props.waitsOn, layout.release);
+  const setLinked = linkAware(setValue, props.waitsOn, (id) => layout.release(Array.from(downstreamOf(id, model.all))));
   const fromProjects = useSearchParams().get('from') === 'projects';
   const phaseTab = usePhaseTabs(merged, props, showArchived, setValue);
   const model = useMemo(() => buildModel(merged, props, layout.positions, { showArchived, only: phaseTab.only }), [merged, props, layout.positions, showArchived, phaseTab.only]);
