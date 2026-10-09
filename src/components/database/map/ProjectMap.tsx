@@ -6,7 +6,8 @@ import { confirmDialog, toast } from '@/components/ui/feedback';
 import { buildModel, detectProps, isArchived, type MapDb, type MapModel } from './mapModel';
 import { MapToolbar } from './MapToolbar';
 import { CycleDialog, type CycleProject } from './CycleDialog';
-import { createPage, createPhaseField, createWaitsOn, deleteProject } from './mapApi';
+import { createPage, createPhaseField, createWaitsOn, deleteProject, renamePage } from './mapApi';
+import { useAutoZoom } from './useAutoZoom';
 import { PhaseDialog } from './PhaseDialog';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
@@ -15,7 +16,7 @@ import { useMapPointer } from './useMapPointer';
 import { useTasks } from './useTaskProgress';
 import { mapPanels } from './mapPanels';
 
-type Props = { database: MapDb; view: { id: string; grouping?: unknown }; onChanged: () => void };
+type Props = { database: MapDb; view: { id: string; grouping?: unknown }; onChanged: () => void; onOpenPage?: (id: string) => void };
 
 const zoomBtn = 'h-11 rounded-[10px] border border-border bg-bg flex items-center justify-center';
 const dots = { backgroundColor: 'rgb(var(--surface))', backgroundImage: 'radial-gradient(rgb(var(--border)) 1px, transparent 1px)', backgroundSize: '20px 20px' };
@@ -37,12 +38,11 @@ function Edges({ model, linkPath }: { model: MapModel; linkPath: string | null }
   );
 }
 
-function ZoomControls({ zoom, setZoom }: { zoom: number; setZoom: (f: (z: number) => number) => void }) {
-  const step = (d: number) => setZoom((z) => Math.min(1.5, Math.max(0.5, Math.round((z + d) * 10) / 10)));
+function ZoomControls({ zoom, step, reset }: { zoom: number; step: (d: number) => void; reset: () => void }) {
   return (
     <div className="absolute left-4 bottom-4 flex gap-2">
       <button type="button" aria-label="Zoom out" onClick={() => step(-0.1)} className={`${zoomBtn} w-11`}><Minus size={16} /></button>
-      <button type="button" aria-label="Reset zoom" onClick={() => setZoom(() => 1)} className={`${zoomBtn} min-w-[64px] text-[13px]`}>{Math.round(zoom * 100)}%</button>
+      <button type="button" aria-label="Fit the map" onClick={reset} className={`${zoomBtn} min-w-[64px] text-[13px]`}>{Math.round(zoom * 100)}%</button>
       <button type="button" aria-label="Zoom in" onClick={() => step(0.1)} className={`${zoomBtn} w-11`}><Plus size={16} /></button>
     </div>
   );
@@ -88,7 +88,20 @@ function Dialogs({ open, dbId, model, phases, cycleProjects, lane, onClose }: Di
   return null;
 }
 
-export function ProjectMap({ database, view, onChanged }: Props) {
+type ToolbarState = { pinned: number; cycles: number; hasWaitsOn: boolean; phase: { prop?: unknown } | null };
+type ToolbarActions = { tidy: () => void; add: () => void; addWaitsOn: () => void; addPhaseField: () => void; open: (d: 'cycle' | 'phase') => void };
+
+function toolbarFor(st: ToolbarState, act: ToolbarActions) {
+  return {
+    onTidy: st.pinned > 0 ? act.tidy : undefined,
+    onAdd: act.add,
+    onCycle: st.cycles ? () => act.open('cycle') : undefined,
+    onAddWaitsOn: st.hasWaitsOn ? undefined : act.addWaitsOn,
+    phase: st.phase ? { exists: Boolean(st.phase.prop), onAdd: act.addPhaseField, onStart: () => act.open('phase') } : undefined,
+  };
+}
+
+export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
   const { merged, setValue } = useValueEdits(database, onChanged);
   const props = useMemo(() => detectProps(merged), [merged]);
   const layout = usePositions(database.id, view.id, view.grouping);
@@ -99,7 +112,9 @@ export function ProjectMap({ database, view, onChanged }: Props) {
   const tasks = useTasks(merged, props, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
   const progress = tasks.progress;
   const [selId, setSelId] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const box = useRef<HTMLDivElement>(null);
+  const zoomer = useAutoZoom(box, model.width, model.height);
+  const zoom = zoomer.zoom;
   const plane = useRef<HTMLDivElement>(null);
   const pointer = useMapPointer({ model, zoom, plane, waitsOn: props.waitsOn, setValue, select: setSelId, layout });
   const selected = model.nodes.find((n) => n.id === selId) ?? model.nodes[0];
@@ -127,20 +142,16 @@ export function ProjectMap({ database, view, onChanged }: Props) {
 
   return (
     <div className="flex flex-col border border-border rounded-xl overflow-hidden">
-      <MapToolbar
-        onTidy={Object.keys(layout.positions).length > 0 ? layout.tidy : undefined}
-        onAdd={addProject}
-        onCycle={cycleProjects.length ? () => setDialog('cycle') : undefined}
-        archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }}
-        onAddWaitsOn={props.waitsOn ? undefined : addWaitsOn}
-        noun={noun}
-        phase={panels.phase ? { exists: Boolean(panels.phase.prop), onAdd: addPhaseField, onStart: () => setDialog('phase') } : undefined}
-      />
+      <MapToolbar {...toolbarFor({
+        pinned: Object.keys(layout.positions).length, cycles: cycleProjects.length, hasWaitsOn: Boolean(props.waitsOn), phase: panels.phase,
+      }, {
+        tidy: layout.tidy, add: addProject, addWaitsOn, addPhaseField, open: setDialog,
+      })} noun={noun} archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }} />
       <Dialogs open={dialog} dbId={database.id} model={model} phases={panels.phase?.options ?? []} cycleProjects={cycleProjects}
         lane={selected?.lane ?? null} onClose={(changed) => { setDialog(null); if (changed) onChanged(); }} />
       <div className="flex flex-col lg:flex-row min-h-[560px] lg:h-[72vh]">
         <div className="relative flex-1 min-w-0 min-h-[420px]">
-          <div onMouseMove={pointer.onMove} onMouseUp={pointer.onUp} onMouseLeave={pointer.onUp} className="absolute inset-0 overflow-auto" style={dots}>
+          <div ref={box} onMouseMove={pointer.onMove} onMouseUp={pointer.onUp} onMouseLeave={pointer.onUp} className="absolute inset-0 overflow-auto" style={dots}>
             <div style={{ position: 'relative', width: model.width * zoom, height: model.height * zoom }}>
               <div ref={plane} style={{ position: 'absolute', left: 0, top: 0, width: model.width, height: model.height, transform: `scale(${zoom})`, transformOrigin: '0 0' }}>
                 <Lanes model={model} />
@@ -152,11 +163,12 @@ export function ProjectMap({ database, view, onChanged }: Props) {
             </div>
             {model.nodes.length === 0 ? <div className="absolute inset-0 flex items-center justify-center text-sm">No {noun}s yet. Add one to start the map.</div> : null}
           </div>
-          <ZoomControls zoom={zoom} setZoom={setZoom} />
+          <ZoomControls zoom={zoom} step={zoomer.step} reset={zoomer.reset} />
         </div>
         {selected ? (
           <MapInspector node={selected} nodes={model.nodes} props={props}
-            tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun} onAddPrereq={addPrereq}
+            tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun} onOpenPage={onOpenPage}
+            onRename={(id, t) => renamePage(id, t).then(onChanged).catch(() => toast.error('Couldn’t rename that.'))} onAddPrereq={addPrereq}
             openLabel={panels.openLabel(selected.id)}
             onSet={setValue} onSelect={setSelId} onUnpin={layout.unpin} />
         ) : null}

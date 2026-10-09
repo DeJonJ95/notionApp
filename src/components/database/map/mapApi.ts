@@ -20,6 +20,10 @@ export async function createPage(workspaceId: string, databaseId: string, title:
   return typeof page?.id === 'string' ? page.id : null;
 }
 
+export function renamePage(pageId: string, title: string) {
+  return send(`/api/pages/${pageId}`, 'PATCH', { title });
+}
+
 export function createPhaseField(databaseId: string) {
   return send(`/api/databases/${databaseId}/properties`, 'POST', { name: 'Phase', type: 'select', databaseId, formula: '[]' });
 }

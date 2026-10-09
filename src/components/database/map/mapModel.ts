@@ -22,6 +22,7 @@ export type MapNode = {
   lane: string;
   laneValue: string;
   due: string;
+  owner: string;
   rawStatus: string;
   status: StatusKey;
   label: string;
@@ -222,7 +223,7 @@ export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, P
     const laneValue = String(valueOf(p, props.lane) ?? '');
     const lane = laneValue || noLane;
     return {
-      id: p.id, title: p.title || 'Untitled', lane, laneValue, due: String(valueOf(p, props.due) ?? '').slice(0, 10), rawStatus: raw, deps,
+      id: p.id, title: p.title || 'Untitled', lane, laneValue, due: String(valueOf(p, props.due) ?? '').slice(0, 10), owner: String(valueOf(p, props.owner) ?? ''), rawStatus: raw, deps,
       status: st.status, label: st.label, color: STATUS_STYLE[st.status].color,
       next: String(valueOf(p, props.next) ?? ''), subtitle: subtitleOf(p, props), at: { x: 0, y: 0 }, laneTop: 0, pinned: false,
     };

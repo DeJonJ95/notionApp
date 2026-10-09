@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { downstreamOf, selectOptions, type MapNode, type MapProp, type MapProps } from './mapModel';
 import { MapTasks, type TaskPanel } from './MapTasks';
+import { DateField, TextField, TitleField } from './MapFields';
 
 type Props = {
   node: MapNode;
@@ -14,6 +15,8 @@ type Props = {
   openHref: string;
   openLabel: string;
   onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
+  onOpenPage?: (id: string) => void;
   onAddPrereq: (id: string, title: string) => void;
   noun: string;
   onSet: (pageId: string, prop: MapProp, value: unknown) => void;
@@ -50,23 +53,6 @@ function SelectField({ label, prop, value, onChange }: { label: string; prop: Ma
   );
 }
 
-function NextField({ node, prop, onSet }: { node: MapNode; prop: MapProp; onSet: Props['onSet'] }) {
-  const [draft, setDraft] = useState(node.next);
-  useEffect(() => setDraft(node.next), [node.id, node.next]);
-  return (
-    <label className="flex flex-col gap-1.5 text-sm font-semibold">
-      Next action
-      <input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => draft !== node.next && onSet(node.id, prop, draft)}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-        placeholder="What moves this forward?"
-        className={`${fieldCls} font-normal`}
-      />
-    </label>
-  );
-}
 
 function NewPrereq({ noun, onAdd }: { noun: string; onAdd: (title: string) => void }) {
   const [draft, setDraft] = useState('');
@@ -109,12 +95,14 @@ function Dependencies({ node, nodes, props, onSet, onSelect, noun, onAddPrereq }
   );
 }
 
+const openCls = 'flex items-center justify-center min-h-[44px] rounded-lg bg-text text-bg text-[15px] font-semibold';
+
 export function MapInspector(p: Props) {
   const { node, props, tasks, onSet, onUnpin } = p;
   return (
     <section aria-label="Selected project" className="flex flex-col gap-5 p-6 border-l border-border bg-bg w-full lg:w-[320px] shrink-0 overflow-y-auto">
       <div className="flex flex-col gap-2">
-        <h2 className="m-0 text-2xl font-bold leading-tight break-words">{node.title}</h2>
+        <h2 className="m-0"><TitleField id={node.id} value={node.title} onSave={(t) => p.onRename(node.id, t)} /></h2>
         <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: node.status === 'waiting' ? undefined : node.color }}>
           <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: node.color }} />{node.label}
         </div>
@@ -122,7 +110,9 @@ export function MapInspector(p: Props) {
       {tasks ? <MapTasks {...tasks} /> : null}
       {props.status ? <SelectField label={props.status.name} prop={props.status} value={node.rawStatus} onChange={(v) => onSet(node.id, props.status!, v)} /> : null}
       {props.lane ? <SelectField label={props.lane.name} prop={props.lane} value={node.laneValue} onChange={(v) => onSet(node.id, props.lane!, v)} /> : null}
-      {props.next ? <NextField node={node} prop={props.next} onSet={onSet} /> : null}
+      {props.due ? <DateField label={props.due.name} value={node.due} onSave={(v) => onSet(node.id, props.due!, v)} /> : null}
+      {props.owner ? <TextField id={node.id} label={props.owner.name} value={node.owner} onSave={(v) => onSet(node.id, props.owner!, v)} /> : null}
+      {props.next ? <TextField id={node.id} label="Next action" value={node.next} placeholder="What moves this forward?" onSave={(v) => onSet(node.id, props.next!, v)} /> : null}
       <Dependencies {...p} />
       {node.pinned ? (
         <div className="flex items-center justify-between gap-2 text-sm px-3 py-2.5 rounded-lg border border-dashed border-border">
@@ -130,9 +120,11 @@ export function MapInspector(p: Props) {
           <button type="button" onClick={() => onUnpin(node.id)} className="min-h-[32px] px-2.5 rounded-md border border-border bg-bg text-[13px]">Snap back</button>
         </div>
       ) : null}
-      <Link href={p.openHref} className="flex items-center justify-center min-h-[44px] rounded-lg bg-text text-bg text-[15px] font-semibold">
-        {p.openLabel}
-      </Link>
+      {p.onOpenPage && p.openHref.startsWith('/page/') ? (
+        <button type="button" onClick={() => p.onOpenPage!(node.id)} className={openCls}>{p.openLabel}</button>
+      ) : (
+        <Link href={p.openHref} className={openCls}>{p.openLabel}</Link>
+      )}
       <button type="button" onClick={() => p.onDelete(node.id)} className="min-h-[40px] rounded-lg border border-red-600/50 text-red-600 text-sm font-semibold hover:bg-red-600/10">
         Delete {p.noun}
       </button>

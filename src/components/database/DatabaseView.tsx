@@ -2168,7 +2168,7 @@ export function DatabaseView({ database: databaseProp, onUpdate: reconcile }: Da
       gallery: renderGalleryView, list: renderListView, board: renderBoardView,
       calendar: renderCalendarView, heatmap: renderHeatmapView,
       'budget-summary': renderBudgetSummaryView, 'spending-breakdown': renderSpendingBreakdownView,
-      map: () => <ProjectMap database={database} view={view} onChanged={onUpdate} />,
+      map: () => <ProjectMap database={database} view={view} onChanged={onUpdate} onOpenPage={setInspectPageId} />,
     };
     return (renderers[viewTypeKey(view)] ?? renderTableView)();
   };
