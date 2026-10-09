@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '@/components/ui/feedback';
 import { saveValue, savePositions } from './mapApi';
 import type { MapDb, MapNode, MapProp, Point } from './mapModel';
-import type { Saved } from './mapLayout';
+import { spotApplies, type Saved } from './mapLayout';
 
 type Overrides = Record<string, { pageId: string; propertyId: string; value: unknown }>;
 
@@ -81,7 +81,7 @@ export function usePositions(dbId: string, viewId: string, grouping: unknown) {
 
 export function useFrozenLayout(nodes: MapNode[], layout: ReturnType<typeof usePositions>) {
   useEffect(() => {
-    const fresh = nodes.filter((n) => { const p = layout.positions[n.id]; return !p || (p.lane !== undefined && p.lane !== n.lane); });
+    const fresh = nodes.filter((n) => !spotApplies(layout.positions[n.id], n.lane));
     if (!fresh.length) return;
     layout.freeze(Object.fromEntries(fresh.map((n) => [n.id, { x: n.at.x - n.laneOrigin.x, y: n.at.y - n.laneOrigin.y, auto: true, lane: n.lane }])));
   }, [nodes]); // eslint-disable-line react-hooks/exhaustive-deps

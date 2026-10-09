@@ -57,10 +57,14 @@ const pinAt = (o: Point, p: Point): Point => ({ x: o.x + Math.max(24, p.x), y: o
 // Saved offsets are relative to the lane origin, the same in every view, so a card keeps its spot across tabs and the All timeline.
 // Only cards with no saved spot are auto-placed, into the first free slot, so adding a card never moves the others.
 // A spot saved while the card sat in another lane no longer applies; the card gets a fresh free slot.
-const spotFor = (n: MapNode, saved: Record<string, Saved>) => {
-  const p = saved[n.id];
-  return p && (!p.lane || p.lane === n.lane) ? p : undefined;
-};
+// Auto spots saved before lanes were recorded are re-placed once; hand-placed ones are kept.
+export function spotApplies(p: Saved | undefined, lane: string): p is Saved {
+  if (!p) return false;
+  if (p.lane) return p.lane === lane;
+  return !p.auto;
+}
+
+const spotFor = (n: MapNode, saved: Record<string, Saved>) => (spotApplies(saved[n.id], n.lane) ? saved[n.id] : undefined);
 
 function placeLane(members: MapNode[], lane: { origin: Point; slotAt: SlotAt }, depth: Map<string, number>, saved: Record<string, Saved>): void {
   const { origin, slotAt } = lane;
