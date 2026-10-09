@@ -121,7 +121,7 @@ export function MapInspector(p: Props) {
       </div>
       {tasks ? <MapTasks {...tasks} /> : null}
       {props.status ? <SelectField label={props.status.name} prop={props.status} value={node.rawStatus} onChange={(v) => onSet(node.id, props.status!, v)} /> : null}
-      {props.lane ? <SelectField label={props.lane.name} prop={props.lane} value={node.lane === 'No area' ? '' : node.lane} onChange={(v) => onSet(node.id, props.lane!, v)} /> : null}
+      {props.lane ? <SelectField label={props.lane.name} prop={props.lane} value={node.laneValue} onChange={(v) => onSet(node.id, props.lane!, v)} /> : null}
       {props.next ? <NextField node={node} prop={props.next} onSet={onSet} /> : null}
       <Dependencies {...p} />
       {node.pinned ? (

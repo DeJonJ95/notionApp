@@ -8,6 +8,7 @@ type Props = {
   onTidy?: () => void;
   onAdd: () => void;
   onCycle?: () => void;
+  phase?: { exists: boolean; onAdd: () => void; onStart: () => void };
   archived: { count: number; shown: boolean; toggle: () => void };
   onAddWaitsOn?: () => void;
   noun: string;
@@ -26,7 +27,7 @@ function Legend() {
   );
 }
 
-export function MapToolbar({ onTidy, onAdd, onCycle, archived, onAddWaitsOn, noun }: Props) {
+export function MapToolbar({ onTidy, onAdd, onCycle, phase, archived, onAddWaitsOn, noun }: Props) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-border">
@@ -39,6 +40,8 @@ export function MapToolbar({ onTidy, onAdd, onCycle, archived, onAddWaitsOn, nou
         ) : null}
         {onTidy ? <button type="button" onClick={onTidy} className={btn}>Tidy layout</button> : null}
         {onCycle ? <button type="button" onClick={onCycle} className={btn}>Start next cycle</button> : null}
+        {phase && !phase.exists ? <button type="button" onClick={phase.onAdd} className={btn}>Group by phase</button> : null}
+        {phase?.exists ? <button type="button" onClick={phase.onStart} className={btn}>Start new phase</button> : null}
         <button type="button" onClick={onAdd} className="min-h-[36px] px-3.5 rounded-lg bg-accent text-white text-sm font-semibold">New {noun}</button>
       </div>
       {onAddWaitsOn ? (

@@ -20,6 +20,8 @@ export type MapNode = {
   id: string;
   title: string;
   lane: string;
+  laneValue: string;
+  due: string;
   rawStatus: string;
   status: StatusKey;
   label: string;
@@ -43,7 +45,6 @@ const ROW = 140;
 const PAD = 48;
 const HEAD = 48;
 const LANE_GAP = 36;
-const NO_LANE = 'No area';
 
 export const STATUS_STYLE: Record<StatusKey, { label: string; color: string }> = {
   done: { label: 'Done', color: '#2f7d4f' },
@@ -87,7 +88,7 @@ export function detectProps(db: MapDb): MapProps {
   const rest = selects.filter((p) => p !== status);
   return {
     status,
-    lane: byName(rest, /area|lane|group|category|client|team/i),
+    lane: byName(rest, /phase/i) ?? byName(rest, /area|lane|group|category|client|team/i),
     waitsOn: byName(selfRel, /wait|block|depend|after|needs/i) ?? selfRel[0],
     next: byName(db.properties.filter((p) => p.type === 'text'), /next/i),
     taskDb: byName(db.properties.filter((p) => p.type === 'text'), /task\s*(database|db)/i),
@@ -213,13 +214,15 @@ export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, P
   const ids = new Set(db.pages.map((p) => p.id));
   const rawById = new Map(db.pages.map((p) => [p.id, String(valueOf(p, props.status) ?? '')]));
   const laneOpts = selectOptions(props.lane);
+  const noLane = `No ${(props.lane?.name ?? 'area').toLowerCase()}`;
   const nodes: MapNode[] = db.pages.map((p) => {
     const deps = idList(valueOf(p, props.waitsOn)).filter((d) => ids.has(d) && d !== p.id);
     const raw = rawById.get(p.id) ?? '';
     const st = resolveStatus(raw, deps, rawById);
-    const lane = String(valueOf(p, props.lane) ?? '') || NO_LANE;
+    const laneValue = String(valueOf(p, props.lane) ?? '');
+    const lane = laneValue || noLane;
     return {
-      id: p.id, title: p.title || 'Untitled', lane, rawStatus: raw, deps,
+      id: p.id, title: p.title || 'Untitled', lane, laneValue, due: String(valueOf(p, props.due) ?? '').slice(0, 10), rawStatus: raw, deps,
       status: st.status, label: st.label, color: STATUS_STYLE[st.status].color,
       next: String(valueOf(p, props.next) ?? ''), subtitle: subtitleOf(p, props), at: { x: 0, y: 0 }, laneTop: 0, pinned: false,
     };

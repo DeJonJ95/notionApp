@@ -5,8 +5,9 @@ import { Minus, Plus } from 'lucide-react';
 import { confirmDialog, toast } from '@/components/ui/feedback';
 import { buildModel, detectProps, isArchived, type MapDb, type MapModel } from './mapModel';
 import { MapToolbar } from './MapToolbar';
-import { CycleDialog } from './CycleDialog';
-import { createPage, createWaitsOn, deleteProject } from './mapApi';
+import { CycleDialog, type CycleProject } from './CycleDialog';
+import { createPage, createPhaseField, createWaitsOn, deleteProject } from './mapApi';
+import { PhaseDialog } from './PhaseDialog';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
 import { usePositions, useValueEdits } from './useMapEdits';
@@ -76,12 +77,23 @@ async function confirmAndDelete(title: string, id: string, src: OwnSource, noun:
   }
 }
 
+type DialogProps = {
+  open: 'cycle' | 'phase' | null; dbId: string; model: MapModel; phases: string[];
+  cycleProjects: CycleProject[]; lane: string | null; onClose: (changed: boolean) => void;
+};
+
+function Dialogs({ open, dbId, model, phases, cycleProjects, lane, onClose }: DialogProps) {
+  if (open === 'phase') return <PhaseDialog databaseId={dbId} phases={phases} nodes={model.nodes} onClose={onClose} />;
+  if (open === 'cycle') return <CycleDialog mapDbId={dbId} projects={cycleProjects} initialLane={lane} onClose={onClose} />;
+  return null;
+}
+
 export function ProjectMap({ database, view, onChanged }: Props) {
   const { merged, setValue } = useValueEdits(database, onChanged);
   const props = useMemo(() => detectProps(merged), [merged]);
   const layout = usePositions(database.id, view.id, view.grouping);
   const [showArchived, setShowArchived] = useState(false);
-  const [cycleOpen, setCycleOpen] = useState(false);
+  const [dialog, setDialog] = useState<'cycle' | 'phase' | null>(null);
   const model = useMemo(() => buildModel(merged, props, layout.positions, showArchived), [merged, props, layout.positions, showArchived]);
   const archivedCount = merged.pages.filter((p) => isArchived(p, props)).length;
   const tasks = useTasks(merged, props, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
@@ -110,6 +122,7 @@ export function ProjectMap({ database, view, onChanged }: Props) {
       if (newId) setValue(id, prop, [...deps, newId]);
     } catch { toast.error(`Couldn’t add that ${noun}.`); onChanged(); }
   };
+  const addPhaseField = () => createPhaseField(database.id).then(onChanged).catch(() => toast.error('Couldn’t add the Phase field.'));
   const addWaitsOn = () => createWaitsOn(database.id).then(onChanged).catch(() => toast.error('Couldn’t add the relation.'));
 
   return (
@@ -117,15 +130,14 @@ export function ProjectMap({ database, view, onChanged }: Props) {
       <MapToolbar
         onTidy={Object.keys(layout.positions).length > 0 ? layout.tidy : undefined}
         onAdd={addProject}
-        onCycle={cycleProjects.length ? () => setCycleOpen(true) : undefined}
+        onCycle={cycleProjects.length ? () => setDialog('cycle') : undefined}
         archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }}
         onAddWaitsOn={props.waitsOn ? undefined : addWaitsOn}
         noun={noun}
+        phase={panels.phase ? { exists: Boolean(panels.phase.prop), onAdd: addPhaseField, onStart: () => setDialog('phase') } : undefined}
       />
-      {cycleOpen ? (
-        <CycleDialog mapDbId={database.id} projects={cycleProjects} initialLane={selected?.lane ?? null}
-          onClose={(changed) => { setCycleOpen(false); if (changed) onChanged(); }} />
-      ) : null}
+      <Dialogs open={dialog} dbId={database.id} model={model} phases={panels.phase?.options ?? []} cycleProjects={cycleProjects}
+        lane={selected?.lane ?? null} onClose={(changed) => { setDialog(null); if (changed) onChanged(); }} />
       <div className="flex flex-col lg:flex-row min-h-[560px] lg:h-[72vh]">
         <div className="relative flex-1 min-w-0 min-h-[420px]">
           <div onMouseMove={pointer.onMove} onMouseUp={pointer.onUp} onMouseLeave={pointer.onUp} className="absolute inset-0 overflow-auto" style={dots}>

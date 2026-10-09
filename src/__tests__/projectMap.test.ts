@@ -107,4 +107,15 @@ describe('project map model', () => {
     const by = Object.fromEntries(buildModel(many, p, {}).nodes.map((n) => [n.id, n.at]));
     expect(by.f.x).toBe(Math.max(...['f', 'q1', 'q2', 'q3', 'q4'].map((id) => by[id].x)));
   });
+
+  it('groups by a Phase field ahead of Area and names the ungrouped band after it', () => {
+    const phased: MapDb = {
+      ...db,
+      properties: [...props, { id: 'ph', name: 'Phase', type: 'select', formula: '["Planning","Setup"]' }],
+      pages: [{ ...page('a', 'Done', 'Work'), properties: [...page('a', 'Done', 'Work').properties, { property: { id: 'ph' }, value: 'Setup' }] }, page('b', 'Planned', 'Work')],
+    };
+    const pp = detectProps(phased);
+    expect(pp.lane?.id).toBe('ph');
+    expect(buildModel(phased, pp, {}).lanes.map((l) => l.name)).toEqual(['Setup', 'No phase']);
+  });
 });

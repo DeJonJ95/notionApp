@@ -1,4 +1,4 @@
-import { valueOf, type MapDb, type MapNode, type MapProp, type MapProps } from './mapModel';
+import { selectOptions, valueOf, type MapDb, type MapNode, type MapProp, type MapProps } from './mapModel';
 import type { TaskPanel } from './MapTasks';
 import type { useTasks } from './useTaskProgress';
 
@@ -22,8 +22,11 @@ export function mapPanels({ db, props, tasks, setValue }: Deps) {
     return { items: tasks.items[n.id] ?? [], color: n.color, toggle: tasks.toggle, add: (t) => tasks.add(n.id, t), canAdd: Boolean(tasks.sourceFor(n.id)), picker };
   };
 
+  const phaseProp = props.lane && /phase/i.test(props.lane.name) ? props.lane : undefined;
+
   return {
     noun,
+    phase: isProjects ? null : { prop: phaseProp, options: selectOptions(phaseProp) },
     emptySubtitle: isProjects ? 'No next action yet' : '',
     taskPanel,
     openHref: (id: string) => (owns(id) ? `/database/${tasks.sourceFor(id)!.dbId}?view=map` : `/page/${id}`),

@@ -20,6 +20,10 @@ export async function createPage(workspaceId: string, databaseId: string, title:
   return typeof page?.id === 'string' ? page.id : null;
 }
 
+export function createPhaseField(databaseId: string) {
+  return send(`/api/databases/${databaseId}/properties`, 'POST', { name: 'Phase', type: 'select', databaseId, formula: '[]' });
+}
+
 export async function createWaitsOn(databaseId: string): Promise<{ id: string; name: string; type: string; formula: string }> {
   const res = await send(`/api/databases/${databaseId}/properties`, 'POST', {
     name: 'Waits on',
