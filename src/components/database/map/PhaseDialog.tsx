@@ -30,6 +30,9 @@ export function PhaseDialog({ databaseId, phases, nodes, onClose }: Props) {
   const [rows, setRows] = useState<CopyRow[]>(() => rowsFor(nodes, from, 0));
   const [fresh, setFresh] = useState<NewRow[]>([{ title: '', due: '' }]);
   const [busy, setBusy] = useState(false);
+  const loose = nodes.filter((n) => !n.laneValue);
+  const [moveLoose, setMoveLoose] = useState(phases.length === 0 && loose.length > 0);
+  const moveIds = moveLoose ? loose.map((n) => n.id) : [];
 
   useEffect(() => setRows(rowsFor(nodes, from, 0)), [from]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -37,12 +40,12 @@ export function PhaseDialog({ databaseId, phases, nodes, onClose }: Props) {
   }, [days]);
 
   const tasks = payload(copy, rows, fresh);
-  const ready = name.trim() && !phases.includes(name.trim()) && tasks.length > 0 && !busy;
+  const ready = name.trim() && !phases.includes(name.trim()) && tasks.length + moveIds.length > 0 && !busy;
   const create = () => {
     setBusy(true);
-    fetch(`/api/databases/${databaseId}/phase`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phase: name.trim(), tasks }) })
+    fetch(`/api/databases/${databaseId}/phase`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phase: name.trim(), tasks, moveIds }) })
       .then((r) => (r.ok ? r.json() : Promise.reject(r)))
-      .then((d: { created: string[] }) => { toast.success(`Started ${name.trim()} with ${d.created.length} tasks.`); onClose(true); })
+      .then((d: { created: string[] }) => { toast.success(`Started ${name.trim()} with ${d.created.length + moveIds.length} tasks.`); onClose(true); })
       .catch(() => { toast.error('Couldn’t start that phase. Nothing was changed.'); setBusy(false); });
   };
 
@@ -53,6 +56,12 @@ export function PhaseDialog({ databaseId, phases, nodes, onClose }: Props) {
         <label className="flex flex-col gap-1 text-sm font-semibold">Phase name
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Setup" className={field} />
         </label>
+        {loose.length ? (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={moveLoose} onChange={() => setMoveLoose(!moveLoose)} className="w-4 h-4" />
+            Put the {loose.length} task{loose.length === 1 ? '' : 's'} with no phase into it
+          </label>
+        ) : null}
         {phases.length ? (
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={copy} onChange={() => setCopy(!copy)} className="w-4 h-4" />
@@ -79,7 +88,7 @@ export function PhaseDialog({ databaseId, phases, nodes, onClose }: Props) {
         <div className="flex justify-end gap-2">
           <button type="button" onClick={() => onClose(false)} className="min-h-[40px] px-4 rounded-lg border border-border text-sm">Cancel</button>
           <button type="button" onClick={create} disabled={!ready} className="min-h-[40px] px-4 rounded-lg bg-accent text-white text-sm font-semibold disabled:opacity-40">
-            {busy ? 'Starting…' : `Start phase with ${tasks.length} task${tasks.length === 1 ? '' : 's'}`}
+            {busy ? 'Starting…' : `Start phase with ${tasks.length + moveIds.length} task${tasks.length + moveIds.length === 1 ? '' : 's'}`}
           </button>
         </div>
       </div>

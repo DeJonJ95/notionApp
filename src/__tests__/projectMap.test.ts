@@ -93,6 +93,11 @@ describe('project map model', () => {
     expect(sourceOf({ id: 'y', title: 'Y', properties: [] }, sp)).toEqual({ dbId: 'tasksDb', whole: false });
   });
 
+});
+
+describe('project map wrapping and grouping', () => {
+  const p = detectProps(db);
+
   it('wraps a tall stack into extra columns while keeping dependents to the right', () => {
     const many: MapDb = { ...db, pages: [...['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => page(id, 'Planned', 'Work')), page('z', 'Planned', 'Home', ['p1'])] };
     const m = buildModel(many, p, {});

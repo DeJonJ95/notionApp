@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { isStatusProp, nextCycleValue, remapIds } from './cycle';
 
 export type PhaseTask = { sourceId?: string; title?: string; due?: string | null };
-export type PhaseInput = { databaseId: string; phase: string; tasks: PhaseTask[] };
+export type PhaseInput = { databaseId: string; phase: string; tasks: PhaseTask[]; moveIds?: string[] };
 
 type Tx = Prisma.TransactionClient;
 type Source = { title: string; icon: string | null; properties: PropertyValue[]; blocks: Block[] };
@@ -74,6 +74,13 @@ export async function startPhase(userId: string, input: PhaseInput) {
     const blocks = planned.flatMap((p) => blocksFor(ctx, p));
     if (values.length) await tx.propertyValue.createMany({ data: values });
     if (blocks.length) await tx.block.createMany({ data: blocks });
+    for (const pageId of input.moveIds ?? []) {
+      const owned = await tx.page.findFirst({ where: { id: pageId, databaseId: input.databaseId }, select: { id: true } });
+      if (owned) await tx.propertyValue.upsert({
+        where: { propertyId_pageId: { propertyId: phaseProp.id, pageId } },
+        update: { value: input.phase }, create: { propertyId: phaseProp.id, pageId, value: input.phase },
+      });
+    }
     return { created: planned.map((p) => p.pageId) };
   }, { timeout: 60_000, maxWait: 10_000 });
 }

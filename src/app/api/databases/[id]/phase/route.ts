@@ -10,6 +10,7 @@ const schema = z.object({
     title: z.string().trim().max(200).optional(),
     due: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   })).max(200),
+  moveIds: z.array(z.string()).max(500).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
