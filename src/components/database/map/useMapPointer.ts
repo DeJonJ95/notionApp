@@ -3,7 +3,7 @@
 import { useRef, useState, type MouseEvent, type RefObject } from 'react';
 import { edgePath, NODE_H, type MapModel, type MapProp, type Point } from './mapModel';
 
-type Drag = { id: string; sx: number; sy: number; origin: Point; laneTop: number; moved: boolean };
+type Drag = { id: string; sx: number; sy: number; origin: Point; lane: Point; moved: boolean };
 
 type Deps = {
   model: MapModel;
@@ -30,7 +30,7 @@ export function useMapPointer({ model, zoom, plane, waitsOn, setValue, select, l
       const node = model.nodes.find((n) => n.id === id);
       if (!node) return;
       justDragged.current = false;
-      drag.current = { id, sx: e.clientX, sy: e.clientY, origin: node.at, laneTop: node.laneTop, moved: false };
+      drag.current = { id, sx: e.clientX, sy: e.clientY, origin: node.at, lane: node.laneOrigin, moved: false };
     },
     onLinkStart: (id: string, e: MouseEvent) => { e.stopPropagation(); setLink({ from: id, to: toPlane(e) }); },
     onDrop: (id: string) => {
@@ -51,7 +51,7 @@ export function useMapPointer({ model, zoom, plane, waitsOn, setValue, select, l
     const dx = (e.clientX - d.sx) / zoom, dy = (e.clientY - d.sy) / zoom;
     if (!d.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
     d.moved = true;
-    layout.move(d.id, { x: Math.max(8, Math.round(d.origin.x + dx)), y: Math.round(d.origin.y + dy - d.laneTop) });
+    layout.move(d.id, { x: Math.round(d.origin.x + dx - d.lane.x), y: Math.round(d.origin.y + dy - d.lane.y) });
   };
 
   const onUp = () => {

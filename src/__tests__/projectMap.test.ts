@@ -64,7 +64,7 @@ describe('project map model', () => {
     const before = buildModel(db, p, {});
     const m = buildModel(db, p, { c: { x: 900, y: 400 } });
     const c = m.nodes.find((n) => n.id === 'c')!;
-    expect(c.at).toEqual({ x: 900, y: c.laneTop + 400 });
+    expect(c.at).toEqual({ x: 900, y: c.laneOrigin.y + 400 });
     expect(c.pinned).toBe(true);
     const [work, home] = m.lanes;
     expect(home.y).toBeGreaterThanOrEqual(work.y + work.h);
@@ -122,5 +122,20 @@ describe('project map wrapping and grouping', () => {
     const pp = detectProps(phased);
     expect(pp.lane?.id).toBe('ph');
     expect(buildModel(phased, pp, {}).lanes.map((l) => l.name)).toEqual(['Setup', 'No phase']);
+  });
+
+  it('lays phases out left to right, each phase to the right of the one before', () => {
+    const ph = { id: 'ph', name: 'Phase', type: 'select', formula: '["Setup","Training","Testing"]' };
+    const withPhase = (id: string, phase: string, deps: string[] = []) => ({ ...page(id, 'Planned', 'Work', deps), properties: [...page(id, 'Planned', 'Work', deps).properties, { property: { id: 'ph' }, value: phase }] });
+    const phased: MapDb = { ...db, properties: [...props, ph], pages: [withPhase('s1', 'Setup'), withPhase('s2', 'Setup', ['s1']), withPhase('t1', 'Training', ['s2']), withPhase('x1', 'Testing')] };
+    const m = buildModel(phased, detectProps(phased), {});
+    const by = Object.fromEntries(m.nodes.map((n) => [n.id, n.at]));
+    expect(m.lanes.map((l) => l.name)).toEqual(['Setup', 'Training', 'Testing']);
+    expect(by.s1.x).toBeLessThan(by.s2.x);
+    expect(by.s2.x).toBeLessThan(by.t1.x);
+    expect(by.t1.x).toBeLessThan(by.x1.x);
+    expect(m.lanes[1].x).toBeGreaterThanOrEqual(m.lanes[0].x + m.lanes[0].w);
+    expect(new Set(m.lanes.map((l) => l.h)).size).toBe(1);
+    expect(by.t1.y).toBe(by.s1.y);
   });
 });

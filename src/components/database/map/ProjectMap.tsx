@@ -113,7 +113,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
   const progress = tasks.progress;
   const [selId, setSelId] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
-  const zoomer = useAutoZoom(box, model.width, model.height);
+  const zoomer = useAutoZoom(box, model.width, model.height, model.across);
   const zoom = zoomer.zoom;
   const plane = useRef<HTMLDivElement>(null);
   const pointer = useMapPointer({ model, zoom, plane, waitsOn: props.waitsOn, setValue, select: setSelId, layout });
