@@ -14,7 +14,7 @@ export default async function ProjectsPage() {
     orderBy: { createdAt: 'desc' },
     select: { id: true, properties: { select: { name: true, type: true } } },
   });
-  const map = maps.find((m) => m.properties.some((p) => p.type === 'text' && /task\s*(database|db)/i.test(p.name))) ?? maps[0];
+  const map = maps.find((m) => m.properties.some((p) => (p.type === 'text' && /task\s*(database|db)/i.test(p.name)) || (p.type === 'relation' && /^tasks$/i.test(p.name))));
   if (map) redirect(`/database/${map.id}`);
   return <NoProjectsMap />;
 }
