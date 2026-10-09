@@ -101,4 +101,10 @@ describe('project map model', () => {
     expect(Math.max(...['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => by[id].y)) - by.p1.y).toBeLessThan(3 * 140);
     expect(by.z.x).toBeGreaterThan(Math.max(...['p1', 'p2', 'p3', 'p4', 'p5'].map((id) => by[id].x)));
   });
+
+  it('puts a feeder in the sub-column next to its dependents when a column wraps', () => {
+    const many: MapDb = { ...db, pages: [page('f', 'Planned', 'Work'), ...['q1', 'q2', 'q3', 'q4'].map((id) => page(id, 'Planned', 'Work')), page('z', 'Planned', 'Work', ['f'])] };
+    const by = Object.fromEntries(buildModel(many, p, {}).nodes.map((n) => [n.id, n.at]));
+    expect(by.f.x).toBe(Math.max(...['f', 'q1', 'q2', 'q3', 'q4'].map((id) => by[id].x)));
+  });
 });

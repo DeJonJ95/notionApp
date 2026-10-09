@@ -140,17 +140,23 @@ function columnStarts(nodes: MapNode[], depth: Map<string, number>): number[] {
   return sub.map((_, d) => sub.slice(0, d).reduce((a, b) => a + b, 0));
 }
 
+// Within a wrapped column, projects that feed others go in the right-most sub-column so their arrows never pass behind a card.
+function feedersLast(list: MapNode[], feeders: Set<string>): MapNode[] {
+  return [...list.filter((n) => !feeders.has(n.id)), ...list.filter((n) => feeders.has(n.id))];
+}
+
 // Pinned positions are stored relative to their lane's top, so a lane that grows pushes the lanes below it down.
 function placeNodes(nodes: MapNode[], laneOrder: string[], pinned: Record<string, Point>): void {
   const deps = new Map(nodes.map((n) => [n.id, n.deps]));
   const memo = new Map<string, number>();
   const depth = new Map(nodes.map((n) => [n.id, depthOf(n.id, deps, memo)]));
   const start = columnStarts(nodes, depth);
+  const feeders = new Set(nodes.flatMap((n) => n.deps));
   let top = PAD;
   for (const lane of laneOrder) {
     const seen = new Map<number, number>();
     let bottom = top;
-    for (const n of nodes.filter((m) => m.lane === lane)) {
+    for (const n of feedersLast(nodes.filter((m) => m.lane === lane), feeders)) {
       const d = depth.get(n.id) ?? 0;
       const i = seen.get(d) ?? 0;
       seen.set(d, i + 1);
