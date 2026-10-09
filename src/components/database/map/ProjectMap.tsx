@@ -8,6 +8,8 @@ import { MapToolbar } from './MapToolbar';
 import { CycleDialog, type CycleProject } from './CycleDialog';
 import { createPage, createPhaseField, createWaitsOn, deleteProject, renamePage } from './mapApi';
 import { useAutoZoom } from './useAutoZoom';
+import { usePhaseTabs } from './usePhaseTabs';
+import { PhaseTabs } from './PhaseTabs';
 import { PhaseDialog } from './PhaseDialog';
 import { MapNodeCard } from './MapNode';
 import { MapInspector } from './MapInspector';
@@ -83,7 +85,7 @@ type DialogProps = {
 };
 
 function Dialogs({ open, dbId, model, phases, cycleProjects, lane, onClose }: DialogProps) {
-  if (open === 'phase') return <PhaseDialog databaseId={dbId} phases={phases} nodes={model.nodes} onClose={onClose} />;
+  if (open === 'phase') return <PhaseDialog databaseId={dbId} phases={phases} nodes={model.all} onClose={onClose} />;
   if (open === 'cycle') return <CycleDialog mapDbId={dbId} projects={cycleProjects} initialLane={lane} onClose={onClose} />;
   return null;
 }
@@ -107,7 +109,8 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
   const layout = usePositions(database.id, view.id, view.grouping);
   const [showArchived, setShowArchived] = useState(false);
   const [dialog, setDialog] = useState<'cycle' | 'phase' | null>(null);
-  const model = useMemo(() => buildModel(merged, props, layout.positions, showArchived), [merged, props, layout.positions, showArchived]);
+  const phaseTab = usePhaseTabs(merged, props, showArchived, setValue);
+  const model = useMemo(() => buildModel(merged, props, layout.positions, { showArchived, only: phaseTab.only }), [merged, props, layout.positions, showArchived, phaseTab.only]);
   const archivedCount = merged.pages.filter((p) => isArchived(p, props)).length;
   const tasks = useTasks(merged, props, (id, ids) => props.tasks && setValue(id, props.tasks, ids));
   const progress = tasks.progress;
@@ -127,7 +130,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
       .then((gone) => { if (gone) setSelId(null); })
       .finally(onChanged);
   const addProject = () => createPage(database.workspaceId, database.id, `Untitled ${noun}`)
-    .then((id) => { if (id) setSelId(id); onChanged(); })
+    .then((id) => { if (id) { setSelId(id); phaseTab.stamp(id); } onChanged(); })
     .catch(() => toast.error(`Couldn’t create a ${noun}.`));
   const addPrereq = async (id: string, title: string) => {
     try {
@@ -149,6 +152,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
       })} noun={noun} archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }} />
       <Dialogs open={dialog} dbId={database.id} model={model} phases={panels.phase?.options ?? []} cycleProjects={cycleProjects}
         lane={selected?.lane ?? null} onClose={(changed) => { setDialog(null); if (changed) onChanged(); }} />
+      <PhaseTabs tabs={phaseTab.tabs} active={phaseTab.active} pick={phaseTab.pick} />
       <div className="flex flex-col lg:flex-row min-h-[560px] lg:h-[72vh]">
         <div className="relative flex-1 min-w-0 min-h-[420px]">
           <div ref={box} onMouseMove={pointer.onMove} onMouseUp={pointer.onUp} onMouseLeave={pointer.onUp} className="absolute inset-0 overflow-auto" style={dots}>
@@ -166,7 +170,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
           <ZoomControls zoom={zoom} step={zoomer.step} reset={zoomer.reset} />
         </div>
         {selected ? (
-          <MapInspector node={selected} nodes={model.nodes} props={props}
+          <MapInspector node={selected} nodes={model.all} props={props}
             tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun} onOpenPage={onOpenPage}
             onRename={(id, t) => renamePage(id, t).then(onChanged).catch(() => toast.error('Couldn’t rename that.'))} onAddPrereq={addPrereq}
             openLabel={panels.openLabel(selected.id)}

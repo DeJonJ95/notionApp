@@ -37,7 +37,8 @@ export type MapNode = {
 
 export type MapLane = { name: string; x: number; y: number; w: number; h: number; tint: string };
 export type MapEdge = { from: string; to: string; d: string; settled: boolean };
-export type MapModel = { nodes: MapNode[]; lanes: MapLane[]; edges: MapEdge[]; width: number; height: number; across: boolean };
+export type MapTab = { name: string; done: number; total: number };
+export type MapModel = { nodes: MapNode[]; all: MapNode[]; lanes: MapLane[]; edges: MapEdge[]; width: number; height: number; across: boolean };
 
 export { NODE_W, NODE_H } from './mapLayout';
 import { NODE_W, NODE_H, PAD, laneFrames, placeNodes } from './mapLayout';
@@ -139,35 +140,59 @@ export function isArchived(page: MapPage, props: MapProps): boolean {
   return /^archived$/i.test(String(valueOf(page, props.status) ?? '').trim());
 }
 
-export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, Point>, showArchived = false): MapModel {
-  const db = showArchived ? all : { ...all, pages: all.pages.filter((p) => !isArchived(p, props)) };
+export type BuildOptions = { showArchived?: boolean; only?: string | null };
+
+function visiblePages(all: MapDb, props: MapProps, showArchived?: boolean): MapDb {
+  return showArchived ? all : { ...all, pages: all.pages.filter((p) => !isArchived(p, props)) };
+}
+
+export function laneTabs(all: MapDb, props: MapProps, showArchived?: boolean): MapTab[] {
+  const { nodes } = makeNodes(visiblePages(all, props, showArchived), props);
+  const opts = selectOptions(props.lane);
+  const used = Array.from(new Set(nodes.map((n) => n.lane)));
+  const order = [...opts.filter((o) => used.includes(o)), ...used.filter((l) => !opts.includes(l))];
+  return order.map((name) => {
+    const members = nodes.filter((n) => n.lane === name);
+    return { name, done: members.filter((n) => n.status === 'done').length, total: members.length };
+  });
+}
+
+function makeNodes(db: MapDb, props: MapProps): { nodes: MapNode[]; rawById: Map<string, string> } {
   const ids = new Set(db.pages.map((p) => p.id));
   const rawById = new Map(db.pages.map((p) => [p.id, String(valueOf(p, props.status) ?? '')]));
-  const laneOpts = selectOptions(props.lane);
   const noLane = `No ${(props.lane?.name ?? 'area').toLowerCase()}`;
   const nodes: MapNode[] = db.pages.map((p) => {
     const deps = idList(valueOf(p, props.waitsOn)).filter((d) => ids.has(d) && d !== p.id);
     const raw = rawById.get(p.id) ?? '';
     const st = resolveStatus(raw, deps, rawById);
     const laneValue = String(valueOf(p, props.lane) ?? '');
-    const lane = laneValue || noLane;
     return {
-      id: p.id, title: p.title || 'Untitled', lane, laneValue, due: String(valueOf(p, props.due) ?? '').slice(0, 10), owner: String(valueOf(p, props.owner) ?? ''), rawStatus: raw, deps,
+      id: p.id, title: p.title || 'Untitled', lane: laneValue || noLane, laneValue, due: String(valueOf(p, props.due) ?? '').slice(0, 10), owner: String(valueOf(p, props.owner) ?? ''), rawStatus: raw, deps,
       status: st.status, label: st.label, color: STATUS_STYLE[st.status].color,
       next: String(valueOf(p, props.next) ?? ''), subtitle: subtitleOf(p, props), at: { x: 0, y: 0 }, laneOrigin: { x: 0, y: 0 }, pinned: false,
     };
   });
-  const used = new Set(nodes.map((n) => n.lane));
+  return { nodes, rawById };
+}
+
+// `only` narrows the canvas to one lane (a phase tab); statuses and the tab counts still see every card.
+export function buildModel(all: MapDb, props: MapProps, pinned: Record<string, Point>, opts: BuildOptions = {}): MapModel {
+  const db = visiblePages(all, props, opts.showArchived);
+  const { nodes: every, rawById } = makeNodes(db, props);
+  const laneOpts = selectOptions(props.lane);
+  const used = new Set(every.map((n) => n.lane));
   const laneOrder = [...laneOpts, ...Array.from(used).filter((l) => !laneOpts.includes(l))].filter((l) => used.has(l));
+  const only = opts.only && used.has(opts.only) ? opts.only : null;
+  const nodes = only ? every.filter((n) => n.lane === only) : every;
+  const shown = only ? [only] : laneOrder;
   const across = Boolean(props.lane && /phase/i.test(props.lane.name));
-  placeNodes(nodes, laneOrder, pinned, across);
+  placeNodes(nodes, shown, pinned, across && !only);
   const at = new Map(nodes.map((n) => [n.id, n.at]));
-  const edges = nodes.flatMap((n) =>
-    n.deps.map((d) => ({ from: d, to: n.id, d: edgePath(at.get(d)!, n.at), settled: isDoneLabel(rawById.get(d) ?? '') })),
-  );
+  const edges = nodes.flatMap((n) => n.deps.filter((d) => at.has(d))
+    .map((d) => ({ from: d, to: n.id, d: edgePath(at.get(d)!, n.at), settled: isDoneLabel(rawById.get(d) ?? '') })));
   const width = Math.max(800, ...nodes.map((n) => n.at.x + NODE_W)) + PAD;
   const height = Math.max(400, ...nodes.map((n) => n.at.y + NODE_H)) + PAD;
-  return { nodes, lanes: laneOrder.length > 1 ? laneFrames(nodes, laneOrder, across) : [], edges, width, height, across };
+  return { nodes, all: every, lanes: shown.length > 1 ? laneFrames(nodes, shown, across) : [], edges, width, height, across: across && !only };
 }
 
 export function downstreamOf(id: string, nodes: MapNode[]): Set<string> {

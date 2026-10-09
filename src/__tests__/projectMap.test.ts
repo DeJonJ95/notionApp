@@ -1,4 +1,4 @@
-import { buildModel, detectProps, downstreamOf, type MapDb } from '@/components/database/map/mapModel';
+import { buildModel, detectProps, downstreamOf, laneTabs, type MapDb } from '@/components/database/map/mapModel';
 import { sourceOf } from '@/components/database/map/useTaskProgress';
 
 const DB = 'db1';
@@ -137,5 +137,18 @@ describe('project map wrapping and grouping', () => {
     expect(m.lanes[1].x).toBeGreaterThanOrEqual(m.lanes[0].x + m.lanes[0].w);
     expect(new Set(m.lanes.map((l) => l.h)).size).toBe(1);
     expect(by.t1.y).toBe(by.s1.y);
+  });
+
+  it('shows one phase per tab while statuses and counts still see every phase', () => {
+    const ph = { id: 'ph', name: 'Phase', type: 'select', formula: '["Setup","Training"]' };
+    const withPhase = (id: string, status: string, phase: string, deps: string[] = []) => ({ ...page(id, status, 'Work', deps), properties: [...page(id, status, 'Work', deps).properties, { property: { id: 'ph' }, value: phase }] });
+    const phased: MapDb = { ...db, properties: [...props, ph], pages: [withPhase('s1', 'Done', 'Setup'), withPhase('s2', 'Planned', 'Setup'), withPhase('t1', 'Planned', 'Training', ['s2'])] };
+    const pp = detectProps(phased);
+    const m = buildModel(phased, pp, {}, { only: 'Training' });
+    expect(m.nodes.map((n) => n.id)).toEqual(['t1']);
+    expect(m.nodes[0].status).toBe('waiting');
+    expect(m.edges).toHaveLength(0);
+    expect(m.all).toHaveLength(3);
+    expect(laneTabs(phased, pp)).toEqual([{ name: 'Setup', done: 1, total: 2 }, { name: 'Training', done: 0, total: 1 }]);
   });
 });
