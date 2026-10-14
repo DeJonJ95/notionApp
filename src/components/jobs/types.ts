@@ -7,8 +7,8 @@ export type { AtsReport, InterviewPrep };
 
 export type Resume = { id: string; label: string; r2Key: string; fileType: 'docx' | 'pdf'; createdAt: string };
 
-// adds/newFigures are computed server-side; analyses saved before they existed lack them.
-export type Tweak = { resumeId?: string; original: string; rewrite: string; reason: string; adds?: string[]; newFigures?: string[] };
+// adds/unverified are computed server-side; analyses saved before they existed lack them.
+export type Tweak = { resumeId?: string; original: string; rewrite: string; reason: string; adds?: string[]; unverified?: string[] };
 
 export type Score = { resumeId: string; label: string; score: number; rationale: string };
 

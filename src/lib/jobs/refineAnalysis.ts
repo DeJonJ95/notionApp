@@ -1,10 +1,10 @@
 // Server-side checks on the model's analysis before it is stored. The model
 // proposes; this decides what the user is shown. Tweaks are pinned to text
 // the resume really contains, and each one carries the keywords it adds and
-// any figure it introduced, computed here rather than trusted from the model.
+// any figure or rank it introduced, computed here rather than trusted from the model.
 
 import type { AnalysisResult } from './deepseek';
-import { coverage, keywordsAdded, newFigures, uniqueTerms } from './keywords';
+import { coverage, keywordsAdded, unverifiedClaims, uniqueTerms } from './keywords';
 import { snapQuote } from './textMatch';
 
 export type RefinedTweak = {
@@ -13,7 +13,7 @@ export type RefinedTweak = {
   rewrite: string;
   reason: string;
   adds: string[];
-  newFigures: string[];
+  unverified: string[];
 };
 
 type ResumeText = { id: string; parsedText: string };
@@ -46,7 +46,7 @@ export function refineTweaks(
       rewrite,
       reason: String(t?.reason ?? ''),
       adds: keywordsAdded(keywords, resume.parsedText, rewrite),
-      newFigures: newFigures(original, rewrite),
+      unverified: unverifiedClaims(original, rewrite),
     });
   }
   return out;

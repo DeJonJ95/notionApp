@@ -1,5 +1,7 @@
 import { findSpan, snapQuote } from '@/lib/jobs/textMatch';
-import { hasKeyword, coverage, newFigures, coreTitle, keywordsAdded } from '@/lib/jobs/keywords';
+import { hasKeyword, coverage, newFigures, unverifiedClaims, coreTitle, keywordsAdded } from '@/lib/jobs/keywords';
+import { parsePrep, PRACTICE_SYSTEM, PREP_SYSTEM } from '@/lib/jobs/prep';
+import { ANALYZE_SYSTEM } from '@/lib/jobs/deepseek';
 
 describe('findSpan', () => {
   it('matches through smart quotes, dash spacing, case and a bullet glyph', () => {
@@ -41,6 +43,18 @@ describe('keywords', () => {
     expect(hasKeyword('C++ and Rust', 'C++')).toBe(true);
   });
 
+  it('matches a plural keyword against singular text, but keeps short terms exact', () => {
+    expect(hasKeyword('pulled data from a REST API', 'REST APIs')).toBe(true);
+    expect(hasKeyword('B.S. in CS', 'CSS')).toBe(false);
+    expect(hasKeyword('Deployed to AWS', 'AWS')).toBe(true);
+  });
+
+  it('flags rank words a rewrite adds, alongside new figures', () => {
+    expect(unverifiedClaims('Frontend developer who builds web apps', 'Senior Frontend Engineer who builds web apps')).toEqual(['Senior']);
+    expect(unverifiedClaims('Senior engineer on payments', 'Senior engineer on payments, 3 teams')).toEqual(['3']);
+    expect(unverifiedClaims('Led the migration', 'Led the PostgreSQL migration')).toEqual([]);
+  });
+
   it('splits keywords into matched and missing, deduped', () => {
     expect(coverage('React and SQL', ['React', 'react', 'Kubernetes', 'SQL'])).toEqual({
       matched: ['React', 'SQL'],
@@ -61,5 +75,19 @@ describe('keywords', () => {
     expect(coreTitle('Senior Data Engineer (Remote)')).toBe('Data Engineer');
     expect(coreTitle('Sr. Frontend Engineer - Payments')).toBe('Frontend Engineer');
     expect(coreTitle('Software Engineer II')).toBe('Software Engineer');
+  });
+});
+
+describe('prep parsing', () => {
+  const q = (kind: string, text: string) => ({ q: text, kind, why: '', points: [], evidence: '' });
+
+  it('keeps each half to its own question kinds', () => {
+    const a = JSON.stringify({ pitch: 'Hi', questions: [q('behavioral', 'Conflict?'), q('technical', 'Stray tech?')] });
+    const b = JSON.stringify({ questions: [q('technical', 'Testing?'), q('motivation', 'Stray why?')], gaps: [], ask: ['Team size?'] });
+    expect(parsePrep([a, b]).questions.map((x) => x.q)).toEqual(['Conflict?', 'Testing?']);
+  });
+
+  it('names JSON in every json-mode prompt, which DeepSeek requires', () => {
+    [PRACTICE_SYSTEM, PREP_SYSTEM, ANALYZE_SYSTEM].forEach((p) => expect(p.toLowerCase()).toContain('json'));
   });
 });

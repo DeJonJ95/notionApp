@@ -52,6 +52,7 @@ function Downloads({ atsUrl, styledUrl, name }: Files) {
     try { await downloadFile(url, `${name}${suffix}.docx`); } catch { setErr('Download failed. Try again.'); } finally { setBusy(''); }
   };
   const icon = (s: string) => (busy === s ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />);
+  // busy holds the suffix of the file in flight; '' means idle, so neither suffix may be ''.
   return (
     <div className="flex flex-wrap items-center gap-2">
       {atsUrl && (
@@ -60,8 +61,8 @@ function Downloads({ atsUrl, styledUrl, name }: Files) {
         </button>
       )}
       {styledUrl && (
-        <button onClick={() => get(styledUrl, '')} disabled={!!busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-border text-sm hover:border-accent disabled:opacity-50">
-          {icon('')} Styled resume
+        <button onClick={() => get(styledUrl, '-styled')} disabled={!!busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border border-border text-sm hover:border-accent disabled:opacity-50">
+          {icon('-styled')} Styled resume
         </button>
       )}
       {err && <span className="text-sm text-red-600">{err}</span>}

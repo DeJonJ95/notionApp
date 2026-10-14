@@ -23,6 +23,7 @@ export type PracticeFeedback = { rating: 'strong' | 'solid' | 'needs work'; stre
 
 const RULES = `HARD RULES:
 - Use only experience, employers, titles, dates, skills and figures that appear in the candidate's resume. Never invent any of them.
+- Do not tie a skill to a job or project unless the resume ties them together. A skill listed only in a skills section has no known project.
 - When the job asks for something the resume does not show, say so plainly and answer with adjacent real experience plus a concrete plan to close the gap.
 - Plain, direct prose in first person where the candidate is speaking. No em dashes (the "—" character). No "not X, but Y" phrasing. No placeholders or brackets.`;
 
@@ -31,12 +32,13 @@ ${RULES}
 Return ONLY a JSON object.`;
 
 // Two halves generated in parallel, so neither call runs long enough to time out.
+// Each half owns its question kinds; parsePrep drops strays so the halves never overlap.
 export const PREP_PARTS = [
   `Return {"pitch": string, "questions": Question[]}.
 "pitch": a 60-second answer to "Tell me about yourself" aimed at this role, 90-130 words.
-"questions": the 6 behavioral and motivation questions this interviewer is most likely to ask, given what the job emphasizes.`,
+"questions": the 6 behavioral and motivation questions this interviewer is most likely to ask, given what the job emphasizes. Every question's kind is "behavioral" or "motivation"; technical questions are covered elsewhere.`,
   `Return {"questions": Question[], "gaps": [{"gap": string, "answer": string}], "ask": string[]}.
-"questions": the 6 technical and role-specific questions most likely for this job's stated requirements and stack.
+"questions": the 6 technical and role-specific questions most likely for this job's stated requirements and stack. Every question's kind is "technical" or "role"; behavioral questions are covered elsewhere.
 "gaps": for each listed gap, a 2-3 sentence honest answer if the interviewer probes it.
 "ask": 4 sharp questions the candidate should ask the interviewer, specific to this posting.`,
 ];
@@ -87,12 +89,20 @@ function question(v: unknown): PrepQuestion | null {
   return { q, kind, why: text(o.why), points: texts(o.points), evidence: text(o.evidence) };
 }
 
+const PART_KINDS: PrepKind[][] = [['behavioral', 'motivation'], ['technical', 'role']];
+
+function partQuestions(o: Record<string, unknown>, i: number): PrepQuestion[] {
+  return list(o.questions)
+    .map(question)
+    .filter((q): q is PrepQuestion => !!q && (PART_KINDS[i] ?? KINDS).includes(q.kind));
+}
+
 /** Merge the two halves into one pack. */
 export function parsePrep(parts: string[]): Omit<InterviewPrep, 'resumeId' | 'resumeLabel' | 'createdAt'> {
   const objs = parts.map(parseObject);
   return {
     pitch: text(objs[0]?.pitch),
-    questions: objs.flatMap((o) => list(o.questions).map(question)).filter((q): q is PrepQuestion => !!q),
+    questions: objs.flatMap(partQuestions),
     gaps: objs.flatMap((o) => list(o.gaps)).map((g) => {
       const o = g && typeof g === 'object' ? (g as Record<string, unknown>) : {};
       return { gap: text(o.gap), answer: text(o.answer) };
@@ -104,7 +114,7 @@ export function parsePrep(parts: string[]): Omit<InterviewPrep, 'resumeId' | 're
 export const PRACTICE_SYSTEM = `You are an interview coach giving feedback on a practice answer for one specific job.
 ${RULES}
 Judge the answer against what the question probes and what the posting needs. Credit specifics; flag vagueness, missing results, rambling, and claims the resume does not support.
-Return ONLY {"rating": "strong" | "solid" | "needs work", "strengths": string[] (1-3), "improve": string[] (1-3, concrete), "tighter": string (the candidate's own answer rewritten tighter, 80-150 words, using only facts from their answer and resume)}.`;
+Return ONLY a JSON object: {"rating": "strong" | "solid" | "needs work", "strengths": string[] (1-3), "improve": string[] (1-3, concrete), "tighter": string (the candidate's own answer rewritten tighter, 80-150 words, using only facts from their answer and resume)}.`;
 
 export function buildPracticeUser(
   job: { title: string; company: string },

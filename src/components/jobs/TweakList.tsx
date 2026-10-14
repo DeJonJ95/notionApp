@@ -4,9 +4,9 @@ import type { Tweak } from './types';
 
 type Props = { tweaks: Tweak[]; approved: Set<number>; onToggle: (i: number, on: boolean) => void };
 
-/** Tweaks that add a figure start unticked: the user confirms the number is real. */
+/** Tweaks that add a figure or a rank start unticked: the user confirms the claim is true. */
 export function defaultApproved(tweaks: Tweak[]): Set<number> {
-  return new Set(tweaks.flatMap((t, i) => (t.newFigures?.length ? [] : [i])));
+  return new Set(tweaks.flatMap((t, i) => (t.unverified?.length ? [] : [i])));
 }
 
 export function TweakList({ tweaks, approved, onToggle }: Props) {
@@ -32,16 +32,16 @@ export function TweakList({ tweaks, approved, onToggle }: Props) {
 
 function TweakFlags({ tweak }: { tweak: Tweak }) {
   const adds = tweak.adds ?? [];
-  const figures = tweak.newFigures ?? [];
-  if (!adds.length && !figures.length) return null;
+  const claims = tweak.unverified ?? [];
+  if (!adds.length && !claims.length) return null;
   return (
     <div className="flex flex-wrap gap-1 pt-0.5">
       {adds.map((k) => (
         <span key={k} className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">+ {k}</span>
       ))}
-      {figures.length > 0 && (
+      {claims.length > 0 && (
         <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1">
-          <AlertTriangle size={11} /> New figure: {figures.join(', ')}. Only keep it if it is accurate.
+          <AlertTriangle size={11} /> Adds {claims.map((c) => `"${c}"`).join(', ')}, which your original line does not say. Keep it only if it is true.
         </span>
       )}
     </div>

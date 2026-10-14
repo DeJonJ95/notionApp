@@ -98,7 +98,8 @@ Return ONLY a JSON object with this exact shape:
     { "resumeId": string, "original": string, "rewrite": string, "reason": string }
   ],
   "gaps": string[],                // requirements no resume credibly covers
-  "atsNotes": string               // 1-3 sentences on ATS-friendliness
+  "atsNotes": string               // 1-2 sentences on keyword and wording fit only. You see extracted
+                                   // text, so say nothing about layout, tables, columns or formatting.
 }
 score is 0-100. Keep suggestedTweaks to the 4-10 highest-impact, truthful changes.`;
 
