@@ -82,7 +82,12 @@ export function InterviewPrep({ listing }: { listing: Listing }) {
         </button>
       </div>
       {!prep && !busy && <p className="text-sm">Likely questions for this role, talking points from your resume, honest answers for your gaps, and a place to practice each answer.</p>}
-      {prep && <p className="text-xs text-muted">Built from {prep.resumeLabel} on {new Date(prep.createdAt).toLocaleDateString()}</p>}
+      {prep && (
+        <p className="text-xs">
+          <span className="text-muted">Built from {prep.resumeLabel} on {new Date(prep.createdAt).toLocaleDateString()}. </span>
+          <span className="text-amber-800 dark:text-amber-300">The coach can link a skill to the wrong project; check each point against what you actually did.</span>
+        </p>
+      )}
       {err && <p className="text-sm text-red-600">{err}</p>}
       {prep && <Pack prep={prep} listingId={listing.id} />}
     </section>
