@@ -1,9 +1,14 @@
 // Client-side shapes mirroring the ApplyKit API responses. Kept loose (the
 // JSON columns come back as `any`) but typed enough for the UI.
+import type { AtsReport } from '@/lib/jobs/atsCheck';
+import type { InterviewPrep } from '@/lib/jobs/prep';
+
+export type { AtsReport, InterviewPrep };
 
 export type Resume = { id: string; label: string; r2Key: string; fileType: 'docx' | 'pdf'; createdAt: string };
 
-export type Tweak = { resumeId?: string; original: string; rewrite: string; reason: string };
+// adds/newFigures are computed server-side; analyses saved before they existed lack them.
+export type Tweak = { resumeId?: string; original: string; rewrite: string; reason: string; adds?: string[]; newFigures?: string[] };
 
 export type Score = { resumeId: string; label: string; score: number; rationale: string };
 
@@ -17,6 +22,8 @@ export type Analysis = {
   suggestedTweaks: Tweak[];
   gaps: string[] | null;
   atsNotes: string | null;
+  coverage: Record<string, string[]> | null;
+  createdAt: string;
 };
 
 export type AppEvent = {
@@ -34,6 +41,8 @@ export type Application = {
   resumeId: string | null;
   tailoredR2Key: string | null;
   coverLetterR2Key: string | null;
+  atsR2Key: string | null;
+  atsReport: AtsReport | null;
   recruiterMessage: string | null;
   compOfferMin: number | null;
   compOfferMax: number | null;
@@ -58,6 +67,7 @@ export type Listing = {
   analysis: Analysis | null;
   application: Application | null;
   match: Match | null;
+  prep: InterviewPrep | null;
 };
 
 export type Match = {

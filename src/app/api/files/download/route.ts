@@ -27,7 +27,8 @@ export async function GET(req: NextRequest) {
   }
 
   const filename = key.split('/').pop() || 'resume.docx';
-  const contentType = key.toLowerCase().endsWith('.pdf') ? 'application/pdf' : DOCX_MIME;
+  const ext = key.toLowerCase().split('.').pop();
+  const contentType = ext === 'pdf' ? 'application/pdf' : ext === 'txt' ? 'text/plain; charset=utf-8' : DOCX_MIME;
   // Hand NextResponse a plain ArrayBuffer slice — Buffer's ArrayBufferLike
   // generic doesn't satisfy BodyInit under the newer TS lib.
   const body = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;

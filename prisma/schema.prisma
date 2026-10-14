@@ -73,6 +73,7 @@ model JobListing {
   field        String? // e.g. "Frontend", "Data", "Eng Manager"
   rawJson      Json? // whatever the capture scraped, for debugging
   match        Json? // MatchResult from lib/jobs/rank.ts: skill overlap plus a quick AI score
+  prep         Json? // InterviewPrep from lib/jobs/prep.ts, regenerable
   createdAt    DateTime        @default(now())
   analysis     Analysis?
   application  JobApplication?
@@ -94,6 +95,7 @@ model Analysis {
   suggestedTweaks     Json // [{ original, rewrite, reason, resumeId }]
   gaps                Json? // string[] requirements no resume covers
   atsNotes            String?    @db.Text
+  coverage            Json? // { [resumeId]: string[] } keywords each resume already contains
   createdAt           DateTime   @default(now())
 }
 
@@ -110,6 +112,8 @@ model JobApplication {
   resume           Resume?            @relation(fields: [resumeId], references: [id], onDelete: SetNull)
   tailoredR2Key    String?
   coverLetterR2Key String?
+  atsR2Key         String? // single-column ATS-safe copy of the tailored resume
+  atsReport        Json? // AtsReport from lib/jobs/atsCheck.ts, measured on that copy
   recruiterMessage String?            @db.Text
   status           String             @default("SAVED")
   field            String?

@@ -45,7 +45,7 @@ export function JobsDashboard() {
         </div>
       </div>
       <p className="text-sm text-muted mb-6">
-        Capture a hiring.cafe posting, let DeepSeek score your resumes and suggest truthful tweaks, tailor the best fit, and track every application here.
+        Capture a posting, see which of its keywords your resume already has, tailor the best fit into an ATS-safe file, prep for the interview, and track every application here.
       </p>
 
       {/* Funnel */}

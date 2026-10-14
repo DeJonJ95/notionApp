@@ -307,25 +307,11 @@
       "anyCount": 2,
       "castChain": 2
     },
-    "src/app/api/jobs/[id]/analyze/route.ts": {
-      "anyCount": 2,
-      "castChain": 1
-    },
     "src/app/api/jobs/[id]/apply/route.ts": {
       "anyCount": 1,
       "castChain": 1
     },
     "src/app/api/jobs/[id]/coverletter/route.ts": {
-      "anyCount": 1,
-      "castChain": 1
-    },
-    "src/app/api/jobs/[id]/route.ts": {
-      "anyCount": 1,
-      "castChain": 1
-    },
-    "src/app/api/jobs/[id]/tailor/route.ts": {
-      "functionLoc": 104,
-      "complexity": 18,
       "anyCount": 1,
       "castChain": 1
     },
@@ -544,12 +530,6 @@
     "src/components/inbox/InboxView.tsx": {
       "functionLoc": 251
     },
-    "src/components/jobs/JobCard.tsx": {
-      "fileLoc": 527,
-      "functionLoc": 327,
-      "complexity": 39,
-      "anyCount": 7
-    },
     "src/components/jobs/JobsDashboard.tsx": {
       "functionLoc": 102,
       "anyCount": 2
@@ -640,9 +620,6 @@
     "src/lib/inbox.ts": {
       "anyCount": 3,
       "castChain": 1
-    },
-    "src/lib/jobs/docx.ts": {
-      "commentRatio": 0.222
     },
     "src/lib/jobs/jsonld.ts": {
       "complexity": 18,

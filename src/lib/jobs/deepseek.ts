@@ -14,10 +14,10 @@ export async function callDeepSeek(
   apiKey: string,
   system: string,
   user: string,
-  opts?: { maxTokens?: number; json?: boolean; temperature?: number },
+  opts?: { maxTokens?: number; json?: boolean; temperature?: number; timeoutMs?: number },
 ): Promise<{ content: string; usage?: DSUsage }> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), DS_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), opts?.timeoutMs ?? DS_TIMEOUT_MS);
   try {
     const r = await fetch(DS_URL, {
       method: 'POST',
@@ -66,10 +66,29 @@ HARD RULES (never break these):
 - Write each "rewrite" in plain, direct prose: do NOT use em dashes (the "—"
   character; use commas, colons, or separate clauses instead), and do NOT use
   "not X, but Y" antithesis phrasing. State the point directly.
+- Never add a number, percentage, dollar amount, team size, or date that the
+  original line does not already state.
+
+HOW TO GET PAST THE ATS (truthfully):
+- ATS search is literal. A resume that says "Postgres" does not match a search
+  for "PostgreSQL". Use the job's exact spelling of each term.
+- Aim the tweaks at keywords the recommended resume does NOT already contain
+  word for word, wherever its existing experience genuinely supports the term.
+- For an acronym, write the full form once with the acronym in parentheses,
+  e.g. "continuous integration (CI)".
+- If the resume has a skills line, one tweak may append the job's spelling of
+  tools the resume already shows elsewhere. Copy the whole skills line as
+  "original".
+- If the resume has a headline or summary line, one tweak may align it with the
+  job title, only where the title honestly describes the candidate's work.
+- "original" must be ONE complete line or bullet, copied character for
+  character from the resume, never stitched from two lines.
 
 Return ONLY a JSON object with this exact shape:
 {
-  "keywords": string[],            // ATS keywords/skills pulled from the JD
+  "keywords": string[],            // 10-25 terms a recruiter would search: tools, languages, platforms,
+                                   // methods, certifications, domain terms. Exact JD spelling, 1-4 words
+                                   // each. No soft skills or generic phrases.
   "requirements": string[],        // concrete hard requirements from the JD
   "scores": [                       // one entry PER resume provided
     { "resumeId": string, "label": string, "score": number, "rationale": string }
@@ -81,7 +100,7 @@ Return ONLY a JSON object with this exact shape:
   "gaps": string[],                // requirements no resume credibly covers
   "atsNotes": string               // 1-3 sentences on ATS-friendliness
 }
-score is 0-100. Keep suggestedTweaks to the 3-8 highest-impact, truthful changes.`;
+score is 0-100. Keep suggestedTweaks to the 4-10 highest-impact, truthful changes.`;
 
 export type AnalysisResult = {
   keywords: string[];
