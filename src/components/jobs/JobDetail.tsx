@@ -52,7 +52,7 @@ export function JobDetail({ listing, resumes, onChanged }: Props) {
 
       {err && <p className="text-sm text-red-600">{err}</p>}
 
-      {resumes.length > 0 && <InterviewPrep listing={listing} />}
+      {resumes.length > 0 && <InterviewPrep listing={listing} onChanged={onChanged} />}
 
       {app ? (
         <TrackerControls app={app} onChanged={onChanged} />

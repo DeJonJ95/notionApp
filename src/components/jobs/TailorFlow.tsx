@@ -105,7 +105,7 @@ export function TailorFlow({ listing, analysis, resumes, onChanged, reanalyze, a
         <AtsReportView report={report} atsUrl={atsUrl} styledUrl={styledUrl} company={listing.company} title={listing.title} />
       )}
       {message && <RecruiterMessage text={message} />}
-      <CoverLetterSection listingId={listing.id} resumeId={resumeId} savedUrl={fileUrl(app?.coverLetterR2Key)} company={listing.company} />
+      <CoverLetterSection listingId={listing.id} resumeId={resumeId} savedUrl={fileUrl(app?.coverLetterR2Key)} company={listing.company} onChanged={onChanged} />
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { tailorDocx } from '@/lib/jobs/docx';
 import { docxBlocks, textBlocks, partBlocks } from '@/lib/jobs/docxBlocks';
 import { plainDocx } from '@/lib/jobs/plainDocx';
 import { atsReport, docxHazards } from '@/lib/jobs/atsCheck';
-import { makeResumeDocx, documentXml, para, run } from './fixtures/resumeDocx';
+import { makeResumeDocx, documentXml, para, run, bullet } from './fixtures/resumeDocx';
 
 describe('tailorDocx on a Word-shaped resume', () => {
   it('rewrites only the quoted span and keeps the bold run before it', () => {
@@ -32,6 +32,30 @@ describe('tailorDocx on a Word-shaped resume', () => {
     ]);
     expect(applied).toBe(1);
     expect(documentXml(bytes).match(/SQL, PostgreSQL/g)).toHaveLength(2);
+  });
+});
+
+describe('tweak scope', () => {
+  it('rewrites only the first paragraph holding a quoted phrase', () => {
+    const body = bullet('Built React dashboards for ops') + bullet('Built React dashboards for sales');
+    const { bytes } = tailorDocx(makeResumeDocx(body), [{ original: 'Built React dashboards', rewrite: 'Built React and TypeScript dashboards' }]);
+    expect(documentXml(bytes).match(/TypeScript/g)).toHaveLength(1);
+  });
+
+  it('treats a Title-styled name as the name, and a list style as bullets', () => {
+    const body = '<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>' + run('Jane Doe') + '</w:p>'
+      + '<w:p><w:pPr><w:pStyle w:val="ListBullet"/></w:pPr>' + run('Shipped things') + '</w:p>';
+    const blocks = docxBlocks(makeResumeDocx(body));
+    expect(blocks.map((b) => [b.kind, b.text])).toEqual([
+      ['para', 'Jane Doe'],
+      ['para', 'jane@example.com | (555) 123-4567'],
+      ['bullet', 'Shipped things'],
+    ]);
+  });
+
+  it('reads an email split across runs as present in the body', () => {
+    const body = para(run('jane@'), run('example.com')) + para(run('(555) 123-'), run('4567'));
+    expect(docxHazards(makeResumeDocx(body)).map((h) => h.id)).not.toContain('headerContact');
   });
 });
 

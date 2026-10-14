@@ -6,11 +6,11 @@ const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const SEP = /[\s.\-_/]+/;
 
 function termPattern(term: string): RegExp | null {
-  const parts = term.trim().toLowerCase().split(SEP).filter(Boolean);
+  const raw = term.trim().split(SEP).filter(Boolean);
+  const parts = raw.map((p) => p.toLowerCase());
   if (!parts.length || parts.join('').length < 2) return null;
-  const last = parts[parts.length - 1];
-  // "APIs" should find "API"; short terms keep their s so "CSS" never matches "CS".
-  if (last.length >= 4 && last.endsWith('s') && !last.endsWith('ss')) parts[parts.length - 1] = last.slice(0, -1);
+  // "APIs" finds "API" and "pipelines" finds "pipeline"; names like Rails, Redis or CSS keep their s.
+  if (/^([A-Z]{2,}s|[a-z]{4,}[^s]s)$/.test(raw[raw.length - 1])) parts[parts.length - 1] = parts[parts.length - 1].slice(0, -1);
   const body = parts.map(escape).join('[\\s.\\-_/]*');
   return new RegExp(`(^|[^a-z0-9])${body}s?($|[^a-z0-9+#])`);
 }

@@ -29,7 +29,7 @@ function Checklist({ report }: { report: AtsReport }) {
     <ul className="space-y-1.5 text-sm">
       {total > 0 && (
         <Check ok={missing.length <= total / 4}>
-          <strong>{matched.length} of {total}</strong> job keywords present
+          <strong>{matched.length} of {total}</strong> job keywords present{report.before !== undefined && report.before !== matched.length && ` (${report.before} before tailoring)`}
           {missing.length > 0 && <>. Still missing: {missing.join(', ')}. Add any you genuinely have; the rest are gaps.</>}
         </Check>
       )}

@@ -47,6 +47,9 @@ describe('keywords', () => {
     expect(hasKeyword('pulled data from a REST API', 'REST APIs')).toBe(true);
     expect(hasKeyword('B.S. in CS', 'CSS')).toBe(false);
     expect(hasKeyword('Deployed to AWS', 'AWS')).toBe(true);
+    expect(hasKeyword('Moved freight by rail', 'Rails')).toBe(false);
+    expect(hasKeyword('Owns the deploy pipeline', 'CI pipelines')).toBe(false);
+    expect(hasKeyword('Owns the CI pipeline', 'CI pipelines')).toBe(true);
   });
 
   it('flags rank words a rewrite adds, alongside new figures', () => {

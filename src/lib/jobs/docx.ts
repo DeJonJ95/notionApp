@@ -6,6 +6,7 @@
 import mammoth from 'mammoth';
 import PizZip from 'pizzip';
 import { tweakSpan } from './textMatch';
+import { escapeXml, decodeXml } from './xmlText';
 
 export async function parseDocx(buffer: Buffer): Promise<string> {
   const { value } = await mammoth.extractRawText({ buffer });
@@ -13,16 +14,6 @@ export async function parseDocx(buffer: Buffer): Promise<string> {
 }
 
 export type Tweak = { original: string; rewrite: string };
-
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function decodeXml(s: string): string {
-  return s
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
-}
 
 const WT_RE = /(<w:t\b[^>]*?)(?:\/>|>([\s\S]*?)<\/w:t>)/g;
 // Innermost paragraphs only: a text box nests whole paragraphs inside a run.
@@ -64,27 +55,25 @@ function splice(paragraph: string, span: [number, number], rewrite: string): str
 
 /** Apply tweaks to WordprocessingML, returning the new XML and which tweaks landed. */
 export function tailorXml(xml: string, tweaks: Tweak[]): { xml: string; hit: Set<Tweak> } {
-  const hit = new Set<Tweak>();
+  const landed = new Map<Tweak, string>();
   const out = xml.replace(WP_RE, (paragraph) => {
     let current = paragraph;
     for (const tweak of tweaks) {
       const text = runsOf(current).map((r) => r.text).join('');
-      const span = text ? tweakSpan(text, tweak.original, tweak.rewrite) : null;
+      const first = landed.get(tweak);
+      if (!text || (first !== undefined && first !== text)) continue;
+      const span = tweakSpan(text, tweak.original, tweak.rewrite);
       if (!span) continue;
       current = splice(current, span, tweak.rewrite.trim());
-      hit.add(tweak);
+      landed.set(tweak, text);
     }
     return current;
   });
-  return { xml: out, hit };
+  return { xml: out, hit: new Set(landed.keys()) };
 }
 
-/**
- * Apply approved tweaks to a .docx. Every paragraph containing a tweak's
- * original text is rewritten, which also covers the duplicate copy Word keeps
- * of text-box content. Tweaks found nowhere come back in `unmatched` so the
- * UI can flag them instead of dropping an intended change.
- */
+// A tweak rewrites the first paragraph holding its original, plus identical copies
+// (Word's duplicate of text-box content). Unlocated tweaks come back in `unmatched`.
 export function tailorDocx(
   buffer: Buffer,
   tweaks: Tweak[],

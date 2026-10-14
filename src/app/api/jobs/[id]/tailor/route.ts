@@ -80,6 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const resume = await prisma.resume.findFirst({ where: { id: resumeId, userId }, select: { r2Key: true, parsedText: true, fileType: true } });
   if (!resume) return NextResponse.json({ error: 'Resume not found' }, { status: 404 });
 
+  const pendingMessage = recruiterMessage(listing, resume.parsedText, userId);
   let out: TailorOutput;
   try {
     out = await runTailor(resume, tweaks, { title: listing.title, keywords: keywordsOf(listing.analysis?.keywords) });
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const prev = await prisma.jobApplication.findUnique({ where: { listingId: listing.id }, select: { tailoredR2Key: true, atsR2Key: true } });
   const { styledKey, atsKey } = await storeFiles(out, `${userId}/tailored/${listing.id}-${Date.now()}`);
-  const message = await recruiterMessage(listing, resume.parsedText, userId);
+  const message = await pendingMessage;
 
   const files = { resumeId, tailoredR2Key: styledKey, atsR2Key: atsKey, atsReport: out.report, recruiterMessage: message };
   const application = await prisma.jobApplication.upsert({

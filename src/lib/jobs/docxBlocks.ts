@@ -3,6 +3,7 @@
 // the source for the ATS-safe resume, so nothing the user wrote may go missing.
 
 import PizZip from 'pizzip';
+import { decodeXml } from './xmlText';
 
 export type BlockKind = 'heading' | 'bullet' | 'para';
 export type Block = { kind: BlockKind; text: string };
@@ -14,12 +15,6 @@ const TOKEN = /(?<p><w:p\b[^>]*>)|(?<pEnd><\/w:p>)|<w:t\b[^>]*?(?:\/>|>(?<t>[\s\
 
 const SECTION_NAMES = /^(professional |work |relevant |technical |core |key )?(summary|profile|objective|experience|employment( history)?|work history|career history|education|skills|competencies|qualifications|projects|certifications?|licenses|awards|honors|publications|volunteer(ing| experience)?|leadership|languages|interests|activities|training|achievements|affiliations|references)( & [a-z ]+)?:?$/i;
 
-function decode(s: string): string {
-  return s
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'").replace(/&amp;/g, '&');
-}
-
 export function isSectionHeading(text: string): boolean {
   const t = text.trim();
   if (SECTION_NAMES.test(t)) return true;
@@ -29,8 +24,10 @@ export function isSectionHeading(text: string): boolean {
 function toBlock(p: Para): Block | null {
   const text = p.text.replace(/\t+/g, ' | ').replace(/[  ]+/g, ' ').replace(/^[ |]+|[ |]+$/g, '').trim();
   if (!text) return null;
-  if (/^(heading|title)/i.test(p.style) || isSectionHeading(text)) return { kind: 'heading', text };
-  return { kind: p.list ? 'bullet' : 'para', text };
+  // A Title-styled line is the name, which plainDocx promotes on its own.
+  if (/^title/i.test(p.style)) return { kind: 'para', text };
+  if (/^heading/i.test(p.style) || isSectionHeading(text)) return { kind: 'heading', text };
+  return { kind: p.list || /list/i.test(p.style) ? 'bullet' : 'para', text };
 }
 
 // A row whose cells each hold one line is a layout row ("Acme | 2020-2023"),
@@ -63,7 +60,7 @@ function onText(fn: (p: Para, value: string) => void): Step {
 const STEPS: Record<string, Step> = {
   p: (w, tag) => { if (!tag.endsWith('/>')) w.open.push({ text: '', list: false, style: '' }); },
   pEnd: (w) => { const p = w.open.pop(); if (p) emit(w, p); },
-  t: onText((p, v) => { p.text += decode(v); }),
+  t: onText((p, v) => { p.text += decodeXml(v); }),
   tab: onText((p) => { p.text += '\t'; }),
   br: onText((p) => { p.text += ' '; }),
   num: onText((p) => { p.list = true; }),

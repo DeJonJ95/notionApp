@@ -59,7 +59,7 @@ function Pack({ prep, listingId }: { prep: Prep; listingId: string }) {
   );
 }
 
-export function InterviewPrep({ listing }: { listing: Listing }) {
+export function InterviewPrep({ listing, onChanged }: { listing: Listing; onChanged: () => void }) {
   const [prep, setPrep] = useState<Prep | null>(listing.prep);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -69,6 +69,7 @@ export function InterviewPrep({ listing }: { listing: Listing }) {
     setErr(''); setBusy(true);
     try {
       setPrep((await postJson<{ prep: Prep }>(`/api/jobs/${listing.id}/prep`, {})).prep);
+      onChanged();
     } catch (e) { setErr(errorText(e, 'Prep failed')); } finally { setBusy(false); }
   };
 

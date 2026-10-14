@@ -25,11 +25,11 @@ export function RecruiterMessage({ text }: { text: string }) {
   );
 }
 
-type LetterProps = { listingId: string; resumeId: string; savedUrl: string | null; company: string };
+type LetterProps = { listingId: string; resumeId: string; savedUrl: string | null; company: string; onChanged: () => void };
 
 // A saved letter is reopened from its stored file, so it survives a reload
 // without paying for a new generation.
-export function CoverLetterSection({ listingId, resumeId, savedUrl, company }: LetterProps) {
+export function CoverLetterSection({ listingId, resumeId, savedUrl, company, onChanged }: LetterProps) {
   const [busy, setBusy] = useState(false);
   const [letter, setLetter] = useState<string | null>(null);
   const [url, setUrl] = useState<string | null>(savedUrl);
@@ -44,6 +44,7 @@ export function CoverLetterSection({ listingId, resumeId, savedUrl, company }: L
     const d = await postJson<{ letterText: string; downloadUrl: string }>(`/api/jobs/${listingId}/coverletter`, { resumeId });
     setLetter(d.letterText);
     setUrl(d.downloadUrl);
+    onChanged();
   }, 'Cover letter generation failed');
 
   const open = () => run(async () => {

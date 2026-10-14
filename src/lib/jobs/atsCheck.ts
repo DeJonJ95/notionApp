@@ -4,7 +4,7 @@
 
 import PizZip from 'pizzip';
 import { coverage, coreTitle, hasKeyword, type Coverage } from './keywords';
-import { isSectionHeading, type Block } from './docxBlocks';
+import { isSectionHeading, partBlocks, type Block } from './docxBlocks';
 
 export type HazardId = 'tables' | 'textBoxes' | 'columns' | 'headerContact' | 'images' | 'symbols';
 
@@ -12,6 +12,7 @@ export type Hazard = { id: HazardId; label: string };
 
 export type AtsReport = {
   keywords: Coverage;
+  before?: number;
   title: { text: string; found: boolean };
   contact: { email: boolean; phone: boolean };
   sections: { experience: boolean; education: boolean; skills: boolean };
@@ -30,15 +31,16 @@ const HAZARD_LABEL: Record<HazardId, string> = {
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 const PHONE = /(\+?\d{1,2}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/;
 
+// Joined from <w:t> runs, so an email Word split across runs still reads whole.
 function partsText(zip: PizZip, pattern: RegExp): string {
-  return zip.file(pattern).map((f) => f.asText().replace(/<[^>]+>/g, ' ')).join(' ');
+  return zip.file(pattern).map((f) => partBlocks(f.asText()).map((b) => b.text).join('\n')).join('\n');
 }
 
 /** Parsing risks in a styled .docx. */
 export function docxHazards(buffer: Buffer): Hazard[] {
   const zip = new PizZip(buffer);
   const doc = zip.file('word/document.xml')?.asText() ?? '';
-  const bodyText = doc.replace(/<[^>]+>/g, ' ');
+  const bodyText = partsText(zip, /^word\/document\.xml$/);
   const headerText = partsText(zip, /^word\/(header|footer)\d*\.xml$/);
   const found: Record<HazardId, boolean> = {
     tables: /<w:tbl\b/.test(doc),
