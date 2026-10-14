@@ -87,6 +87,13 @@ describe('prep parsing', () => {
     expect(parsePrep([a, b]).questions.map((x) => x.q)).toEqual(['Conflict?', 'Testing?']);
   });
 
+  it('keeps the half that parsed when the other is cut off', () => {
+    const a = JSON.stringify({ pitch: 'Hi', questions: [q('behavioral', 'Conflict?')] });
+    const pack = parsePrep([a, '{"questions": [{"q": "Testing?", "kind": "techn']);
+    expect(pack.pitch).toBe('Hi');
+    expect(pack.questions.map((x) => x.q)).toEqual(['Conflict?']);
+  });
+
   it('names JSON in every json-mode prompt, which DeepSeek requires', () => {
     [PRACTICE_SYSTEM, PREP_SYSTEM, ANALYZE_SYSTEM].forEach((p) => expect(p.toLowerCase()).toContain('json'));
   });

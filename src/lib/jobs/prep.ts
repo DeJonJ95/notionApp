@@ -39,7 +39,7 @@ export const PREP_PARTS = [
 "questions": the 6 behavioral and motivation questions this interviewer is most likely to ask, given what the job emphasizes. Every question's kind is "behavioral" or "motivation"; technical questions are covered elsewhere.`,
   `Return {"questions": Question[], "gaps": [{"gap": string, "answer": string}], "ask": string[]}.
 "questions": the 6 technical and role-specific questions most likely for this job's stated requirements and stack. Every question's kind is "technical" or "role"; behavioral questions are covered elsewhere.
-"gaps": for each listed gap, a 2-3 sentence honest answer if the interviewer probes it.
+"gaps": for the 5 listed gaps an interviewer is most likely to probe (fewer if fewer are listed), a 2-3 sentence honest answer.
 "ask": 4 sharp questions the candidate should ask the interviewer, specific to this posting.`,
 ];
 
@@ -97,9 +97,13 @@ function partQuestions(o: Record<string, unknown>, i: number): PrepQuestion[] {
     .filter((q): q is PrepQuestion => !!q && (PART_KINDS[i] ?? KINDS).includes(q.kind));
 }
 
-/** Merge the two halves into one pack. */
+function tryObject(content: string): Record<string, unknown> {
+  try { return parseObject(content); } catch { return {}; }
+}
+
+/** Merge the two halves into one pack. A half that comes back cut off or malformed is dropped, not fatal. */
 export function parsePrep(parts: string[]): Omit<InterviewPrep, 'resumeId' | 'resumeLabel' | 'createdAt'> {
-  const objs = parts.map(parseObject);
+  const objs = parts.map(tryObject);
   return {
     pitch: text(objs[0]?.pitch),
     questions: objs.flatMap(partQuestions),

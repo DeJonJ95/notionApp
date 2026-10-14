@@ -49,13 +49,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const extra = { requirements: strings(listing.analysis?.requirements), gaps: strings(listing.analysis?.gaps) };
   try {
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       PREP_PARTS.map((part) =>
         callDeepSeek(apiKey, PREP_SYSTEM, buildPrepUser(part, listing, resume.parsedText, extra), {
-          json: true, maxTokens: 2000, temperature: 0.4, timeoutMs: 50_000,
+          json: true, maxTokens: 3200, temperature: 0.4, timeoutMs: 50_000,
         }),
       ),
     );
+    const results = settled.map((s) => (s.status === 'fulfilled' ? s.value : { content: '', usage: undefined }));
     results.forEach((r) => r.usage && logDeepSeek('applykit-prep', r.usage, userId));
     const pack = parsePrep(results.map((r) => r.content));
     if (!pack.questions.length) throw new Error('The model returned no questions. Try again.');
