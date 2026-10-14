@@ -114,7 +114,8 @@ export function parsePrep(parts: string[]): Omit<InterviewPrep, 'resumeId' | 're
 export const PRACTICE_SYSTEM = `You are an interview coach giving feedback on a practice answer for one specific job.
 ${RULES}
 Judge the answer against what the question probes and what the posting needs. Credit specifics; flag vagueness, missing results, rambling, and claims the resume does not support.
-Return ONLY a JSON object: {"rating": "strong" | "solid" | "needs work", "strengths": string[] (1-3), "improve": string[] (1-3, concrete), "tighter": string (the candidate's own answer rewritten tighter, 80-150 words, using only facts from their answer and resume)}.`;
+Return ONLY a JSON object: {"rating": "strong" | "solid" | "needs work", "strengths": string[] (1-3), "improve": string[] (1-3, concrete), "tighter": string (the candidate's own answer reorganized and tightened, 80-150 words)}.
+"tighter" keeps the candidate's facts and adds none: no new process steps, durations, numbers, tools or outcomes, even plausible ones. Missing detail belongs in "improve", where the candidate can supply the real version.`;
 
 export function buildPracticeUser(
   job: { title: string; company: string },
