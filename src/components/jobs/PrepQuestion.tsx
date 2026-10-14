@@ -20,7 +20,13 @@ function Feedback({ fb }: { fb: PracticeFeedback }) {
       {fb.improve.length > 0 && (
         <div><strong>Sharpen:</strong><ul className="list-disc pl-5">{fb.improve.map((s) => <li key={s}>{s}</li>)}</ul></div>
       )}
-      {fb.tighter && <div><strong>Tighter version:</strong><p className="whitespace-pre-wrap mt-0.5">{fb.tighter}</p></div>}
+      {fb.tighter && (
+        <div>
+          <strong>Tighter version:</strong>
+          <p className="whitespace-pre-wrap mt-0.5">{fb.tighter}</p>
+          <p className="text-xs mt-1 text-amber-800 dark:text-amber-300">The coach can smooth over gaps. Say only the sentences that are true for you.</p>
+        </div>
+      )}
     </div>
   );
 }
