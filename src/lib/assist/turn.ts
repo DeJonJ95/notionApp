@@ -10,6 +10,7 @@ import { linkedRow, searchNotes } from './notes';
 import { ROUTER_SYSTEM, briefText, routerText, systemFor } from './prompts';
 import { parseResult, parseRoute, projectText, type Route } from './parse';
 import { todoKey } from './todoKey';
+import { quickRoute } from './quickRoute';
 import type { AssistIntent, AssistResult, ChatMessage, ThreadView } from './types';
 
 export type TurnInput = { userId: string; firstName: string; pageId: string; todo: string; today: string; linkedRowId?: string | null; message?: string };
@@ -38,9 +39,11 @@ export function toView(t: AssistThread): ThreadView {
 }
 
 async function route(input: TurnInput, linked: string | undefined, targets: Target[]): Promise<Route> {
+  const quick = linked ? null : quickRoute(input.todo, targets);
+  if (quick) return quick;
   const content = await completeJson(
     [{ role: 'system', content: ROUTER_SYSTEM }, { role: 'user', content: routerText(input.todo, linked, targets.map((t) => t.name)) }],
-    { op: 'assist-route', userId: input.userId, maxTokens: 200, temperature: 0, timeoutMs: 20_000 },
+    { op: 'assist-route', userId: input.userId, maxTokens: 200, temperature: 0, timeoutMs: 30_000 },
   );
   return parseRoute(parseJsonObject(content));
 }
@@ -66,7 +69,7 @@ async function generate(input: TurnInput, intent: AssistIntent, ctx: Ctx, histor
   const brief = briefText({ todo: input.todo, today: input.today, firstName: input.firstName, linked: ctx.linked, notes: ctx.notes, project: data ? projectText(data) : undefined });
   const content = await completeJson(
     [{ role: 'system', content: systemFor(intent) }, { role: 'user', content: brief }, ...history],
-    { op: `assist-${intent}`, userId: input.userId, maxTokens: intent === 'project' ? 3000 : 1500, timeoutMs: 45_000 },
+    { op: `assist-${intent}`, userId: input.userId, maxTokens: intent === 'project' ? 3000 : 1500, timeoutMs: 75_000 },
   );
   const result = parseResult(intent, parseJsonObject(content), data ? { data, today: input.today } : undefined);
   return { result, lastOutput: content.slice(0, MAX_OUTPUT_CHARS) };

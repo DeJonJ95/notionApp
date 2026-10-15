@@ -113,3 +113,20 @@ describe('parsing', () => {
     expect(todoKey('  Write email to  Bill collector. ')).toBe('write email to bill collector');
   });
 });
+
+describe('quickRoute', () => {
+  const { quickRoute, searchTerms } = jest.requireActual('@/lib/assist/quickRoute') as typeof import('@/lib/assist/quickRoute');
+  const targets: Target[] = [{ databaseId: 'a', name: 'Website Refresh', kind: 'project' }, { databaseId: 'b', name: 'Office Move', kind: 'project' }];
+  it('routes clear wording without a model call', () => {
+    expect(quickRoute('Write email to bill collector about the overdue Visa balance', targets)).toEqual({ intent: 'draft', target: null, search: 'bill or collector or overdue or visa or balance' });
+    expect(quickRoute('Update Website Refresh timeline, launch slips two weeks', targets)).toMatchObject({ intent: 'project', target: 'Website Refresh' });
+    expect(quickRoute('Plan packing for the office move', targets)).toBeNull();
+    expect(quickRoute('Plan packing for the new apartment', targets)?.intent).toBe('steps');
+    expect(quickRoute('Should I refinance the car?', targets)?.intent).toBe('answer');
+    expect(quickRoute('Groceries', targets)).toBeNull();
+  });
+  it('builds an OR query from content words', () => {
+    expect(searchTerms('Email the landlord')).toBe('landlord');
+    expect(searchTerms('to do it')).toBeNull();
+  });
+});

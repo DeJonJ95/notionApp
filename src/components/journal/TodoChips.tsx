@@ -32,6 +32,16 @@ function writeLast(id: string) {
   }
 }
 
+// Just past the end of the to-do's own text; the <li> itself spans the page width.
+function chipSpot(li: Element): { top: number; left: number } {
+  const p = li.querySelector('p');
+  const range = document.createRange();
+  range.selectNodeContents(p ?? li);
+  const text = range.getBoundingClientRect();
+  const top = li.getBoundingClientRect().top;
+  return { top, left: Math.max(0, Math.min(text.right + 12, window.innerWidth - BAR_W - 8)) };
+}
+
 // The caret's enclosing to-do, unless it is empty. TaskItem's node view renders
 // a bare <li data-checked>; only the parent list carries data-type="taskList".
 function locate(): Target | null {
@@ -42,8 +52,7 @@ function locate(): Target | null {
   if (!li || !editor) return null;
   const text = taskItemAt(editor, li)?.node.firstChild?.textContent.trim() ?? '';
   if (text.length < 2) return null;
-  const r = li.getBoundingClientRect();
-  return { li, editor, top: r.top, left: Math.min(r.right + 8, window.innerWidth - BAR_W - 8), linked: !!li.querySelector('a[href^="/page/"]'), key: todoKey(text) };
+  return { li, editor, ...chipSpot(li), linked: !!li.querySelector('a[href^="/page/"]'), key: todoKey(text) };
 }
 
 type CreateInput = { databaseId: string; title: string; dueDate: string; sourcePageId: string };

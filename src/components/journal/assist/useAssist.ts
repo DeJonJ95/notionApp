@@ -61,14 +61,14 @@ export function useAssist(todo: AssistTodo) {
   return { thread, busy, error, send: turn, restart, apply, undo };
 }
 
-const STAGES = ['Reading the to-do…', 'Looking through your workspace…', 'Writing…', 'Almost there…'];
+const STAGES = ['Reading the to-do…', 'Looking through your workspace…', 'Writing…', 'Still writing. The model is slow right now…'];
 
 /** A loading line that moves on as the wait grows, so a long call never looks stuck. */
 export function useStage(active: boolean): string {
   const [i, setI] = useState(0);
   useEffect(() => {
     if (!active) { setI(0); return; }
-    const timers = [2500, 6000, 14000].map((ms, n) => setTimeout(() => setI(n + 1), ms));
+    const timers = [2500, 6000, 20000].map((ms, n) => setTimeout(() => setI(n + 1), ms));
     return () => timers.forEach(clearTimeout);
   }, [active]);
   return STAGES[i];

@@ -8,7 +8,7 @@ import { runTurn, toView } from '@/lib/assist/turn';
 import { todoKey } from '@/lib/assist/todoKey';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 const turnSchema = z.object({
   pageId: z.string().min(1),
