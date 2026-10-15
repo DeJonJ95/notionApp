@@ -1,17 +1,20 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRightToLine, Loader2 } from 'lucide-react';
+import { ArrowRightToLine, Loader2, Sparkles } from 'lucide-react';
 import type { Editor } from '@tiptap/react';
 import type { AgendaTarget } from '@/lib/agenda';
 import { editorForElement } from '@/lib/editorRegistry';
 import { toast } from '@/components/ui/feedback';
-import { linkifyTaskItem, taskItemAt } from './taskDoc';
+import { todoKey } from '@/lib/assist/todoKey';
+import { linkifyTaskItem, rowIdOf, taskItemAt } from './taskDoc';
+import { AssistPanel } from './assist/AssistPanel';
+import type { AssistTodo } from './assist/useAssist';
 
 const LAST_DB_KEY = 'kove:promote-db';
-const CHIP_W = 120;
+const BAR_W = 160;
 
-type Target = { li: Element; editor: Editor; top: number; left: number };
+type Target = { li: Element; editor: Editor; top: number; left: number; linked: boolean; key: string };
 
 function readLast(): string | null {
   try {
@@ -29,16 +32,17 @@ function writeLast(id: string) {
   }
 }
 
-// The caret's enclosing to-do, unless it is already a linked row or empty.
+// The caret's enclosing to-do, unless it is empty.
 function locate(): Target | null {
   const anchor = document.getSelection()?.anchorNode ?? null;
   const el = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
   const li = el?.closest('li[data-type="taskItem"]') ?? null;
   const editor = editorForElement(li);
   if (!li || !editor) return null;
-  if (li.querySelector('a[href^="/page/"]') || !li.textContent?.trim()) return null;
+  const text = taskItemAt(editor, li)?.node.firstChild?.textContent.trim() ?? '';
+  if (text.length < 2) return null;
   const r = li.getBoundingClientRect();
-  return { li, editor, top: r.top, left: Math.min(r.right + 8, window.innerWidth - CHIP_W - 8) };
+  return { li, editor, top: r.top, left: Math.min(r.right + 8, window.innerWidth - BAR_W - 8), linked: !!li.querySelector('a[href^="/page/"]'), key: todoKey(text) };
 }
 
 type CreateInput = { databaseId: string; title: string; dueDate: string; sourcePageId: string };
@@ -84,17 +88,48 @@ function TargetPicker({ targets, onPick }: { targets: AgendaTarget[]; onPick: (d
   );
 }
 
-type Props = {
-  targets: AgendaTarget[];
-  pageId: string;
-  date: string;
-  onPromoted?: () => void;
-};
+// Which to-dos on this page already have an assistant thread, so their chip can say so.
+function useThreadKeys(pageId: string) {
+  const [keys, setKeys] = useState<Set<string>>(new Set());
+  const reload = useCallback(() => {
+    fetch(`/api/assist?pageId=${encodeURIComponent(pageId)}`)
+      .then((r) => (r.ok ? r.json() : { threads: [] }))
+      .then((d: { threads?: { todoKey: string }[] }) => setKeys(new Set((d.threads ?? []).map((t) => t.todoKey))))
+      .catch(() => {});
+  }, [pageId]);
+  useEffect(reload, [reload]);
+  return { keys, reload };
+}
 
-export function PromoteTaskAffordance({ targets, pageId, date, onPromoted }: Props) {
+function useCaretTodo(paused: boolean) {
   const [target, setTarget] = useState<Target | null>(null);
+  useEffect(() => {
+    if (paused) return;
+    const update = () => setTarget(locate());
+    document.addEventListener('selectionchange', update);
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      document.removeEventListener('selectionchange', update);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [paused]);
+  return [target, setTarget] as const;
+}
+
+type Promote = { targets: AgendaTarget[]; onPromoted?: () => void };
+
+type Props = { pageId: string; date: string; promote?: Promote };
+
+// Chips beside the to-do under the caret: Assist on any journal day, and Task
+// (turn it into a database row) on today's entry for to-dos not yet linked.
+export function TodoChips({ pageId, date, promote }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [assist, setAssist] = useState<AssistTodo | null>(null);
+  const [target, setTarget] = useCaretTodo(open);
+  const threads = useThreadKeys(pageId);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Open picker: outside click or Escape closes it and re-arms tracking.
@@ -114,20 +149,14 @@ export function PromoteTaskAffordance({ targets, pageId, date, onPromoted }: Pro
     };
   }, [open]);
 
-  useEffect(() => {
-    if (open) return;
-    const update = () => setTarget(locate());
-    document.addEventListener('selectionchange', update);
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      document.removeEventListener('selectionchange', update);
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [open]);
+  const startAssist = () => {
+    const hit = target ? taskItemAt(target.editor, target.li) : null;
+    const text = hit?.node.firstChild?.textContent.trim();
+    if (!hit || !text) return;
+    setAssist({ pageId, date, text, linkedRowId: rowIdOf(hit.node) });
+  };
 
-  const promote = async (db: AgendaTarget) => {
+  const promoteTo = async (db: AgendaTarget) => {
     const title = target ? taskItemAt(target.editor, target.li)?.node.firstChild?.textContent.trim() : '';
     if (!target || !title) return;
     setBusy(true);
@@ -138,7 +167,7 @@ export function PromoteTaskAffordance({ targets, pageId, date, onPromoted }: Pro
       else toast.error('Task created, but the to-do could not be linked');
       writeLast(db.id);
       toast.success(`Added to ${db.name}`);
-      onPromoted?.();
+      promote?.onPromoted?.();
     } else {
       toast.error(json.error ?? 'Could not create the task');
     }
@@ -147,20 +176,22 @@ export function PromoteTaskAffordance({ targets, pageId, date, onPromoted }: Pro
     setTarget(null);
   };
 
-  if (!target) return null;
+  const panel = assist && <AssistPanel todo={assist} onClose={() => { setAssist(null); threads.reload(); }} />;
+  if (!target || assist) return panel || null;
+  const chip = 'flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] text-accent shadow hover:bg-bg disabled:opacity-60';
   return createPortal(
-    <div ref={rootRef} style={{ position: 'fixed', top: target.top, left: target.left, width: CHIP_W }} className="z-[400]">
-      <button
-        type="button"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => setOpen((v) => !v)}
-        disabled={busy}
-        className="flex items-center gap-1 rounded-full border border-border bg-surface px-2 py-0.5 text-[11px] text-accent shadow hover:bg-bg disabled:opacity-60"
-        title="Turn this to-do into a database row"
-      >
-        {busy ? <Loader2 size={11} className="animate-spin" /> : <ArrowRightToLine size={11} />} Task
-      </button>
-      {open && <TargetPicker targets={targets} onPick={promote} />}
+    <div ref={rootRef} style={{ position: 'fixed', top: target.top, left: target.left, width: BAR_W }} className="z-[400]">
+      <div className="flex gap-1">
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={startAssist} className={chip} title="Get help with this to-do">
+          <Sparkles size={11} /> {threads.keys.has(target.key) ? 'Open' : 'Assist'}
+        </button>
+        {promote && !target.linked && (
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen((v) => !v)} disabled={busy} className={chip} title="Turn this to-do into a database row">
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <ArrowRightToLine size={11} />} Task
+          </button>
+        )}
+      </div>
+      {open && promote && <TargetPicker targets={promote.targets} onPick={promoteTo} />}
     </div>,
     document.body
   );

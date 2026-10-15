@@ -5,7 +5,7 @@ import { getBytes, putBytes, deleteObject } from '@/lib/r2';
 import { logCall, logDeepSeek } from '@/lib/logUsage';
 import { callDeepSeek, RECRUITER_MSG_SYSTEM, buildRecruiterMsgUser } from '@/lib/jobs/deepseek';
 import { tailorFromDocx, tailorFromText, type TailorOutput } from '@/lib/jobs/tailorRun';
-import { plainDashes } from '@/lib/jobs/refineAnalysis';
+import { plainDashes } from '@/lib/prose';
 import { DOCX_MIME } from '@/lib/jobs/resumeFiles';
 import { z } from 'zod';
 

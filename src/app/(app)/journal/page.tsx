@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { JournalCalendar } from '@/components/journal/JournalCalendar';
 import { EveningReviewButton } from '@/components/journal/EveningReviewButton';
-import { TasksMenu } from '@/components/journal/TasksMenu';
+import { TodoTools } from '@/components/journal/TasksMenu';
 import { CanvasPageEditor } from '@/components/editor/CanvasPageEditor';
 import type { CanvasBlockData } from '@/components/editor/CanvasPageEditor';
 
@@ -158,7 +158,7 @@ export default function JournalPage() {
                 onDone={() => loadEntry(selectedDate)}
               />
             )}
-            {selectedDate === today && pageId && <TasksMenu pageId={pageId} date={selectedDate} />}
+            {pageId && <TodoTools pageId={pageId} date={selectedDate} isToday={selectedDate === today} />}
 
             {selectedDate !== today && (
               <button

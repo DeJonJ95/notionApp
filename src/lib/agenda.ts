@@ -82,7 +82,7 @@ export function taskSchema(props: Prop[]): TaskSchema {
 
 // Mirrors the schema signature findOrCreateBudgetDb uses. Budget rows are
 // dated, so without this every transaction would land on the agenda.
-function looksLikeBudget(props: Prop[]): boolean {
+export function looksLikeBudget(props: Prop[]): boolean {
   const has = (name: string, type?: string) =>
     props.some((p) => p.name === name && (!type || p.type === type));
   return has('Amount', 'number') && has('Date', 'date') && has('Category') && has('Vendor');

@@ -6,6 +6,7 @@
 import type { AnalysisResult } from './deepseek';
 import { coverage, keywordsAdded, unverifiedClaims, uniqueTerms } from './keywords';
 import { snapQuote } from './textMatch';
+import { plainDashes } from '@/lib/prose';
 
 export type RefinedTweak = {
   resumeId: string;
@@ -19,11 +20,6 @@ export type RefinedTweak = {
 type ResumeText = { id: string; parsedText: string };
 
 const MAX_KEYWORDS = 25;
-
-/** House style for generated prose: no em dashes. */
-export function plainDashes(s: string): string {
-  return s.replace(/\s*—\s*/g, ', ').replace(/,\s*,/g, ',');
-}
 
 function same(a: string, b: string): boolean {
   return a.replace(/\W+/g, '').toLowerCase() === b.replace(/\W+/g, '').toLowerCase();

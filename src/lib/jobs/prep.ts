@@ -3,7 +3,7 @@
 // the rest of ApplyKit: every talking point must trace to something the
 // resume already says, and gaps are answered honestly, never papered over.
 
-import { plainDashes } from './refineAnalysis';
+import { plainDashes } from '@/lib/prose';
 
 export type PrepKind = 'behavioral' | 'technical' | 'role' | 'motivation';
 

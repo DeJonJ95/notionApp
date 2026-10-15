@@ -30,6 +30,28 @@ model User {
   jobApplications     JobApplication[]
   people              Person[]
   events              Event[]
+  assistThreads       AssistThread[]
+}
+
+// One AI assistant conversation about one journal to-do. A to-do has no stable
+// id, so it is keyed by its normalized text on its page (lib/assist/todoKey.ts).
+// `undo` holds what the last applied project change replaced.
+model AssistThread {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pageId    String
+  todoKey   String
+  todoText  String
+  intent    String
+  context   Json?
+  messages  Json     @default("[]")
+  result    Json?
+  undo      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, pageId, todoKey])
 }
 
 // ── ApplyKit: AI job-application assistant ──────────────────────────

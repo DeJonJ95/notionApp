@@ -4,7 +4,7 @@ import { ListChecks, Download } from 'lucide-react';
 import { toast } from '@/components/ui/feedback';
 import { liveEditors } from '@/lib/editorRegistry';
 import { AgendaPanel, useAgenda } from './AgendaPanel';
-import { PromoteTaskAffordance } from './PromoteTaskAffordance';
+import { TodoChips } from './TodoChips';
 import { useLinkedTaskSync } from './useLinkedTaskSync';
 import { insertPulledTasks, linkedTasks, pickTodoEditor } from './taskDoc';
 
@@ -69,7 +69,12 @@ export function TasksMenu({ pageId, date }: { pageId: string; date: string }) {
           </button>
         </div>
       )}
-      <PromoteTaskAffordance targets={agenda?.databases ?? []} pageId={pageId} date={date} onPromoted={reload} />
+      <TodoChips pageId={pageId} date={date} promote={{ targets: agenda?.databases ?? [], onPromoted: reload }} />
     </div>
   );
+}
+
+/** Today gets the full Tasks menu (agenda, pull, promote); other days get the to-do chips alone. */
+export function TodoTools({ pageId, date, isToday }: { pageId: string; date: string; isToday: boolean }) {
+  return isToday ? <TasksMenu pageId={pageId} date={date} /> : <TodoChips pageId={pageId} date={date} />;
 }
