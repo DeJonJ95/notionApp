@@ -32,11 +32,12 @@ function writeLast(id: string) {
   }
 }
 
-// The caret's enclosing to-do, unless it is empty.
+// The caret's enclosing to-do, unless it is empty. TaskItem's node view renders
+// a bare <li data-checked>; only the parent list carries data-type="taskList".
 function locate(): Target | null {
   const anchor = document.getSelection()?.anchorNode ?? null;
   const el = anchor instanceof Element ? anchor : anchor?.parentElement ?? null;
-  const li = el?.closest('li[data-type="taskItem"]') ?? null;
+  const li = el?.closest('ul[data-type="taskList"] > li') ?? null;
   const editor = editorForElement(li);
   if (!li || !editor) return null;
   const text = taskItemAt(editor, li)?.node.firstChild?.textContent.trim() ?? '';
