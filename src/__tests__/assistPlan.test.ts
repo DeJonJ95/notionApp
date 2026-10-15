@@ -124,6 +124,9 @@ describe('quickRoute', () => {
     expect(quickRoute('Plan packing for the new apartment', targets)?.intent).toBe('steps');
     expect(quickRoute('Should I refinance the car?', targets)?.intent).toBe('answer');
     expect(quickRoute('Groceries', targets)).toBeNull();
+    expect(quickRoute('Do the dishes', targets)).toBeNull();
+    expect(quickRoute('Update the text on the Website Refresh homepage', targets)).toMatchObject({ intent: 'project', target: 'Website Refresh' });
+    expect(quickRoute('Email the team about the Website Refresh timeline', targets)?.intent).toBe('draft');
   });
   it('builds an OR query from content words', () => {
     expect(searchTerms('Email the landlord')).toBe('landlord');

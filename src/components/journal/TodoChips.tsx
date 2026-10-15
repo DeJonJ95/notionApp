@@ -50,9 +50,10 @@ function locate(): Target | null {
   const li = el?.closest('ul[data-type="taskList"] > li') ?? null;
   const editor = editorForElement(li);
   if (!li || !editor) return null;
-  const text = taskItemAt(editor, li)?.node.firstChild?.textContent.trim() ?? '';
-  if (text.length < 2) return null;
-  return { li, editor, ...chipSpot(li), linked: !!li.querySelector('a[href^="/page/"]'), key: todoKey(text) };
+  const node = taskItemAt(editor, li)?.node;
+  const text = node?.firstChild?.textContent.trim() ?? '';
+  if (!node || text.length < 2) return null;
+  return { li, editor, ...chipSpot(li), linked: !!rowIdOf(node), key: todoKey(text) };
 }
 
 type CreateInput = { databaseId: string; title: string; dueDate: string; sourcePageId: string };

@@ -12,6 +12,7 @@ import { parseResult, parseRoute, projectText, type Route } from './parse';
 import { todoKey } from './todoKey';
 import { quickRoute } from './quickRoute';
 import type { AssistIntent, AssistResult, ChatMessage, ThreadView } from './types';
+import { undoStack } from './applyPlan';
 
 export type TurnInput = { userId: string; firstName: string; pageId: string; todo: string; today: string; linkedRowId?: string | null; message?: string };
 
@@ -34,7 +35,7 @@ export function toView(t: AssistThread): ThreadView {
     intent: t.intent as ThreadView['intent'],
     messages: readMessages(t.messages),
     result: (t.result as AssistResult | null) ?? null,
-    canUndo: !!t.undo,
+    canUndo: undoStack(t.undo).length > 0,
   };
 }
 
@@ -49,8 +50,10 @@ async function route(input: TurnInput, linked: string | undefined, targets: Targ
 }
 
 async function gather(input: TurnInput): Promise<{ ctx: Ctx; intent: AssistIntent } | { ask: Ctx }> {
-  const targets = await catalog(input.userId);
-  const row = input.linkedRowId ? await linkedRow(input.userId, input.linkedRowId) : null;
+  const [targets, row] = await Promise.all([
+    catalog(input.userId),
+    input.linkedRowId ? linkedRow(input.userId, input.linkedRowId) : null,
+  ]);
   const linked = row ? `${row.title} (in ${row.databaseName}). ${row.fields}\n${row.text}`.trim() : undefined;
   const r = await route(input, linked, targets);
   const rowTarget = row ? targets.find((t) => t.databaseId === row.databaseId) : undefined;

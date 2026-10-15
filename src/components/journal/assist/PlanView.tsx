@@ -44,22 +44,10 @@ function ChangeRow({ c, on, toggle, locked }: { c: PlannedChange; on: boolean; t
 
 type Props = { plan: ProjectResult; busy: boolean; canUndo: boolean; onApply: (accept: number[]) => void; onUndo: () => void };
 
-export function PlanView({ plan, busy, canUndo, onApply, onUndo }: Props) {
-  const [chosen, setChosen] = useState<Set<number>>(() => new Set(plan.changes.map((_, i) => i)));
-  useEffect(() => { setChosen(new Set(plan.changes.map((_, i) => i))); }, [plan.changes]);
+function PlanActions({ plan, chosen, busy, canUndo, onApply, onUndo }: Props & { chosen: Set<number> }) {
   const applied = plan.applied && !plan.applied.undone;
-  const toggle = (i: number) => setChosen((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
-
   return (
-    <div className="space-y-3">
-      <p className="text-sm">{plan.summary}</p>
-      <Link href={`/database/${plan.target.databaseId}`} className="inline-flex items-center gap-1 text-sm text-accent hover:underline">
-        <ExternalLink size={13} /> {plan.target.name}
-      </Link>
-      {plan.changes.length === 0 && <p className="text-sm">No changes needed. Ask for something specific below.</p>}
-      <div className="space-y-2">
-        {plan.changes.map((c, i) => <ChangeRow key={`${c.taskId ?? c.ref}-${i}`} c={c} on={chosen.has(i)} toggle={() => toggle(i)} locked={!!applied || busy} />)}
-      </div>
+    <>
       {applied ? (
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400"><CheckCircle2 size={14} /> Applied {plan.applied!.count} change{plan.applied!.count === 1 ? '' : 's'}</span>
@@ -77,6 +65,32 @@ export function PlanView({ plan, busy, canUndo, onApply, onUndo }: Props) {
         )
       )}
       {plan.applied?.undone && <p className="text-sm">Undone. The project is back as it was.</p>}
+      {!applied && canUndo && (
+        <button onClick={onUndo} disabled={busy} className="inline-flex items-center gap-1 text-sm text-accent hover:underline disabled:opacity-50">
+          <Undo2 size={13} /> Undo the last change you applied
+        </button>
+      )}
+    </>
+  );
+}
+
+export function PlanView({ plan, busy, canUndo, onApply, onUndo }: Props) {
+  const [chosen, setChosen] = useState<Set<number>>(() => new Set(plan.changes.map((_, i) => i)));
+  useEffect(() => { setChosen(new Set(plan.changes.map((_, i) => i))); }, [plan.changes]);
+  const applied = plan.applied && !plan.applied.undone;
+  const toggle = (i: number) => setChosen((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm">{plan.summary}</p>
+      <Link href={`/database/${plan.target.databaseId}`} className="inline-flex items-center gap-1 text-sm text-accent hover:underline">
+        <ExternalLink size={13} /> {plan.target.name}
+      </Link>
+      {plan.changes.length === 0 && <p className="text-sm">No changes needed. Ask for something specific below.</p>}
+      <div className="space-y-2">
+        {plan.changes.map((c, i) => <ChangeRow key={`${c.taskId ?? c.ref}-${i}`} c={c} on={chosen.has(i)} toggle={() => toggle(i)} locked={!!applied || busy} />)}
+      </div>
+      <PlanActions plan={plan} chosen={chosen} busy={busy} canUndo={canUndo} onApply={onApply} onUndo={onUndo} />
     </div>
   );
 }

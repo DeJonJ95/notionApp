@@ -7,7 +7,8 @@ import { logCall, logDeepSeek } from '@/lib/logUsage';
 
 export type LlmMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 
-type Provider = { url: string; key: string; body: Record<string, unknown>; headers: Record<string, string>; name: 'deepseek' | 'openrouter' };
+// json: whether to send response_format; not every OpenRouter model accepts it, and the prompts ask for JSON anyway.
+type Provider = { url: string; key: string; body: Record<string, unknown>; headers: Record<string, string>; name: 'deepseek' | 'openrouter'; json: boolean };
 
 type Usage = { prompt_tokens?: number; completion_tokens?: number; cost?: number };
 
@@ -17,6 +18,7 @@ function provider(): Provider | null {
   if (orKey && orModel) {
     return {
       name: 'openrouter',
+      json: false,
       url: 'https://openrouter.ai/api/v1/chat/completions',
       key: orKey,
       body: { model: orModel, usage: { include: true } },
@@ -25,7 +27,7 @@ function provider(): Provider | null {
   }
   const dsKey = process.env.DEEPSEEK_API_KEY;
   if (!dsKey) return null;
-  return { name: 'deepseek', url: 'https://api.deepseek.com/chat/completions', key: dsKey, body: { ...DEEPSEEK_MODEL }, headers: {} };
+  return { name: 'deepseek', url: 'https://api.deepseek.com/chat/completions', key: dsKey, body: { ...DEEPSEEK_MODEL }, headers: {}, json: true };
 }
 
 export function assistConfigured(): boolean {
@@ -56,7 +58,7 @@ export async function completeJson(messages: LlmMessage[], opts: Opts): Promise<
         messages,
         temperature: opts.temperature ?? 0.3,
         max_tokens: opts.maxTokens,
-        response_format: { type: 'json_object' },
+        ...(p.json ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: ctrl.signal,
     });

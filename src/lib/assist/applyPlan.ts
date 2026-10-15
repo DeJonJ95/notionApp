@@ -104,6 +104,12 @@ export async function applyPlan(userId: string, data: ProjectData, changes: Plan
   }, { timeout: 30_000 });
 }
 
+/** Applies on a thread, oldest first; each Undo reverses the newest. */
+export function undoStack(v: Prisma.JsonValue | null): UndoRecord[] {
+  if (Array.isArray(v)) return v as UndoRecord[];
+  return v && typeof v === 'object' ? [v as UndoRecord] : [];
+}
+
 /** Reverses one apply. Every id was recorded server-side and is re-checked against the owner's database. */
 export async function undoPlan(userId: string, undo: UndoRecord): Promise<boolean> {
   const db = await prisma.database.findFirst({ where: { id: undo.databaseId, workspace: { ownerId: userId } }, select: { id: true } });

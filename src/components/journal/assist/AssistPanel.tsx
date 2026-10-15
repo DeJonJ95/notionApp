@@ -51,7 +51,7 @@ function Body({ a, todoKeyValue }: { a: Assist; todoKeyValue: string }) {
   const asked = a.thread?.messages.filter((m) => m.role === 'user') ?? [];
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {asked.length > 0 && <p className="text-xs text-muted">You asked: {asked.map((m) => `“${m.content}”`).join(', then ')}</p>}
+      {asked.length > 0 && <p className="text-xs">You asked: {asked.map((m) => `“${m.content}”`).join(', then ')}</p>}
       {a.busy === 'thinking' && (
         <p className="flex items-center gap-2 text-sm"><Loader2 size={14} className="animate-spin" /> {stage}</p>
       )}

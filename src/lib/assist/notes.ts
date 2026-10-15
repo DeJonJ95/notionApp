@@ -63,6 +63,12 @@ export async function searchNotes(userId: string, query: string, skip: string[])
   return notes.filter((n) => n.text || n.title);
 }
 
+// Only plain values read as text; files, people and other objects are left out.
+function fieldText(v: unknown): string {
+  if (Array.isArray(v)) return v.filter((x) => typeof x !== 'object').map(String).join(', ');
+  return v === null || typeof v === 'object' ? '' : String(v);
+}
+
 export type LinkedRow = { title: string; databaseId: string; databaseName: string; fields: string; text: string };
 
 /** The database row a to-do links to, with its field values and body. */
@@ -77,8 +83,10 @@ export async function linkedRow(userId: string, rowId: string): Promise<LinkedRo
   });
   if (!row?.databaseId) return null;
   const fields = row.properties
-    .filter((v) => v.property.type !== 'relation' && v.value !== null && v.value !== '')
-    .map((v) => `${v.property.name}: ${String(v.value)}`)
+    .filter((v) => v.property.type !== 'relation')
+    .map((v) => [v.property.name, fieldText(v.value)])
+    .filter(([, text]) => text)
+    .map(([name, text]) => `${name}: ${text}`)
     .join('; ');
   return { title: row.title, databaseId: row.databaseId, databaseName: row.database?.name ?? '', fields, text: (await pageText(rowId)).slice(0, NOTE_CHARS) };
 }

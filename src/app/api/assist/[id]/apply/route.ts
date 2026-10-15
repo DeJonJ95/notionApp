@@ -4,7 +4,7 @@ import { sessionUserId } from '@/lib/sessionUser';
 import { prisma } from '@/lib/prisma';
 import { loadProject } from '@/lib/assist/projects';
 import { keepValid } from '@/lib/assist/projectPlan';
-import { applyPlan } from '@/lib/assist/applyPlan';
+import { applyPlan, undoStack } from '@/lib/assist/applyPlan';
 import { toView } from '@/lib/assist/turn';
 import type { AssistResult } from '@/lib/assist/types';
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const applied = { at: new Date().toISOString(), count: changes.length };
   const saved = await prisma.assistThread.update({
     where: { id: thread.id },
-    data: { undo, result: { ...result, applied } },
+    data: { undo: [...undoStack(thread.undo), undo], result: { ...result, applied } },
   });
   return NextResponse.json({ thread: toView(saved) });
 }

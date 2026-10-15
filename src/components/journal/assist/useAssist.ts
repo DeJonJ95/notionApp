@@ -50,10 +50,8 @@ export function useAssist(todo: AssistTodo) {
     });
   }, [run, todo]);
 
-  const restart = () => run('thinking', async () => {
-    if (thread) await fetch(`/api/assist/${thread.id}`, { method: 'DELETE' });
-    return call('/api/assist', post({ pageId: todo.pageId, todo: todo.text, today: todo.date, linkedRowId: todo.linkedRowId }));
-  });
+  // A fresh turn on the same thread, so undo records for changes already applied survive.
+  const restart = () => turn();
 
   const apply = (accept: number[]) => thread && run('applying', () => call(`/api/assist/${thread.id}/apply`, post({ accept })));
   const undo = () => thread && run('applying', () => call(`/api/assist/${thread.id}/undo`, post({})));
