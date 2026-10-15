@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { linksOwned } from '@/lib/ownership';
 
 const createSchema = z.object({
   workspaceId: z.string(),
@@ -47,11 +48,8 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-  // Verify workspace ownership
-  const ws = await prisma.workspace.findFirst({
-    where: { id: parsed.data.workspaceId, ownerId: userId },
-  });
-  if (!ws) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // The workspace, and any database or parent page the new page joins, must be the user's.
+  if (!(await linksOwned(userId, parsed.data))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   // Get min position among siblings (new pages go to the top)
   const first = await prisma.page.findFirst({

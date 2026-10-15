@@ -241,21 +241,13 @@
       "anyCount": 1,
       "castChain": 1
     },
-    "src/app/api/databases/route.ts": {
-      "anyCount": 2,
-      "castChain": 2
-    },
-    "src/app/api/databases/[id]/properties/route.ts": {
-      "anyCount": 2,
-      "castChain": 2
-    },
     "src/app/api/databases/[id]/properties/[propId]/route.ts": {
       "anyCount": 3,
       "castChain": 3
     },
     "src/app/api/databases/[id]/route.ts": {
-      "anyCount": 3,
-      "castChain": 3
+      "anyCount": 2,
+      "castChain": 2
     },
     "src/app/api/databases/[id]/views/route.ts": {
       "anyCount": 2,
@@ -357,10 +349,6 @@
     "src/app/api/pages/[id]/route.ts": {
       "anyCount": 3,
       "castChain": 3
-    },
-    "src/app/api/property-values/route.ts": {
-      "anyCount": 1,
-      "castChain": 1
     },
     "src/app/api/resumes/route.ts": {
       "anyCount": 2,

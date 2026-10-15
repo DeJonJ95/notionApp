@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { linksOwned } from '@/lib/ownership';
 
 const updateSchema = z.object({
   title: z.string().optional(),
@@ -56,6 +57,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!parsed.success) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
   const { content, ...pageFields } = parsed.data;
+  if (!(await linksOwned(userId, pageFields))) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
   const updated = await prisma.$transaction(async (tx) => {
     const p = await tx.page.update({

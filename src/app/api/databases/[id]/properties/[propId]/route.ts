@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { relationTargetOk } from '@/lib/ownership';
 
 export async function PATCH(
   request: NextRequest,
@@ -31,6 +32,9 @@ export async function PATCH(
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
+  }
+  if (!(await relationTargetOk(userId, data.type ?? property.type, data.formula ?? property.formula))) {
+    return NextResponse.json({ error: 'Target database not found' }, { status: 404 });
   }
 
   const updated = await prisma.property.update({

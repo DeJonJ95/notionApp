@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { deleteDatabasesWithRows } from '@/lib/cleanup/purge';
+import { sessionUserId } from '@/lib/sessionUser';
 
 export async function PATCH(
   req: NextRequest,
@@ -72,14 +73,12 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!(session?.user as any)?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const database = await prisma.database.findFirst({
-      where: { id: params.id },
+      where: { id: params.id, workspace: { ownerId: userId } },
       include: {
         workspace: { select: { id: true, name: true, slug: true, icon: true } },
         properties: {

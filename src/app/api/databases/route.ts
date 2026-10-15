@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { sessionUserId } from '@/lib/sessionUser';
 import { prisma } from '@/lib/prisma';
+import { ownsWorkspace } from '@/lib/ownership';
 
 export async function GET(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!(session?.user as any)?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const workspaceId = searchParams.get('workspaceId');
@@ -18,7 +16,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const databases = await prisma.database.findMany({
-      where: { workspaceId },
+      where: { workspaceId, workspace: { ownerId: userId } },
       include: {
         properties: {
           orderBy: { position: 'asc' },
@@ -50,15 +48,16 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getServerSession(authOptions);
-  if (!(session?.user as any)?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { name, workspaceId } = await request.json();
+  const { name, workspaceId } = await request.json().catch(() => ({}));
 
   if (!name || !workspaceId) {
     return NextResponse.json({ error: 'Name and workspaceId required' }, { status: 400 });
+  }
+  if (!(await ownsWorkspace(userId, workspaceId))) {
+    return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
   }
 
   try {
