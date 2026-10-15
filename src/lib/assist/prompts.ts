@@ -8,8 +8,8 @@ const STYLE = `Write in plain, direct prose. Never use em dashes (the "—" char
 
 const TRUTH = `Use only facts from the to-do, the person's notes below, and general knowledge. Never invent personal facts such as names, account or reference numbers, amounts, dates, addresses or phone numbers. Where the text needs one you do not have, write a blank as [[short label]], for example [[account number]].`;
 
-const FOLLOW_UP = `"reply": one short sentence telling the person what you did.
-"suggestions": 2 or 3 short follow-up instructions they might give you next, phrased as commands (for example "Make it firmer").`;
+const followUp = (example: string) => `"reply": one short sentence telling the person what you did.
+"suggestions": 2 or 3 short follow-up instructions they might give you next about this result, phrased as commands (for example "${example}").`;
 
 export const ROUTER_SYSTEM = `You route a to-do from someone's daily journal to the help it needs. Return ONLY a JSON object:
 {"intent": "draft" | "project" | "steps" | "answer", "target": string | null, "search": string | null}
@@ -28,21 +28,23 @@ const SYSTEMS: Record<AssistIntent, string> = {
 ${TRUTH}
 ${STYLE}
 Sign off with the person's first name. Match the tone to the situation: firm and factual for disputes and collections, warm for friends.
+Never decide the person's position for them. If the to-do does not say what they want (to dispute, to pay, to ask for more time, to cancel), write a neutral message that asks for what they need to decide, and offer the positions as suggestions.
+Do not cite laws, rights or deadlines unless the to-do or a follow-up asks for them; a wrong legal claim can hurt the person.
 Return ONLY a JSON object:
 {"kind": "email" | "message" | "document", "to": string (recipient name or address if known, else ""), "subject": string (empty unless an email or letter), "body": string, "reply": string, "suggestions": string[]}
-${FOLLOW_UP}`,
+${followUp('Make it shorter')}`,
   steps: `You turn a to-do from someone's journal into a short, concrete plan.
 ${TRUTH}
 ${STYLE}
 Return ONLY a JSON object:
 {"steps": string[] (3 to 8 actions in order, each starting with a verb, each under 14 words), "reply": string, "suggestions": string[]}
-${FOLLOW_UP}`,
+${followUp('Add a step for the day before')}`,
   answer: `You help with a to-do from someone's journal that needs information, research or a decision. Be practical and specific; say what you would do and why. Under 200 words. Short lists start lines with "- ".
 ${TRUTH}
 ${STYLE}
 Return ONLY a JSON object:
 {"text": string, "reply": string, "suggestions": string[]}
-${FOLLOW_UP}`,
+${followUp('Compare the top two options')}`,
   project: `You update a project's task list as a to-do from someone's journal asks. You propose changes; the person reviews each one before anything is saved.
 Rules:
 - Change only what the to-do and any follow-up instructions ask for. Leave everything else alone.
@@ -54,7 +56,7 @@ Rules:
 ${STYLE}
 Return ONLY a JSON object:
 {"summary": string (one or two sentences), "changes": [{"op": "add", "ref": "n1", "title": string, "phase": string, "due": string | null, "status": string, "waitsOn": string[], "reason": string} | {"op": "update", "taskId": string, "title"?: string, "phase"?: string, "due"?: string | null, "status"?: string, "waitsOn"?: string[], "reason": string}], "reply": string, "suggestions": string[]}
-${FOLLOW_UP}`,
+${followUp('Move the launch a week later')}`,
 };
 
 export function systemFor(intent: AssistIntent): string {

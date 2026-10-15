@@ -27,7 +27,7 @@ function ChangeRow({ c, on, toggle, locked }: { c: PlannedChange; on: boolean; t
           <ul className="space-y-0.5">
             {c.fields.map((f) => (
               <li key={f.field}>
-                {FIELD_LABEL[f.field]}: {c.op === 'update' && <><span className="line-through decoration-red-400/70">{show(f.field, f.before)}</span> → </>}
+                {FIELD_LABEL[f.field]}: {c.op === 'update' && f.before && <><span className="line-through decoration-red-400/70">{show(f.field, f.before)}</span> → </>}
                 <strong>{show(f.field, f.after)}</strong>
               </li>
             ))}
