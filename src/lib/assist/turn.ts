@@ -91,6 +91,14 @@ async function freshTurn(input: TurnInput) {
   return { intent: got.intent, ctx: { ...got.ctx, lastOutput }, result };
 }
 
+// A proposal is only a proposal: without this the model reads its own earlier
+// plan as already saved and answers "nothing left to change".
+function followUpText(intent: AssistIntent, message: string): string {
+  const base = `Follow-up instruction: ${message}`;
+  if (intent !== 'project') return base;
+  return `${base}\nNothing from your earlier proposal has been saved unless the PROJECT data above already shows it. Return the complete set of changes still needed: everything from your earlier proposal that the instruction keeps, plus what it adds.`;
+}
+
 async function followUp(input: TurnInput, thread: AssistThread, message: string) {
   const ctx = readCtx(thread.context);
   if (ctx.pending === 'target') {
@@ -101,7 +109,7 @@ async function followUp(input: TurnInput, thread: AssistThread, message: string)
     return { intent: 'project' as const, ctx: { ...next, lastOutput }, result };
   }
   const intent = thread.intent as AssistIntent;
-  const history: LlmMessage[] = [{ role: 'assistant', content: ctx.lastOutput ?? '{}' }, { role: 'user', content: `Follow-up instruction: ${message}` }];
+  const history: LlmMessage[] = [{ role: 'assistant', content: ctx.lastOutput ?? '{}' }, { role: 'user', content: followUpText(intent, message) }];
   const { result, lastOutput } = await generate(input, intent, ctx, history);
   return { intent, ctx: { ...ctx, lastOutput }, result };
 }
