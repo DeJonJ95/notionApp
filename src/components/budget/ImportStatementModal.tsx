@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef } from 'react';
 import { Loader2, Upload, X, Check, AlertCircle, FileText, AlertTriangle } from 'lucide-react';
+import { AccountSelect, matchKnownAccount } from './AccountSelect';
 
 type Tx = {
   date: string;
@@ -25,11 +26,12 @@ const money = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(n);
 
 interface Props {
+  accounts: string[];
   onClose: () => void;
   onImported: () => void;
 }
 
-export function ImportStatementModal({ onClose, onImported }: Props) {
+export function ImportStatementModal({ accounts, onClose, onImported }: Props) {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [filename, setFilename] = useState<string>('');
   const [databaseId, setDatabaseId] = useState<string | null>(null);
@@ -71,7 +73,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
       setTxs(json.transactions);
       setCategories(json.categories);
       setMeta(json.meta ?? null);
-      setAccount(json.meta?.account ?? '');
+      setAccount(matchKnownAccount(json.meta?.account, accounts));
       setTruncated(Boolean(json.truncated));
       setStage('preview');
     } catch (e: any) {
@@ -249,15 +251,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
               {/* Account + statement balances — what powers the balance curve
                   on the dashboard. Editable because the AI reads the header. */}
               <div className="mb-3 rounded-lg border border-border bg-surface px-3 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
-                <label className="flex items-center gap-2 text-xs">
-                  <span className="text-muted">Account</span>
-                  <input
-                    value={account}
-                    onChange={(e) => setAccount(e.target.value)}
-                    placeholder="e.g. Checking 1234"
-                    className="bg-bg border border-border rounded px-2 py-1.5 text-sm text-text w-48"
-                  />
-                </label>
+                <AccountSelect accounts={accounts} value={account} onChange={setAccount} />
                 {meta?.openingBalance != null && (
                   <span className="text-xs text-muted">
                     Opening <strong className="text-text">{money(meta.openingBalance)}</strong>
@@ -274,7 +268,7 @@ export function ImportStatementModal({ onClose, onImported }: Props) {
                 )}
                 {!account.trim() && (
                   <span className="text-xs text-yellow-600">
-                    Name the account to track its balance.
+                    Choose or name the account to track its balance.
                   </span>
                 )}
               </div>

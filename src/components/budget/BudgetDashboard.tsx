@@ -157,16 +157,15 @@ export function BudgetDashboard() {
   const netDelta = data.net - data.prevMonth.net;
   const incDelta = data.income - data.prevMonth.income;
   const expDelta = data.expenses - data.prevMonth.expenses;
+  const knownAccounts = (data.accounts ?? []).map((a) => a.account).filter((a) => a !== 'Unassigned');
 
   return (
     <div className={`max-w-6xl mx-auto px-4 md:px-8 py-8 space-y-6 transition-opacity ${loading ? 'opacity-50' : ''}`}>
-      {importOpen && (
-        <ImportStatementModal onClose={() => setImportOpen(false)} onImported={load} />
-      )}
+      {importOpen && <ImportStatementModal accounts={knownAccounts} onClose={() => setImportOpen(false)} onImported={load} />}
       {addTxOpen && (
         <AddTransactionModal
           categories={data.categoryOptions}
-          accounts={(data.accounts ?? []).map((a) => a.account).filter((a) => a !== 'Unassigned')}
+          accounts={knownAccounts}
           onAdded={load}
           onClose={() => setAddTxOpen(false)}
         />
