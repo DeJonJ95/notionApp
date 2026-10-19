@@ -145,8 +145,8 @@ export function RecurringRulesModal({ onClose, onChanged, prefill, categories }:
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <p className="text-xs text-muted">
-            Each scheduled occurrence is automatically added to your budget on its due date — paychecks
-            show as income, bills as expenses. Catches up when you visit the budget page (no cron needed).
+            Rules drive the forecast and tell you what is due. A due date counts as paid only once a real
+            payment for it is in your budget, from an imported statement or one you add by hand.
           </p>
 
           {error && !editing && (
