@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { logDeepSeek } from '@/lib/logUsage';
 import { findOrCreateBudgetDb, getBudgetCategories, matchCategorizationRule } from '@/lib/budgetDb';
 import { fallbackCategory } from '@/lib/budgetCategories';
+import { EMPTY_META, parseMeta, type StatementMeta } from '@/lib/budgetStatement';
 import { looksLikePdf, describePdfFailure } from '@/lib/budgetImportFile';
 import { DEEPSEEK_MODEL } from '@/lib/deepseekModel';
 
@@ -119,13 +120,14 @@ const I_CAT = 4;
 const buildSystemPrompt = (categories: string[]) => `You extract financial transactions from bank statements (any format: Chase, BofA, Wells Fargo, Michigan First, credit unions, credit cards, CSVs).
 
 Return ONLY a JSON object with this exact compact shape — no prose, no markdown fences:
-{ "meta": { "account": "Checking 1234", "openingBalance": 1450.22, "closingBalance": 1187.65 },
+{ "meta": { "account": "Checking 1234", "openingBalance": 1450.22, "closingBalance": 1187.65, "periodStart": "2026-09-05", "periodEnd": "2026-10-04" },
   "t": [ ["YYYY-MM-DD","Vendor","short desc",-15.89,"Category"], ... ] }
 
 "meta" describes the statement itself, read from its header/summary:
   account — the account label as printed, e.g. "Checking ...1234" or "Freedom Unlimited". null if not shown.
   openingBalance — the beginning/previous balance for the period. null if not shown.
   closingBalance — the ending/new balance for the period. null if not shown.
+  periodStart, periodEnd — the statement period as printed ("Statement period 09/05/26 - 10/04/26"), ISO YYYY-MM-DD. null if not shown.
 Meta rules:
 - Use null for anything the statement does not state. NEVER derive a balance by adding up transactions — report only printed figures.
 - For a CREDIT CARD statement, report balances as NEGATIVE numbers, because the balance is money owed.
@@ -249,31 +251,6 @@ async function callDeepSeek(apiKey: string, systemPrompt: string, userText: stri
     text: aiJson.choices?.[0]?.message?.content ?? '',
     usage: aiJson.usage as { prompt_tokens: number; completion_tokens: number } | undefined,
     finishReason: aiJson.choices?.[0]?.finish_reason as string | undefined,
-  };
-}
-
-export type StatementMeta = {
-  account: string | null;
-  openingBalance: number | null;
-  closingBalance: number | null;
-};
-
-const EMPTY_META: StatementMeta = { account: null, openingBalance: null, closingBalance: null };
-
-function num(v: any): number | null {
-  if (v == null || v === '') return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-function parseMeta(parsed: any): StatementMeta {
-  const m = parsed?.meta;
-  if (!m || typeof m !== 'object') return EMPTY_META;
-  const account = String(m.account ?? '').trim().slice(0, 80);
-  return {
-    account: account || null,
-    openingBalance: num(m.openingBalance),
-    closingBalance: num(m.closingBalance),
   };
 }
 

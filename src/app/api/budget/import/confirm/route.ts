@@ -7,6 +7,7 @@ import {
   isRecurringGeneratedNote,
   type ParsedTransaction,
 } from '@/lib/budgetDb';
+import { num, statementRange } from '@/lib/budgetStatement';
 
 /** A statement is the record of what actually happened in its period, so any
  *  forecast row the recurring engine wrote inside that window is superseded.
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
     transactions: ParsedTransaction[];
     force?: boolean;
     account?: string;
-    meta?: { account?: string | null; openingBalance?: number | null; closingBalance?: number | null };
+    meta?: { account?: string | null; openingBalance?: number | null; closingBalance?: number | null; periodStart?: string | null; periodEnd?: string | null };
   };
 
   if (!databaseId || !Array.isArray(transactions) || transactions.length === 0) {
@@ -59,20 +60,12 @@ export async function POST(req: NextRequest) {
 
   // The account the user confirmed in the preview wins over what the AI read.
   const accountName = String(account ?? meta?.account ?? '').trim().slice(0, 80);
-  const numOrNull = (v: unknown) => {
-    if (v == null || v === '') return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  };
   const stamped: ParsedTransaction[] = accountName
     ? transactions.map((t) => ({ ...t, account: accountName }))
     : transactions;
 
-  // Date span this statement covers, needed before the dedup check.
-  const sortedDates = transactions
-    .map((t) => String(t.date ?? '').slice(0, 10))
-    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-    .sort();
+  // What this statement is the record for, needed before the dedup check.
+  const range = statementRange(meta, transactions.map((t) => String(t.date ?? '')));
 
   try {
     // ── Supersede recurring forecasts in this statement's range ────────────
@@ -80,17 +73,13 @@ export async function POST(req: NextRequest) {
     // transactions only, and runs even when the user ends up skipping
     // everything as a duplicate — the forecasts are stale either way.
     let superseded = 0;
-    if (sortedDates.length > 0) {
+    if (range) {
       const owned = await prisma.database.findFirst({
         where: { id: databaseId, workspace: { ownerId: userId } },
         select: { id: true },
       });
       if (owned) {
-        superseded = await supersedeGeneratedRows(
-          owned.id,
-          sortedDates[0],
-          sortedDates[sortedDates.length - 1],
-        );
+        superseded = await supersedeGeneratedRows(owned.id, range.from, range.to);
       }
     }
 
@@ -131,22 +120,17 @@ export async function POST(req: NextRequest) {
     const result = await writeTransactions(userId, databaseId, stamped);
 
     // ── Create ImportLog entry ─────────────────────────────────────────────
-    const dates = transactions
-      .map((t) => new Date(t.date + 'T00:00:00'))
-      .filter((d) => !isNaN(d.getTime()))
-      .sort((a, b) => a.getTime() - b.getTime());
-
-    if (dates.length > 0) {
+    if (range) {
       await prisma.importLog.create({
         data: {
           userId,
-          filename: `import-${dates[0].toISOString().slice(0, 10)}-to-${dates[dates.length - 1].toISOString().slice(0, 10)}`,
-          dateFrom: dates[0],
-          dateTo: dates[dates.length - 1],
+          filename: `import-${range.from}-to-${range.to}`,
+          dateFrom: new Date(range.from + 'T00:00:00'),
+          dateTo: new Date(range.to + 'T00:00:00'),
           txCount: transactions.length,
           account: accountName || null,
-          openingBalance: numOrNull(meta?.openingBalance),
-          closingBalance: numOrNull(meta?.closingBalance),
+          openingBalance: num(meta?.openingBalance),
+          closingBalance: num(meta?.closingBalance),
         },
       });
     }
