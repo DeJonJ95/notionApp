@@ -117,9 +117,8 @@
       "castChain": 2
     },
     "src/app/api/budget/dashboard/route.ts": {
-      "fileLoc": 446,
-      "functionLoc": 350,
-      "complexity": 31,
+      "functionLoc": 293,
+      "complexity": 19,
       "anyCount": 1,
       "castChain": 1
     },

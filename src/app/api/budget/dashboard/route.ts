@@ -34,6 +34,7 @@ import {
   type OverdueBill,
 } from '@/lib/budgetExpected';
 import { readLedger, type Tx } from '@/lib/budgetLedger';
+import { categorySpending, monthlyTrends } from '@/lib/budgetSpending';
 import { detectRepeatVendors, type RepeatVendor, type Subscription } from '@/lib/budgetRepeatVendors';
 
 export type { RepeatVendor, Subscription };
@@ -60,7 +61,6 @@ export type DashboardPayload = {
   subscriptions: Subscription[];
   repeatVendors: RepeatVendor[];
   recentTransactions: Tx[];
-  // Account balances + forward-looking balance projection
   accounts: AccountBalance[];
   hasBalances: boolean;          // false until an import carries a closing balance
   totalBalance: number;
@@ -70,15 +70,11 @@ export type DashboardPayload = {
   // typical-spending estimate, chained from today's balance
   monthlyForecast: MonthForecast[];
   variableSpendEstimate: number;   // per month, measured from history
-  // Recurring + forecast additions
   forecast: ForecastItem[];      // next 14 days of scheduled income/expense
   projectedMonthEnd: number;     // expected net = current + remaining scheduled this month
   generatedThisLoad: number;     // how many tx were auto-created by the engine on this request
-  // Spending trends — last 6 calendar months
   trends: { month: string; income: number; expenses: number }[];
-  // Feature 5: Pattern auto-detection suggestions
   patternSuggestions: PatternSuggestion[];
-  // Feature 4: Variance tracking per rule
   ruleVariance: { ruleId: string; name: string; type: string; amount: number; category: string; variance: RuleVariance }[];
   // Auto-budget: projected income minus savings goals (when no manual budgets set)
   autoBudget: {
@@ -106,8 +102,6 @@ export async function GET(req: NextRequest) {
   const db = await findOrCreateBudgetDb(userId);
   // Run the recurring engine BEFORE pulling transactions so any newly-due
   // paychecks/bills are included in the period totals on this same request.
-  // Wrapped in try/catch so the dashboard still renders before the
-  // RecurringRule table migration is applied.
   let generated = 0;
   try {
     const result = await runRecurringEngine(userId);
@@ -116,7 +110,6 @@ export async function GET(req: NextRequest) {
     console.warn('[budget-dashboard] recurring engine skipped:', (e as Error).message);
   }
 
-  // Pull every transaction (joins property values keyed by name)
   const pages = await prisma.page.findMany({
     where: { databaseId: db.id, isArchived: false },
     include: { properties: { include: { property: { select: { name: true } } } } },
@@ -125,7 +118,6 @@ export async function GET(req: NextRequest) {
 
   const { all, monthlyBudgets, savingsRows } = readLedger(pages);
 
-  // Month windows
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -162,21 +154,8 @@ export async function GET(req: NextRequest) {
   const prevIncome = usedPrev.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const prevExpenses = usedPrev.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
 
-  // Spending by category (current period)
-  const catMap = new Map<string, number>();
-  for (const t of usedThis) {
-    if (t.amount >= 0) continue;
-    catMap.set(t.category, (catMap.get(t.category) ?? 0) + Math.abs(t.amount));
-  }
-  const byCategory = Array.from(catMap.entries())
-    .map(([category, spent]) => ({
-      category,
-      spent,
-      pct: expenses > 0 ? (spent / expenses) * 100 : 0,
-    }))
-    .sort((a, b) => b.spent - a.spent);
+  const { byCategory, excesses } = categorySpending(usedThis, usedPrev, expenses);
 
-  // ── Per-category budgets: envelope target vs this month's spend ─────────
   const categoryBudgets = computeCategoryBudgets(
     Array.from(monthlyBudgets, ([category, monthlyAmount]) => ({ category, monthlyAmount })),
     byCategory.map((c) => ({ category: c.category, spent: c.spent })),
@@ -189,50 +168,13 @@ export async function GET(req: NextRequest) {
   for (const c of categoryBudgets) categoryOptionSet.add(c.category);
   const categoryOptions = Array.from(categoryOptionSet).sort((a, b) => a.localeCompare(b));
 
-  // "Excesses" — categories where spending grew >50% vs prior month
-  const prevCat = new Map<string, number>();
-  for (const t of usedPrev) {
-    if (t.amount >= 0) continue;
-    prevCat.set(t.category, (prevCat.get(t.category) ?? 0) + Math.abs(t.amount));
-  }
-  const excesses = byCategory
-    .map((c) => {
-      const prior = prevCat.get(c.category) ?? 0;
-      const delta = c.spent - prior;
-      const pctChange = prior > 0 ? ((c.spent - prior) / prior) * 100 : (c.spent > 0 ? 999 : 0);
-      return { category: c.category, spent: c.spent, vsPrior: delta, pctChange };
-    })
-    .filter((e) => e.pctChange > 50 && e.spent > 20)
-    .sort((a, b) => b.pctChange - a.pctChange)
-    .slice(0, 5);
-
   const { subscriptions, repeatVendors } = detectRepeatVendors(real, now);
 
-  // ── Spending trends: last 6 calendar months (income vs expenses) ───────
-  const trends: { month: string; income: number; expenses: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const start = new Date(d.getFullYear(), d.getMonth(), 1);
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-    let inc = 0;
-    let exp = 0;
-    for (const t of spendable) {
-      if (!inRange(t.date, start, end)) continue;
-      if (t.amount > 0) inc += t.amount;
-      else exp += Math.abs(t.amount);
-    }
-    trends.push({
-      month: start.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-      income: Math.round(inc),
-      expenses: Math.round(exp),
-    });
-  }
+  const trends = monthlyTrends(spendable, now);
 
   const recentTransactions = all.slice(0, 25);
 
-  // ── Forecast ─────────────────────────────────────────────────────────────
   // Pull 45 days for the balance curve; the "coming up" list shows 14.
-  // Same fallback as above — graceful degradation before the migration runs.
   const BALANCE_CURVE_DAYS = 45;
   const FORECAST_MONTHS = 6;
   // One pull covers everything: the 6-month table, the 45-day curve, and the
@@ -258,7 +200,19 @@ export async function GET(req: NextRequest) {
   const unconfirmedNet = forecastThis.reduce((s, t) => s + t.amount, 0);
   const projectedMonthEnd = (income - expenses) + unconfirmedNet + scheduledNet;
 
-  // ── Account balances + projected balance curve ───────────────────────────
+  let expectedVsActual = emptyExpectedVsActual();
+  let overdueBills: OverdueBill[] = [];
+  try {
+    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
+    expectedVsActual = computeExpectedVsActual(rules, [...usedThis, ...forecastThis], { start: displayMonthStart, end: displayMonthEnd, now });
+    overdueBills = computeOverdueBills(rules, all, now);
+  } catch (e) {
+    console.warn('[budget-dashboard] expected-vs-actual skipped:', (e as Error).message);
+  }
+  // A past-due bill with no real payment is either still owed or paid after the
+  // last statement; both lower the balance from here, so projections take it today.
+  const owed = overdueBills.map((b) => ({ date: ymd(now), amount: -b.amount }));
+
   // Anchored on the closing balance of the latest statement per account, then
   // rolled forward. Without a single statement balance we make no claim.
   let accounts: AccountBalance[] = [];
@@ -274,10 +228,9 @@ export async function GET(req: NextRequest) {
   const hasBalances = accounts.some((a) => a.balance != null);
   const totalBalance = Math.round(accounts.reduce((s, a) => s + (a.balance ?? 0), 0) * 100) / 100;
   const { curve: balanceCurve, negativeOn: negativeBalanceDate } = hasBalances
-    ? buildBalanceCurve(totalBalance, forecast45, BALANCE_CURVE_DAYS, now)
+    ? buildBalanceCurve(totalBalance, [...owed, ...forecast45], BALANCE_CURVE_DAYS, now)
     : { curve: [] as { date: string; balance: number }[], negativeOn: null as string | null };
 
-  // ── Month-by-month forecast ─────────────────────────────────────────────
   // Scheduled money alone would read far too optimistically, so discretionary
   // spending is estimated from the last 3 complete months and counted too.
   let monthlyForecast: MonthForecast[] = [];
@@ -289,7 +242,7 @@ export async function GET(req: NextRequest) {
       activeRules,
       now,
     );
-    monthlyForecast = forecastMonths(horizon, {
+    monthlyForecast = forecastMonths([...owed, ...horizon], {
       startingBalance: totalBalance,
       months: FORECAST_MONTHS,
       today: now,
@@ -299,7 +252,6 @@ export async function GET(req: NextRequest) {
     console.warn('[budget-dashboard] monthly forecast skipped:', (e as Error).message);
   }
 
-  // ── Pattern auto-detection (Feature 5) ───────────────────────────────────
   let patternSuggestions: PatternSuggestion[] = [];
   try {
     const rules = await prisma.recurringRule.findMany({ where: { userId } });
@@ -314,7 +266,6 @@ export async function GET(req: NextRequest) {
     console.warn('[budget-dashboard] pattern detection skipped:', (e as Error).message);
   }
 
-  // ── Rule variance (Feature 4) ────────────────────────────────────────────
   let ruleVariance: { ruleId: string; name: string; type: string; amount: number; category: string; variance: RuleVariance }[] = [];
   try {
     const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
@@ -344,7 +295,6 @@ export async function GET(req: NextRequest) {
     console.warn('[budget-dashboard] variance skipped:', (e as Error).message);
   }
 
-  // ── Auto-budget: projected income minus savings goals ───────────────────
   // When no manual Budget rows exist, compute an auto-budget from recurring
   // income rules minus savings goals so the user sees meaningful figures.
   let autoBudget: DashboardPayload['autoBudget'] = {
@@ -358,7 +308,6 @@ export async function GET(req: NextRequest) {
     // Manual budgeting is on once at least one envelope row carries an amount.
     const hasManualBudget = monthlyBudgets.size > 0;
 
-    // Monthly-normalize recurring rules
     const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
     const monthlyFactor: Record<string, number> = {
       weekly: 52 / 12,
@@ -395,16 +344,6 @@ export async function GET(req: NextRequest) {
     };
   } catch (e) {
     console.warn('[budget-dashboard] auto-budget skipped:', (e as Error).message);
-  }
-
-  let expectedVsActual = emptyExpectedVsActual();
-  let overdueBills: OverdueBill[] = [];
-  try {
-    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
-    expectedVsActual = computeExpectedVsActual(rules, [...usedThis, ...forecastThis], { start: displayMonthStart, end: displayMonthEnd, now });
-    overdueBills = computeOverdueBills(rules, all, now);
-  } catch (e) {
-    console.warn('[budget-dashboard] expected-vs-actual skipped:', (e as Error).message);
   }
 
   const payload: DashboardPayload = {
