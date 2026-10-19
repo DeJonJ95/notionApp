@@ -55,7 +55,7 @@ export function ExpectedVsReceived({ data, monthLabel }: { data: ExpectedVsActua
           <div className="text-lg font-bold text-red-500">{fmt(data.expenseExpected)}</div>
         </div>
         <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2">
-          <div className="text-[10px] text-muted uppercase tracking-wide">Posted</div>
+          <div className="text-[10px] text-muted uppercase tracking-wide">Paid</div>
           <div className={`text-lg font-bold ${data.expenseActual <= data.expenseExpected ? 'text-red-500' : 'text-orange-500'}`}>
             {fmt(data.expenseActual)}
           </div>

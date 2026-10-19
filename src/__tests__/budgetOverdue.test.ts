@@ -80,11 +80,11 @@ describe('computeOverdueBills', () => {
 describe('computeExpectedVsActual', () => {
   const sep = { start: new Date(2026, 8, 1), end: new Date(2026, 9, 1), now: today };
 
-  it('matches a payment near its due date and totals what posted', () => {
+  it('matches a payment near its due date and counts only bill payments as paid', () => {
     const txs = [charge('2026-09-02', 'Verizon', -170), charge('2026-09-05', 'Kroger', -80)];
     const result = computeExpectedVsActual([verizon], txs, sep);
     expect(result.expenseExpected).toBe(166.74);
-    expect(result.expenseActual).toBe(250);
+    expect(result.expenseActual).toBe(170);
     expect(result.rules).toEqual([
       { ruleId: 'r1', name: 'Verizon', type: 'expense', expectedAmt: 166.74, expectedCount: 1, matchedCount: 1, unconfirmedCount: 0, matchedTotal: 170 },
     ]);
@@ -108,10 +108,25 @@ describe('computeExpectedVsActual', () => {
     expect(result.rules[0].expectedCount).toBe(1);
   });
 
-  it('counts an unpaid due date no statement reaches as unconfirmed, and a Planned row as nothing posted', () => {
+  it('does not let other spending make a missed bill look paid', () => {
+    const storage: RuleLike = { ...verizon, id: 'ns', name: 'Test Storage Two', amount: 120, anchorDate: new Date(2026, 9, 1), lastGeneratedDate: null };
+    const txs = [charge('2026-10-03', 'Kroger', -54.2), charge('2026-10-07', 'Shell', -40.3)];
+    const oct = { start: new Date(2026, 9, 1), end: new Date(2026, 10, 1), now: new Date(2026, 9, 19) };
+    const result = computeExpectedVsActual([storage], txs, oct, [statement('2026-09-15', '2026-10-14')]);
+    expect([result.expenseExpected, result.expenseActual]).toEqual([120, 0]);
+  });
+
+  it('counts a paycheck received for less than the rule as what came in', () => {
+    const pay: RuleLike = { ...verizon, id: 'pay', name: 'City of Detroit Payroll', type: 'income', amount: 2000 };
+    const txs = [charge('2026-09-02', 'CITY OF DETROIT PAYROLL', 1990), charge('2026-09-10', 'Venmo from Sam', 300)];
+    const result = computeExpectedVsActual([pay], txs, sep);
+    expect([result.incomeExpected, result.incomeActual]).toEqual([2000, 1990]);
+  });
+
+  it('counts an unpaid due date no statement reaches as unconfirmed, and a Planned row as nothing paid', () => {
     const txs = [{ ...charge('2026-09-01'), planned: true }, charge('2026-09-05', 'Kroger', -80)];
     const result = computeExpectedVsActual([verizon], txs, sep);
-    expect(result.expenseActual).toBe(80);
+    expect(result.expenseActual).toBe(0);
     expect(result.rules[0]).toMatchObject({ matchedCount: 0, unconfirmedCount: 1, matchedTotal: 0 });
     expect(computeExpectedVsActual([verizon], txs, sep, [september]).rules[0].unconfirmedCount).toBe(0);
   });

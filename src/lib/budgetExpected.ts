@@ -1,7 +1,6 @@
 import {
   HALF_PERIOD_DAYS,
   MIN_PAYMENT_SHARE,
-  TRANSFERS_CATEGORY,
   occurrencesBetween,
   vendorsSimilar,
   type RuleFrequency,
@@ -25,7 +24,6 @@ export type LedgerTx = {
   vendor: string;
   amount: number;
   planned?: boolean;
-  category?: string;
   account?: string | null;
 };
 
@@ -136,6 +134,9 @@ function settledBetween(rule: RuleLike, txs: LedgerTx[], coverage: Coverage[], w
   return settle(rule, dues, txs, coverage).filter((s) => s.due.getTime() >= start && s.due <= to);
 }
 
+/** What the month's recurring rules expected against what settled them. The
+ *  actual side counts only payments that settled one of those due dates, so
+ *  other spending can't make a missed bill look paid. */
 export function computeExpectedVsActual(
   rules: RuleLike[],
   txs: LedgerTx[],
@@ -148,8 +149,13 @@ export function computeExpectedVsActual(
   for (const rule of rules) {
     const settled = settledBetween(rule, txs, coverage, { from: window.start, to });
     if (settled.length === 0) continue;
-    out[rule.type === 'income' ? 'incomeExpected' : 'expenseExpected'] += settled.length * rule.amount;
     const paid = settled.filter((s) => s.payment);
+    const matchedTotal = round2(paid.reduce((sum, s) => sum + Math.abs(s.payment!.amount), 0));
+    const [expected, actual] = rule.type === 'income'
+      ? (['incomeExpected', 'incomeActual'] as const)
+      : (['expenseExpected', 'expenseActual'] as const);
+    out[expected] += settled.length * rule.amount;
+    out[actual] += matchedTotal;
     out.rules.push({
       ruleId: rule.id,
       name: rule.name,
@@ -158,17 +164,14 @@ export function computeExpectedVsActual(
       expectedCount: settled.length,
       matchedCount: paid.length,
       unconfirmedCount: settled.filter((s) => !s.payment && !s.covered).length,
-      matchedTotal: round2(paid.reduce((sum, s) => sum + Math.abs(s.payment!.amount), 0)),
+      matchedTotal,
     });
   }
 
-  const posted = txs.filter((t) =>
-    !t.planned && t.category !== TRANSFERS_CATEGORY
-    && atMidnight(t.date) >= window.start.getTime() && atMidnight(t.date) < window.end.getTime());
   out.incomeExpected = round2(out.incomeExpected);
   out.expenseExpected = round2(out.expenseExpected);
-  out.incomeActual = round2(posted.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0));
-  out.expenseActual = round2(posted.filter((t) => t.amount < 0).reduce((s, t) => s - t.amount, 0));
+  out.incomeActual = round2(out.incomeActual);
+  out.expenseActual = round2(out.expenseActual);
   return out;
 }
 
