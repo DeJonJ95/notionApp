@@ -6,6 +6,7 @@ import {
   checkImportBalances,
   type ImportBalanceCheck,
 } from '@/lib/budgetDb';
+import { loadLedger } from '@/lib/budgetLedger';
 
 export type ImportLogEntry = {
   id: string;
@@ -82,25 +83,8 @@ export async function GET() {
   let balanceChecks: ImportBalanceCheck[] = [];
   try {
     const db = await findOrCreateBudgetDb(userId);
-    const pages = await prisma.page.findMany({
-      where: { databaseId: db.id, isArchived: false },
-      include: { properties: { include: { property: { select: { name: true } } } } },
-    });
-    const transactions: { account?: string | null; date: string; amount: number }[] = [];
-    for (const p of pages) {
-      const vals: Record<string, any> = {};
-      for (const pv of p.properties) vals[pv.property.name] = pv.value;
-      const type = String(vals['Type'] ?? '');
-      if (type === 'Budget') continue;
-      const rawAmt = Number(vals['Amount'] ?? 0);
-      if (!rawAmt) continue;
-      transactions.push({
-        account: vals['Account'] == null ? null : String(vals['Account']),
-        date: String(vals['Date'] ?? '').slice(0, 10),
-        amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
-      });
-    }
-    balanceChecks = checkImportBalances(logs, transactions);
+    const { all } = await loadLedger(db.id);
+    balanceChecks = checkImportBalances(logs, all.filter((t) => !t.planned));
   } catch (e) {
     console.warn('[budget-imports] balance check skipped:', (e as Error).message);
   }

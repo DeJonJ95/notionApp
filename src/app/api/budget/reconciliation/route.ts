@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { reconcileTransactions, type ParsedTransaction } from '@/lib/budgetDb';
 import type { ReconciliationResult } from '@/lib/budgetDb';
+import { loadLedger } from '@/lib/budgetLedger';
 
 export type ReconciliationPayload = {
   dateFrom: string;
@@ -49,30 +50,10 @@ export async function GET(req: NextRequest) {
   const propId: Record<string, string> = {};
   for (const p of db.properties) propId[p.name] = p.id;
 
-  const pages = await prisma.page.findMany({
-    where: { databaseId: db.id, isArchived: false },
-    include: { properties: { include: { property: { select: { name: true } } } } },
-  });
-
-  const transactions: ParsedTransaction[] = [];
-  for (const p of pages) {
-    const vals: Record<string, any> = {};
-    for (const pv of p.properties) vals[pv.property.name] = pv.value;
-    const type = String(vals['Type'] ?? '');
-    if (type === 'Budget') continue;
-    const rawAmt = Number(vals['Amount'] ?? 0);
-    if (!rawAmt) continue;
-    const txDate = String(vals['Date'] ?? '').slice(0, 10);
-    // Only include transactions in the requested date range
-    if (txDate < dateFrom || txDate > dateTo) continue;
-    transactions.push({
-      date: txDate,
-      vendor: String(vals['Vendor'] ?? p.title ?? ''),
-      description: String(vals['Notes'] ?? ''),
-      amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
-      category: String(vals['Category'] ?? 'Other'),
-    });
-  }
+  const { all } = await loadLedger(db.id);
+  const transactions: ParsedTransaction[] = all
+    .filter((t) => !t.planned && t.date >= dateFrom && t.date <= dateTo)
+    .map((t) => ({ date: t.date, vendor: t.vendor, description: t.notes ?? '', amount: t.amount, category: t.category }));
 
   const result = reconcileTransactions(rules, transactions, dateFrom, dateTo);
 

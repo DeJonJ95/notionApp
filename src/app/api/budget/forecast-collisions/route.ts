@@ -7,6 +7,7 @@ import {
   isRecurringGeneratedNote,
   type LedgerDuplicate,
 } from '@/lib/budgetDb';
+import { loadLedger } from '@/lib/budgetLedger';
 
 // Recurring forecast rows that the real transaction has landed on top of.
 // Normally prevented at the source (the engine skips import-covered dates, and
@@ -18,34 +19,14 @@ export type ForecastCollisionsPayload = {
 };
 
 async function loadRows(databaseId: string) {
-  const pages = await prisma.page.findMany({
-    where: { databaseId, isArchived: false },
-    orderBy: { createdAt: 'asc' },
-    include: { properties: { include: { property: { select: { name: true } } } } },
-  });
-
-  const rows: {
-    pageId: string;
-    date: string;
-    vendor: string;
-    amount: number;
-    isGenerated: boolean;
-  }[] = [];
-  for (const p of pages) {
-    const vals: Record<string, any> = {};
-    for (const pv of p.properties) vals[pv.property.name] = pv.value;
-    const type = String(vals['Type'] ?? '');
-    if (type === 'Budget') continue;
-    const rawAmt = Number(vals['Amount'] ?? 0);
-    if (!rawAmt) continue;
-    rows.push({
-      pageId: p.id,
-      date: String(vals['Date'] ?? '').slice(0, 10),
-      vendor: String(vals['Vendor'] ?? p.title ?? ''),
-      amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
-      isGenerated: isRecurringGeneratedNote(vals['Notes']),
-    });
-  }
+  const { all } = await loadLedger(databaseId, 'asc');
+  const rows = all.map((t) => ({
+    pageId: t.pageId,
+    date: t.date,
+    vendor: t.vendor,
+    amount: t.amount,
+    isGenerated: isRecurringGeneratedNote(t.notes),
+  }));
   return rows;
 }
 

@@ -1,4 +1,5 @@
 import { isRecurringGeneratedNote, normalizeBudgetToMonthly } from '@/lib/budgetDb';
+import { prisma } from '@/lib/prisma';
 
 export type Tx = {
   pageId: string;
@@ -8,6 +9,7 @@ export type Tx = {
   category: string;
   type: string;
   account: string | null;
+  notes: string | null;
   planned: boolean;     // a recurring forecast: says a bill is due, never that it was paid
 };
 
@@ -61,8 +63,20 @@ export function readLedger(pages: LedgerPage[]): Ledger {
       category: text(vals['Category'], 'Other'),
       type,
       account: vals['Account'] == null ? null : String(vals['Account']),
+      notes: vals['Notes'] == null ? null : String(vals['Notes']),
       planned: isForecastRow(vals),
     });
   }
   return ledger;
+}
+
+/** Every live row of a budget database, newest first. The one place routes read
+ *  the ledger, so a forecast is never mistaken for money that moved. */
+export async function loadLedger(databaseId: string, order: 'asc' | 'desc' = 'desc'): Promise<Ledger> {
+  const pages = await prisma.page.findMany({
+    where: { databaseId, isArchived: false },
+    include: { properties: { include: { property: { select: { name: true } } } } },
+    orderBy: { createdAt: order },
+  });
+  return readLedger(pages);
 }

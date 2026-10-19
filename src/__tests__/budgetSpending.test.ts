@@ -1,7 +1,7 @@
 import { categorySpending, monthlyTrends } from '../lib/budgetSpending';
 
 const tx = (date: string, amount: number, category = 'Food & Dining') =>
-  ({ pageId: date + amount, vendor: 'v', date, amount, category, type: amount > 0 ? 'Income' : 'Expense', account: null, planned: false });
+  ({ pageId: date + amount, vendor: 'v', date, amount, category, type: amount > 0 ? 'Income' : 'Expense', account: null, notes: null, planned: false });
 
 describe('categorySpending', () => {
   it('ranks categories by spend and flags big jumps over last month', () => {

@@ -73,6 +73,26 @@ describe('computeExpectedVsActual', () => {
     ]);
   });
 
+  it('agrees with the overdue check about a payment that posted a week late', () => {
+    const start = new Date(2026, 8, 1);
+    const end = new Date(2026, 9, 1);
+    const txs = [charge('2026-08-01'), charge('2026-09-09', 'Verizon', -166.74)];
+    expect(computeExpectedVsActual([verizon], txs, { start, end, now: today }).rules[0]).toMatchObject({ matchedCount: 1, matchedTotal: 166.74 });
+    expect(computeOverdueBills([verizon], txs, today)).toEqual([]);
+  });
+
+  it('counts every weekly due date in the month even after the engine moved the anchor on', () => {
+    const gym: RuleLike = { ...verizon, id: 'g', name: 'Gym', amount: 10, frequency: 'weekly', anchorDate: new Date(2026, 9, 20) };
+    const result = computeExpectedVsActual([gym], [], { start: new Date(2026, 8, 1), end: new Date(2026, 9, 1), now: new Date(2026, 9, 19) });
+    expect(result.rules[0].expectedCount).toBe(5); // Sep 1, 8, 15, 22, 29
+  });
+
+  it('does not count next month\'s first due date in a past month', () => {
+    const rent: RuleLike = { ...verizon, id: 'rent', name: 'Rent', amount: 900, anchorDate: new Date(2026, 9, 1) };
+    const result = computeExpectedVsActual([rent], [], { start: new Date(2026, 8, 1), end: new Date(2026, 9, 1), now: new Date(2026, 9, 19) });
+    expect(result.rules[0].expectedCount).toBe(1);
+  });
+
   it('counts a forecast row as unconfirmed and leaves it out of what posted', () => {
     const start = new Date(2026, 8, 1);
     const end = new Date(2026, 9, 1);

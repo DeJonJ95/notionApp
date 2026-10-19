@@ -117,7 +117,7 @@
       "castChain": 2
     },
     "src/app/api/budget/dashboard/route.ts": {
-      "functionLoc": 293,
+      "functionLoc": 286,
       "complexity": 19,
       "anyCount": 1,
       "castChain": 1
@@ -148,8 +148,6 @@
       "castChain": 4
     },
     "src/app/api/budget/imports/route.ts": {
-      "functionLoc": 90,
-      "complexity": 16,
       "anyCount": 1,
       "castChain": 1
     },
@@ -159,7 +157,6 @@
       "castChain": 1
     },
     "src/app/api/budget/reconciliation/route.ts": {
-      "complexity": 20,
       "anyCount": 1,
       "castChain": 1
     },
@@ -181,13 +178,10 @@
       "castChain": 1
     },
     "src/app/api/budget/subscriptions/route.ts": {
-      "functionLoc": 89,
       "anyCount": 1,
       "castChain": 1
     },
     "src/app/api/budget/waste/route.ts": {
-      "functionLoc": 87,
-      "complexity": 19,
       "anyCount": 2,
       "castChain": 1
     },

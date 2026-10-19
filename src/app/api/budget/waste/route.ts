@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
 import {
   findOrCreateBudgetDb,
   detectRecurringPatterns,
@@ -14,6 +13,7 @@ import {
   type WasteFinding,
   type WasteTx,
 } from '@/lib/budgetWaste';
+import { loadLedger } from '@/lib/budgetLedger';
 
 export type WastePayload = {
   findings: WasteFinding[];
@@ -29,31 +29,12 @@ export async function GET() {
 
   try {
     const db = await findOrCreateBudgetDb(userId);
-    const pages = await prisma.page.findMany({
-      where: { databaseId: db.id, isArchived: false },
-      include: { properties: { include: { property: { select: { name: true } } } } },
-    });
-
-    const txs: WasteTx[] = [];
-    for (const p of pages) {
-      const vals: Record<string, any> = {};
-      for (const pv of p.properties) vals[pv.property.name] = pv.value;
-      const type = String(vals['Type'] ?? '');
-      if (type === 'Budget') continue;
-      const rawAmt = Number(vals['Amount'] ?? 0);
-      if (!rawAmt) continue;
-      const category = String(vals['Category'] ?? 'Other');
-      // Moving money between your own accounts isn't spending, so it can't be
-      // waste — and it would badly distort the category-drift medians.
-      if (category === TRANSFERS_CATEGORY) continue;
-      txs.push({
-        date: String(vals['Date'] ?? '').slice(0, 10),
-        vendor: String(vals['Vendor'] ?? p.title ?? ''),
-        amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
-        category,
-        notes: vals['Notes'] == null ? undefined : String(vals['Notes']),
-      });
-    }
+    // Moving money between your own accounts isn't spending, so it can't be
+    // waste, and it would badly distort the category-drift medians.
+    const { all } = await loadLedger(db.id);
+    const txs: WasteTx[] = all
+      .filter((t) => !t.planned && t.category !== TRANSFERS_CATEGORY)
+      .map((t) => ({ date: t.date, vendor: t.vendor, amount: t.amount, category: t.category, notes: t.notes ?? undefined }));
 
     const dated = txs.filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t.date));
     const months = new Set(dated.map((t) => t.date.slice(0, 7)));

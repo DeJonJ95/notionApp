@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
 import { findOrCreateBudgetDb, detectRecurringPatterns } from '@/lib/budgetDb';
+import { loadLedger } from '@/lib/budgetLedger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,29 +41,11 @@ export async function GET() {
 
   const db = await findOrCreateBudgetDb(userId);
 
-  const pages = await prisma.page.findMany({
-    where: { databaseId: db.id, isArchived: false },
-    include: { properties: { include: { property: { select: { name: true } } } } },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  // Flatten transaction pages into expenses only (recurring income isn't a
-  // subscription). Amount is stored positive; Type distinguishes direction.
-  const expenses: Tx[] = [];
-  for (const p of pages) {
-    const vals: Record<string, any> = {};
-    for (const pv of p.properties) vals[pv.property.name] = pv.value;
-    const type = String(vals['Type'] ?? '');
-    if (type === 'Budget' || type === 'Income') continue;
-    const amt = Math.abs(Number(vals['Amount'] ?? 0));
-    if (!amt) continue;
-    expenses.push({
-      date: String(vals['Date'] ?? '').slice(0, 10),
-      vendor: String(vals['Vendor'] ?? p.title ?? '').trim(),
-      amount: amt,
-      category: String(vals['Category'] ?? 'Other'),
-    });
-  }
+  // Expenses only: recurring income isn't a subscription, and a forecast isn't a charge.
+  const { all } = await loadLedger(db.id);
+  const expenses: Tx[] = all
+    .filter((t) => !t.planned && t.type !== 'Income')
+    .map((t) => ({ date: t.date, vendor: t.vendor.trim(), amount: Math.abs(t.amount), category: t.category }));
 
   // Pass an empty existing-rules list so every recurring vendor surfaces,
   // whether or not it already has a budget rule.

@@ -21,6 +21,7 @@ import {
   parseStructuredCapture,
   type CapturedTx,
 } from '@/lib/budgetCapture';
+import { loadLedger } from '@/lib/budgetLedger';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -151,27 +152,9 @@ async function loadNearbyTransactions(
   const centre = new Date(date + 'T00:00:00').getTime();
   const windowMs = days * 24 * 60 * 60 * 1000;
 
-  const pages = await prisma.page.findMany({
-    where: { databaseId, isArchived: false },
-    include: { properties: { include: { property: { select: { name: true } } } } },
-  });
-
-  const out: { date: string; vendor: string; amount: number }[] = [];
-  for (const p of pages) {
-    const vals: Record<string, any> = {};
-    for (const pv of p.properties) vals[pv.property.name] = pv.value;
-    const type = String(vals['Type'] ?? '');
-    if (type === 'Budget') continue;
-    const rawAmt = Number(vals['Amount'] ?? 0);
-    if (!rawAmt) continue;
-    const d = String(vals['Date'] ?? '').slice(0, 10);
-    if (!isIsoDate(d)) continue;
-    if (Math.abs(new Date(d + 'T00:00:00').getTime() - centre) > windowMs) continue;
-    out.push({
-      date: d,
-      vendor: String(vals['Vendor'] ?? p.title ?? ''),
-      amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
-    });
-  }
-  return out;
+  const { all } = await loadLedger(databaseId);
+  return all
+    .filter((t) => !t.planned && isIsoDate(t.date))
+    .filter((t) => Math.abs(new Date(t.date + 'T00:00:00').getTime() - centre) <= windowMs)
+    .map((t) => ({ date: t.date, vendor: t.vendor, amount: t.amount }));
 }

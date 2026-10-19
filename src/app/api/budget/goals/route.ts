@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { findOrCreateBudgetDb, goalLedgerAmounts } from '@/lib/budgetDb';
+import { loadLedger } from '@/lib/budgetLedger';
 
 function tableMissing(e: any) {
   return e?.message?.includes('does not exist') || e?.code === 'P2021';
@@ -16,23 +17,8 @@ async function loadGoalLedger(
   if (goals.length === 0) return {};
   try {
     const db = await findOrCreateBudgetDb(userId);
-    const pages = await prisma.page.findMany({
-      where: { databaseId: db.id, isArchived: false },
-      include: { properties: { include: { property: { select: { name: true } } } } },
-    });
-    const savings: { text: string; amount: number }[] = [];
-    for (const p of pages) {
-      const vals: Record<string, any> = {};
-      for (const pv of p.properties) vals[pv.property.name] = pv.value;
-      if (String(vals['Type'] ?? '') !== 'Savings') continue;
-      const amount = Number(vals['Amount'] ?? 0);
-      if (!amount) continue;
-      savings.push({
-        text: `${vals['Vendor'] ?? p.title ?? ''} ${vals['Notes'] ?? ''}`,
-        amount,
-      });
-    }
-    return goalLedgerAmounts(goals, savings);
+    const { savingsRows } = await loadLedger(db.id);
+    return goalLedgerAmounts(goals, savingsRows);
   } catch (e) {
     console.warn('[budget-goals] ledger progress skipped:', (e as Error).message);
     return {};

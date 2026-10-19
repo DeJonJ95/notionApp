@@ -33,7 +33,7 @@ import {
   type ExpectedVsActual,
   type OverdueBill,
 } from '@/lib/budgetExpected';
-import { readLedger, type Tx } from '@/lib/budgetLedger';
+import { loadLedger, type Tx } from '@/lib/budgetLedger';
 import { categorySpending, monthlyTrends } from '@/lib/budgetSpending';
 import { detectRepeatVendors, type RepeatVendor, type Subscription } from '@/lib/budgetRepeatVendors';
 
@@ -110,13 +110,11 @@ export async function GET(req: NextRequest) {
     console.warn('[budget-dashboard] recurring engine skipped:', (e as Error).message);
   }
 
-  const pages = await prisma.page.findMany({
-    where: { databaseId: db.id, isArchived: false },
-    include: { properties: { include: { property: { select: { name: true } } } } },
-    orderBy: { createdAt: 'desc' },
-  });
-
-  const { all, monthlyBudgets, savingsRows } = readLedger(pages);
+  const [{ all, monthlyBudgets, savingsRows }, allRules] = await Promise.all([
+    loadLedger(db.id),
+    prisma.recurringRule.findMany({ where: { userId } }),
+  ]);
+  const activeRules = allRules.filter((r) => r.isActive);
 
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -203,9 +201,8 @@ export async function GET(req: NextRequest) {
   let expectedVsActual = emptyExpectedVsActual();
   let overdueBills: OverdueBill[] = [];
   try {
-    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
-    expectedVsActual = computeExpectedVsActual(rules, [...usedThis, ...forecastThis], { start: displayMonthStart, end: displayMonthEnd, now });
-    overdueBills = computeOverdueBills(rules, all, now);
+    expectedVsActual = computeExpectedVsActual(activeRules, all, { start: displayMonthStart, end: displayMonthEnd, now });
+    overdueBills = computeOverdueBills(activeRules, all, now);
   } catch (e) {
     console.warn('[budget-dashboard] expected-vs-actual skipped:', (e as Error).message);
   }
@@ -236,7 +233,6 @@ export async function GET(req: NextRequest) {
   let monthlyForecast: MonthForecast[] = [];
   let variableSpendEstimate = 0;
   try {
-    const activeRules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
     variableSpendEstimate = estimateVariableMonthlySpend(
       spendable.map((t) => ({ date: t.date, vendor: t.vendor, amount: t.amount })),
       activeRules,
@@ -254,22 +250,20 @@ export async function GET(req: NextRequest) {
 
   let patternSuggestions: PatternSuggestion[] = [];
   try {
-    const rules = await prisma.recurringRule.findMany({ where: { userId } });
     const txForPatterns = real.map((t) => ({
       vendor: t.vendor,
       amount: t.amount,
       date: t.date,
       category: t.category,
     }));
-    patternSuggestions = detectRecurringPatterns(txForPatterns, rules);
+    patternSuggestions = detectRecurringPatterns(txForPatterns, allRules);
   } catch (e) {
     console.warn('[budget-dashboard] pattern detection skipped:', (e as Error).message);
   }
 
   let ruleVariance: { ruleId: string; name: string; type: string; amount: number; category: string; variance: RuleVariance }[] = [];
   try {
-    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
-    ruleVariance = rules.map((r) => {
+    ruleVariance = activeRules.map((r) => {
       const matchedTxs = real
         .filter((t) => {
           const amtMatch = Math.abs(Math.abs(t.amount) - r.amount) / r.amount < 0.3;
@@ -308,7 +302,6 @@ export async function GET(req: NextRequest) {
     // Manual budgeting is on once at least one envelope row carries an amount.
     const hasManualBudget = monthlyBudgets.size > 0;
 
-    const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
     const monthlyFactor: Record<string, number> = {
       weekly: 52 / 12,
       biweekly: 26 / 12,
@@ -317,7 +310,7 @@ export async function GET(req: NextRequest) {
     };
     let monthlyIncome = 0;
     let monthlyExpenses = 0;
-    for (const r of rules) {
+    for (const r of activeRules) {
       const factor = monthlyFactor[r.frequency] ?? 1;
       const monthly = r.amount * factor;
       if (r.type === 'income') monthlyIncome += monthly;

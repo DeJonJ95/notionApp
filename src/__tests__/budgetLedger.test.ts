@@ -36,7 +36,7 @@ describe('readLedger', () => {
 
 describe('detectRepeatVendors', () => {
   const tx = (vendor: string, date: string, amount: number, category = 'Subscriptions') =>
-    ({ pageId: `${vendor}-${date}`, vendor, date, amount, category, type: 'Expense', account: null, planned: false });
+    ({ pageId: `${vendor}-${date}`, vendor, date, amount, category, type: 'Expense', account: null, notes: null, planned: false });
 
   it('separates steady charges from other repeat vendors and skips old or one-off ones', () => {
     const now = new Date(2026, 9, 19);
