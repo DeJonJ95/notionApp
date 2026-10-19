@@ -117,9 +117,9 @@
       "castChain": 2
     },
     "src/app/api/budget/dashboard/route.ts": {
-      "fileLoc": 556,
-      "functionLoc": 435,
-      "complexity": 64,
+      "fileLoc": 446,
+      "functionLoc": 350,
+      "complexity": 31,
       "anyCount": 1,
       "castChain": 1
     },
@@ -404,9 +404,9 @@
       "anyCount": 1
     },
     "src/components/budget/BudgetDashboard.tsx": {
-      "fileLoc": 1424,
-      "functionLoc": 1298,
-      "complexity": 116
+      "fileLoc": 1369,
+      "functionLoc": 1242,
+      "complexity": 109
     },
     "src/components/budget/CancelEmailModal.tsx": {
       "functionLoc": 133,
@@ -424,8 +424,8 @@
       "functionLoc": 100
     },
     "src/components/budget/ImportStatementModal.tsx": {
-      "fileLoc": 473,
-      "functionLoc": 442,
+      "fileLoc": 467,
+      "functionLoc": 434,
       "complexity": 26,
       "anyCount": 2
     },
@@ -580,11 +580,11 @@
       "commentRatio": 0.378
     },
     "src/lib/budgetDb.ts": {
-      "fileLoc": 1492,
+      "fileLoc": 1484,
       "functionLoc": 100,
       "complexity": 24,
       "anyCount": 1,
-      "commentRatio": 0.181
+      "commentRatio": 0.179
     },
     "src/lib/budgetImportFile.ts": {
       "commentRatio": 0.2

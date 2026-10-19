@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Upload, TrendingUp, TrendingDown, DollarSign, AlertTriangle,
   Mail, RefreshCw, ExternalLink, Loader2, Calendar, Repeat, Sparkles,
-  Target, Tag, BarChart3, Layers, Clock, CheckCircle2, Zap, X, CreditCard, Wallet,
+  Target, Tag, BarChart3, Layers, CheckCircle2, Zap, X, CreditCard, Wallet,
   Landmark, ChevronLeft, ChevronRight, Pencil, Plus,
 } from 'lucide-react';
 import { promptDialog } from '@/components/ui/feedback';
@@ -17,6 +17,7 @@ import { AddTransactionModal } from './AddTransactionModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
 import { ImportReminderBanner } from './ImportReminderBanner';
 import { OverdueBills } from './OverdueBills';
+import { ExpectedVsReceived } from './ExpectedVsReceived';
 import type { DashboardPayload, Subscription } from '@/app/api/budget/dashboard/route';
 import type { ImportsPayload } from '@/app/api/budget/imports/route';
 import type { ForecastCollisionsPayload } from '@/app/api/budget/forecast-collisions/route';
@@ -741,69 +742,7 @@ export function BudgetDashboard() {
 
       <OverdueBills bills={data.overdueBills} />
 
-      {data.expectedVsActual && (data.expectedVsActual.incomeExpected > 0 || data.expectedVsActual.expenseExpected > 0) && (
-        <div className="rounded-xl border border-border bg-surface p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <BarChart3 size={13} className="text-accent" />
-            <span className="text-xs font-semibold uppercase tracking-wide">Expected vs received — {data.monthLabel}</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
-            <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-3 py-2">
-              <div className="text-[10px] text-muted uppercase tracking-wide">Expected income</div>
-              <div className="text-lg font-bold text-green-600">{fmt(data.expectedVsActual.incomeExpected)}</div>
-            </div>
-            <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-3 py-2">
-              <div className="text-[10px] text-muted uppercase tracking-wide">Received</div>
-              <div className={`text-lg font-bold ${data.expectedVsActual.incomeActual >= data.expectedVsActual.incomeExpected ? 'text-green-600' : 'text-yellow-600'}`}>
-                {fmt(data.expectedVsActual.incomeActual)}
-              </div>
-              {data.expectedVsActual.incomeActual < data.expectedVsActual.incomeExpected && (
-                <div className="text-[10px] text-yellow-600">
-                  {fmt(data.expectedVsActual.incomeExpected - data.expectedVsActual.incomeActual)} still due
-                </div>
-              )}
-            </div>
-            <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2">
-              <div className="text-[10px] text-muted uppercase tracking-wide">Expected expenses</div>
-              <div className="text-lg font-bold text-red-500">{fmt(data.expectedVsActual.expenseExpected)}</div>
-            </div>
-            <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2">
-              <div className="text-[10px] text-muted uppercase tracking-wide">Posted</div>
-              <div className={`text-lg font-bold ${data.expectedVsActual.expenseActual <= data.expectedVsActual.expenseExpected ? 'text-red-500' : 'text-orange-500'}`}>
-                {fmt(data.expectedVsActual.expenseActual)}
-              </div>
-              {data.expectedVsActual.expenseActual < data.expectedVsActual.expenseExpected && (
-                <div className="text-[10px] text-muted">
-                  {fmt(data.expectedVsActual.expenseExpected - data.expectedVsActual.expenseActual)} still expected
-                </div>
-              )}
-            </div>
-          </div>
-          {data.expectedVsActual.rules.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {data.expectedVsActual.rules.map((r) => {
-                const pct = r.expectedCount > 0 ? Math.round((r.matchedCount / r.expectedCount) * 100) : 0;
-                const allMatched = pct >= 100;
-                return (
-                  <span
-                    key={r.ruleId}
-                    className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border ${
-                      allMatched
-                        ? 'border-green-500/30 bg-green-500/5 text-green-700'
-                        : r.matchedCount > 0
-                          ? 'border-yellow-500/30 bg-yellow-500/5 text-yellow-700'
-                          : 'border-red-500/30 bg-red-500/5 text-red-600'
-                    }`}
-                  >
-                    {allMatched ? <CheckCircle2 size={10} /> : r.matchedCount > 0 ? <Clock size={10} /> : <AlertTriangle size={10} />}
-                    {r.name} <span className="opacity-70">({r.matchedCount}/{r.expectedCount})</span>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+      <ExpectedVsReceived data={data.expectedVsActual} monthLabel={data.monthLabel} />
 
       <div className="rounded-xl border border-accent/20 bg-accent/5 p-4">
         <div className="flex items-center gap-2 mb-3">
@@ -1299,7 +1238,14 @@ export function BudgetDashboard() {
                 {data.recentTransactions.map((t) => (
                   <tr key={t.pageId} className="border-t border-border/40 group/row">
                     <td className="px-3 py-1.5 text-xs text-muted">{t.date}</td>
-                    <td className="px-3 py-1.5 truncate max-w-[200px]">{t.vendor}</td>
+                    <td className="px-3 py-1.5 truncate max-w-[200px]">
+                      {t.vendor}
+                      {t.planned && (
+                        <span className="ml-1.5 text-[10px] px-1 py-px rounded border border-yellow-500/40 text-yellow-700" title="Forecast from a recurring rule; not confirmed by a statement yet">
+                          Forecast
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-1.5 text-xs">
                       <span className="inline-block px-1.5 py-0.5 bg-bg border border-border/50 rounded">
                         {t.category}

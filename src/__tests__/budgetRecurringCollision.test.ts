@@ -114,6 +114,11 @@ describe('alreadyPaid', () => {
     expect(alreadyPaid({ date: '2026-08-25', amount: -60 }, 'Netflix', actuals, 14)).toBe(false);
   });
 
+  it('does not treat a charge under half the bill as paying it', () => {
+    const fee = [{ date: '2026-08-20', vendor: 'Cure Auto Insurance Late Fee', amount: -25 }];
+    expect(alreadyPaid({ date: '2026-08-25', amount: -228.94 }, 'NNT Cure Auto Insurance', fee, 14)).toBe(false);
+  });
+
   it('will not match an expense forecast against income', () => {
     expect(
       alreadyPaid({ date: '2026-08-05', amount: -3746 }, 'City of Detroit Payroll', actuals, 14),

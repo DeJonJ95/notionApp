@@ -1,5 +1,6 @@
 import {
   HALF_PERIOD_DAYS,
+  MIN_PAYMENT_SHARE,
   occurrencesBetween,
   vendorsSimilar,
   type RuleFrequency,
@@ -16,7 +17,8 @@ export type RuleLike = {
   createdAt?: Date;
 };
 
-export type LedgerTx = { date: string; vendor: string; amount: number };
+// `planned` marks a recurring forecast row: evidence a bill is due, never that it was paid.
+export type LedgerTx = { date: string; vendor: string; amount: number; planned?: boolean };
 
 export type RuleMatch = {
   ruleId: string;
@@ -25,8 +27,11 @@ export type RuleMatch = {
   expectedAmt: number;
   expectedCount: number;
   matchedCount: number;
+  unconfirmedCount: number;
   matchedTotal: number;
 };
+
+export type BillState = 'overdue' | 'unconfirmed';
 
 export type ExpectedVsActual = {
   incomeExpected: number;
@@ -43,6 +48,7 @@ export type OverdueBill = {
   amount: number;
   dueDate: string;
   daysOverdue: number;
+  state: BillState;
 };
 
 const DAY_MS = 86_400_000;
@@ -50,6 +56,7 @@ const OVERDUE_LOOKBACK_DAYS = 60;
 const NEXT_DUE_HORIZON_DAYS = 62;
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const sumAbs = (txs: LedgerTx[]) => txs.reduce((s, t) => s + Math.abs(t.amount), 0);
 const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const atMidnight = (iso: string) => new Date(iso + 'T00:00:00').getTime();
 const ymd = (d: Date) =>
@@ -72,38 +79,34 @@ export function computeExpectedVsActual(
 ): ExpectedVsActual {
   const to = new Date(Math.min(window.end.getTime(), (window.now ?? new Date()).getTime()));
   const out = emptyExpectedVsActual();
+  const real = txs.filter((t) => !t.planned);
+  const forecasts = txs.filter((t) => t.planned);
 
   for (const rule of rules) {
     const dueDates = occurrencesBetween(rule.anchorDate, rule.frequency as RuleFrequency, window.start, to);
     if (dueDates.length === 0) continue;
-
-    const expectedTotal = dueDates.length * rule.amount;
-    if (rule.type === 'income') out.incomeExpected += expectedTotal;
-    else out.expenseExpected += expectedTotal;
-
-    let matchedCount = 0;
-    let matchedTotal = 0;
-    for (const due of dueDates) {
-      const match = txs.find((t) => matchesOccurrence(t, rule, due));
-      if (!match) continue;
-      matchedCount++;
-      matchedTotal += Math.abs(match.amount);
-    }
+    out[rule.type === 'income' ? 'incomeExpected' : 'expenseExpected'] += dueDates.length * rule.amount;
+    const payments = dueDates.map((due) => real.find((t) => matchesOccurrence(t, rule, due)));
+    const matched = payments.filter((t) => t !== undefined);
+    const unconfirmed = dueDates.filter(
+      (due, i) => !payments[i] && forecasts.some((t) => matchesOccurrence(t, rule, due)),
+    );
     out.rules.push({
       ruleId: rule.id,
       name: rule.name,
       type: rule.type,
       expectedAmt: rule.amount,
       expectedCount: dueDates.length,
-      matchedCount,
-      matchedTotal: round2(matchedTotal),
+      matchedCount: matched.length,
+      unconfirmedCount: unconfirmed.length,
+      matchedTotal: round2(sumAbs(matched)),
     });
   }
 
   out.incomeExpected = round2(out.incomeExpected);
   out.expenseExpected = round2(out.expenseExpected);
-  out.incomeActual = round2(txs.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0));
-  out.expenseActual = round2(txs.filter((t) => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0));
+  out.incomeActual = round2(sumAbs(real.filter((t) => t.amount > 0)));
+  out.expenseActual = round2(sumAbs(real.filter((t) => t.amount < 0)));
   return out;
 }
 
@@ -120,59 +123,53 @@ function anchorBefore(rule: RuleLike, from: Date): Date {
 // A payment counts for an occurrence from a little before its due date up
 // until shortly before the next one, so a late payment still clears the bill
 // instead of being read as next month's early payment.
-function paymentWindow(due: Date, next: Date, frequency: RuleFrequency): [number, number] {
-  const early = HALF_PERIOD_DAYS[frequency] ?? 14;
-  return [due.getTime() - early * DAY_MS, next.getTime() - Math.ceil(early / 2) * DAY_MS];
-}
-
-function unpaidOccurrences(rule: RuleLike, dues: Date[], txs: LedgerTx[], today: Date): Date[] {
-  const frequency = rule.frequency as RuleFrequency;
-  const candidates = txs
+function unpaidBills(rule: RuleLike, dues: Date[], txs: LedgerTx[], today: Date): OverdueBill[] {
+  const early = HALF_PERIOD_DAYS[rule.frequency as RuleFrequency] ?? 14;
+  const ofRule = txs
     .filter((t) => t.amount < 0 && vendorsSimilar(t.vendor, rule.name))
     .sort((a, b) => a.date.localeCompare(b.date));
+  const payments = ofRule.filter((t) => !t.planned && Math.abs(t.amount) >= rule.amount * MIN_PAYMENT_SHARE);
+  const forecasts = ofRule.filter((t) => t.planned);
   const used = new Set<LedgerTx>();
-  const unpaid: Date[] = [];
 
-  dues.forEach((due, i) => {
-    if (due >= today) return;
+  return dues.flatMap((due, i) => {
+    if (due >= today) return [];
     const next = dues[i + 1] ?? new Date(due.getTime() + NEXT_DUE_HORIZON_DAYS * DAY_MS);
-    const [lo, hi] = paymentWindow(due, next, frequency);
-    const hit = candidates.find((t) => {
-      if (used.has(t)) return false;
-      const at = atMidnight(t.date);
-      return at >= lo && at < hi;
-    });
-    if (hit) used.add(hit);
-    else unpaid.push(due);
+    const lo = due.getTime() - early * DAY_MS;
+    const hi = next.getTime() - Math.ceil(early / 2) * DAY_MS;
+    const take = (rows: LedgerTx[]) => {
+      const hit = rows.find((t) => !used.has(t) && atMidnight(t.date) >= lo && atMidnight(t.date) < hi);
+      if (hit) used.add(hit);
+      return hit;
+    };
+    if (take(payments)) return [];
+    const state: BillState = take(forecasts) ? 'unconfirmed' : 'overdue';
+    return {
+      ruleId: rule.id,
+      name: rule.name,
+      category: rule.category,
+      amount: rule.amount,
+      dueDate: ymd(due),
+      daysOverdue: Math.round((today.getTime() - due.getTime()) / DAY_MS),
+      state,
+    };
   });
-  return unpaid;
 }
 
-/** Expense rules whose due date has passed with no row in the ledger for it:
- *  neither a real payment nor the engine's Planned placeholder. The placeholder
- *  is archived when an import covers its date, so its absence means the
- *  statement for that period showed no such charge. */
+/** Expense rules whose due date has passed with no real payment for it. Where
+ *  the engine's forecast row still stands, no statement covering that date has
+ *  been imported, so the bill is 'unconfirmed'. An import archives the forecast
+ *  for the dates it covers, so a due date with no row at all is 'overdue'. */
 export function computeOverdueBills(rules: RuleLike[], txs: LedgerTx[], today: Date): OverdueBill[] {
   const end = dayStart(today);
   const lookback = new Date(end.getTime() - OVERDUE_LOOKBACK_DAYS * DAY_MS);
   const horizon = new Date(end.getTime() + NEXT_DUE_HORIZON_DAYS * DAY_MS);
-  const out: OverdueBill[] = [];
-
-  for (const rule of rules) {
-    if (rule.type === 'income') continue;
-    const from = rule.createdAt && rule.createdAt > lookback ? dayStart(rule.createdAt) : lookback;
-    const frequency = rule.frequency as RuleFrequency;
-    const dues = occurrencesBetween(anchorBefore(rule, from), frequency, from, horizon);
-    for (const due of unpaidOccurrences(rule, dues, txs, end)) {
-      out.push({
-        ruleId: rule.id,
-        name: rule.name,
-        category: rule.category,
-        amount: rule.amount,
-        dueDate: ymd(due),
-        daysOverdue: Math.round((end.getTime() - due.getTime()) / DAY_MS),
-      });
-    }
-  }
-  return out.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  return rules
+    .filter((rule) => rule.type !== 'income')
+    .flatMap((rule) => {
+      const from = rule.createdAt && rule.createdAt > lookback ? dayStart(rule.createdAt) : lookback;
+      const dues = occurrencesBetween(anchorBefore(rule, from), rule.frequency as RuleFrequency, from, horizon);
+      return unpaidBills(rule, dues, txs, end);
+    })
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }

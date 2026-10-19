@@ -7,7 +7,6 @@ import {
   forecastOccurrences,
   detectRecurringPatterns,
   computeRuleVariance,
-  normalizeBudgetToMonthly,
   monthElapsedPercent,
   computeCategoryBudgets,
   computeAccountBalancesFrom,
@@ -34,34 +33,10 @@ import {
   type ExpectedVsActual,
   type OverdueBill,
 } from '@/lib/budgetExpected';
+import { readLedger, type Tx } from '@/lib/budgetLedger';
+import { detectRepeatVendors, type RepeatVendor, type Subscription } from '@/lib/budgetRepeatVendors';
 
-export type Tx = {
-  pageId: string;
-  date: string;
-  vendor: string;
-  amount: number;       // signed: negative = expense, positive = income
-  category: string;
-  type: string;
-  account: string | null;
-};
-
-export type Subscription = {
-  vendor: string;
-  averageAmount: number;
-  occurrences: number;
-  lastDate: string;
-  category: string;
-  monthlyEstimate: number;
-};
-
-export type RepeatVendor = {
-  vendor: string;
-  occurrences: number;
-  totalAmount: number;
-  averageAmount: number;
-  lastDate: string;
-  category: string;
-};
+export type { RepeatVendor, Subscription };
 
 export type DashboardPayload = {
   databaseId: string;
@@ -148,44 +123,7 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   });
 
-  const all: Tx[] = [];
-  // Envelope targets: Type=Budget rows, normalized to a monthly figure.
-  const monthlyBudgets = new Map<string, number>();
-  // Type=Savings rows, matched to goals by name further down.
-  const savingsRows: { text: string; amount: number }[] = [];
-  for (const p of pages) {
-    const vals: Record<string, any> = {};
-    for (const pv of p.properties) vals[pv.property.name] = pv.value;
-    const type = String(vals['Type'] ?? '');
-    if (type === 'Budget') {
-      // Not a transaction — it defines a category envelope. Same semantics as
-      // the budget-summary view: prefer "Budgeted Amount", fall back to "Amount".
-      const cat = String(vals['Category'] ?? '').trim();
-      const raw = Math.abs(Number(vals['Budgeted Amount'] ?? 0)) || Math.abs(Number(vals['Amount'] ?? 0));
-      if (cat && raw > 0) {
-        const period = String(vals['Budget Period'] ?? '');
-        monthlyBudgets.set(cat, (monthlyBudgets.get(cat) ?? 0) + normalizeBudgetToMonthly(raw, period));
-      }
-      continue;
-    }
-    const rawAmt = Number(vals['Amount'] ?? 0);
-    if (!rawAmt) continue;
-    if (type === 'Savings') {
-      savingsRows.push({
-        text: `${vals['Vendor'] ?? p.title ?? ''} ${vals['Notes'] ?? ''}`,
-        amount: rawAmt,
-      });
-    }
-    all.push({
-      pageId: p.id,
-      date: String(vals['Date'] ?? '').slice(0, 10),
-      vendor: String(vals['Vendor'] ?? p.title ?? ''),
-      amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
-      category: String(vals['Category'] ?? 'Other'),
-      type,
-      account: vals['Account'] == null ? null : String(vals['Account']),
-    });
-  }
+  const { all, monthlyBudgets, savingsRows } = readLedger(pages);
 
   // Month windows
   const now = new Date();
@@ -207,9 +145,14 @@ export async function GET(req: NextRequest) {
   // would double up a credit-card payment (once as the charge, once as the
   // payment). They stay in `all` — recent transactions still list them, and
   // account balances genuinely change when money moves.
-  const spendable = all.filter((t) => t.category !== TRANSFERS_CATEGORY);
+  // Forecast rows say a bill is due, never that it was paid, so every total is
+  // real money only; `all` keeps them for the transaction list and bill checks.
+  const real = all.filter((t) => !t.planned);
+  const spendable = real.filter((t) => t.category !== TRANSFERS_CATEGORY);
 
   const usedThis = spendable.filter((t) => inRange(t.date, displayMonthStart, displayMonthEnd));
+  const forecastThis = all.filter((t) =>
+    t.planned && t.category !== TRANSFERS_CATEGORY && inRange(t.date, displayMonthStart, displayMonthEnd));
   const usedPrev = spendable.filter((t) => inRange(t.date, prevMonthStart, displayMonthStart));
   const monthLabel = displayMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -263,62 +206,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.pctChange - a.pctChange)
     .slice(0, 5);
 
-  // Subscription detection: vendor with 2+ expense charges over the trailing
-  // 90 days with similar amount (within 15% of mean).
-  const cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-  const recent = all.filter((t) => t.amount < 0 && new Date(t.date) >= cutoff);
-  const byVendor = new Map<string, Tx[]>();
-  for (const t of recent) {
-    const key = t.vendor.trim();
-    if (!key) continue;
-    if (!byVendor.has(key)) byVendor.set(key, []);
-    byVendor.get(key)!.push(t);
-  }
-  const subscriptions: Subscription[] = [];
-  for (const [vendor, txs] of byVendor.entries()) {
-    if (txs.length < 2) continue;
-    const amounts = txs.map((t) => Math.abs(t.amount));
-    const mean = amounts.reduce((s, a) => s + a, 0) / amounts.length;
-    const inRangeCount = amounts.filter((a) => Math.abs(a - mean) / mean < 0.15).length;
-    if (inRangeCount < 2) continue;
-    // Don't flag food/groceries/gas as subscriptions
-    if (['Food & Dining', 'Transport'].includes(txs[0].category)) continue;
-    txs.sort((a, b) => a.date.localeCompare(b.date));
-    subscriptions.push({
-      vendor,
-      averageAmount: Math.round(mean * 100) / 100,
-      occurrences: txs.length,
-      lastDate: txs.at(-1)!.date,
-      category: txs[0].category,
-      monthlyEstimate: Math.round(mean * 100) / 100,
-    });
-  }
-  subscriptions.sort((a, b) => b.monthlyEstimate - a.monthlyEstimate);
-
-  // ── "Other repeat vendors" — broader list so the user can manually flag
-  // anything the strict subscription heuristic missed (food, transport,
-  // utilities with variable amounts, car payments, etc.). Excludes vendors
-  // already in the subscriptions list above.
-  const subVendorSet = new Set(subscriptions.map((s) => s.vendor.toLowerCase().trim()));
-  const repeatVendors: RepeatVendor[] = [];
-  for (const [vendor, txs] of byVendor.entries()) {
-    if (txs.length < 2) continue;
-    if (subVendorSet.has(vendor.toLowerCase().trim())) continue;
-    const amounts = txs.map((t) => Math.abs(t.amount));
-    const total = amounts.reduce((s, a) => s + a, 0);
-    const avg = total / amounts.length;
-    txs.sort((a, b) => a.date.localeCompare(b.date));
-    repeatVendors.push({
-      vendor,
-      occurrences: txs.length,
-      totalAmount: Math.round(total * 100) / 100,
-      averageAmount: Math.round(avg * 100) / 100,
-      lastDate: txs.at(-1)!.date,
-      category: txs[0].category,
-    });
-  }
-  // Sort by total spend descending — biggest impact first
-  repeatVendors.sort((a, b) => b.totalAmount - a.totalAmount);
+  const { subscriptions, repeatVendors } = detectRepeatVendors(real, now);
 
   // ── Spending trends: last 6 calendar months (income vs expenses) ───────
   const trends: { month: string; income: number; expenses: number }[] = [];
@@ -366,7 +254,9 @@ export async function GET(req: NextRequest) {
     return d >= now && d <= monthEnd;
   });
   const scheduledNet = scheduledThisMonth.reduce((s, f) => s + f.amount, 0);
-  const projectedMonthEnd = (income - expenses) + scheduledNet;
+  // Forecasts already due but not confirmed by a statement are still owed.
+  const unconfirmedNet = forecastThis.reduce((s, t) => s + t.amount, 0);
+  const projectedMonthEnd = (income - expenses) + unconfirmedNet + scheduledNet;
 
   // ── Account balances + projected balance curve ───────────────────────────
   // Anchored on the closing balance of the latest statement per account, then
@@ -377,7 +267,7 @@ export async function GET(req: NextRequest) {
       where: { userId },
       select: { account: true, closingBalance: true, dateTo: true },
     });
-    accounts = computeAccountBalancesFrom(importLogs, all);
+    accounts = computeAccountBalancesFrom(importLogs, real);
   } catch (e) {
     console.warn('[budget-dashboard] account balances skipped:', (e as Error).message);
   }
@@ -413,7 +303,7 @@ export async function GET(req: NextRequest) {
   let patternSuggestions: PatternSuggestion[] = [];
   try {
     const rules = await prisma.recurringRule.findMany({ where: { userId } });
-    const txForPatterns = all.map((t) => ({
+    const txForPatterns = real.map((t) => ({
       vendor: t.vendor,
       amount: t.amount,
       date: t.date,
@@ -429,7 +319,7 @@ export async function GET(req: NextRequest) {
   try {
     const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
     ruleVariance = rules.map((r) => {
-      const matchedTxs = all
+      const matchedTxs = real
         .filter((t) => {
           const amtMatch = Math.abs(Math.abs(t.amount) - r.amount) / r.amount < 0.3;
           return amtMatch && vendorsSimilar(t.vendor, r.name);
@@ -511,7 +401,7 @@ export async function GET(req: NextRequest) {
   let overdueBills: OverdueBill[] = [];
   try {
     const rules = await prisma.recurringRule.findMany({ where: { userId, isActive: true } });
-    expectedVsActual = computeExpectedVsActual(rules, usedThis, { start: displayMonthStart, end: displayMonthEnd, now });
+    expectedVsActual = computeExpectedVsActual(rules, [...usedThis, ...forecastThis], { start: displayMonthStart, end: displayMonthEnd, now });
     overdueBills = computeOverdueBills(rules, all, now);
   } catch (e) {
     console.warn('[budget-dashboard] expected-vs-actual skipped:', (e as Error).message);

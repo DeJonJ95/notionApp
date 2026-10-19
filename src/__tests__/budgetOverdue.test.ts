@@ -14,7 +14,7 @@ describe('computeOverdueBills', () => {
   it('flags a monthly bill whose due date passed with no ledger row', () => {
     const bills = computeOverdueBills([verizon], [charge('2026-08-01')], today);
     expect(bills).toEqual([
-      { ruleId: 'r1', name: 'Verizon', category: 'Utilities', amount: 166.74, dueDate: '2026-09-01', daysOverdue: 16 },
+      { ruleId: 'r1', name: 'Verizon', category: 'Utilities', amount: 166.74, dueDate: '2026-09-01', daysOverdue: 16, state: 'overdue' },
     ]);
   });
 
@@ -23,9 +23,22 @@ describe('computeOverdueBills', () => {
     expect(computeOverdueBills([verizon], [charge('2026-08-01'), charge('2026-09-15', 'Verizon', -171.02)], today)).toEqual([]);
   });
 
-  it('treats the engine placeholder as not yet known rather than overdue', () => {
-    const planned = charge('2026-09-01');
-    expect(computeOverdueBills([verizon], [charge('2026-08-01'), planned], today)).toEqual([]);
+  it('reports a due date with only the engine forecast as unconfirmed, never paid', () => {
+    const planned = { ...charge('2026-09-01'), planned: true };
+    const bills = computeOverdueBills([verizon], [charge('2026-08-01'), planned], today);
+    expect(bills.map((b) => [b.dueDate, b.state])).toEqual([['2026-09-01', 'unconfirmed']]);
+  });
+
+  it('does not let a charge under half the bill, like a late fee, pay it', () => {
+    const fee = charge('2026-09-06', 'Verizon Late Fee', -15);
+    expect(computeOverdueBills([verizon], [charge('2026-08-01'), fee], today).map((b) => b.state)).toEqual(['overdue']);
+    const half = charge('2026-09-06', 'Verizon', -83.37);
+    expect(computeOverdueBills([verizon], [charge('2026-08-01'), half], today)).toEqual([]);
+  });
+
+  it('still counts a real payment when a stale forecast sits on the same date', () => {
+    const planned = { ...charge('2026-09-01'), planned: true };
+    expect(computeOverdueBills([verizon], [charge('2026-08-01'), planned, charge('2026-09-03')], today)).toEqual([]);
   });
 
   it('does not let next month\'s early payment cover a missed one', () => {
@@ -56,7 +69,16 @@ describe('computeExpectedVsActual', () => {
     expect(result.expenseExpected).toBe(166.74);
     expect(result.expenseActual).toBe(250);
     expect(result.rules).toEqual([
-      { ruleId: 'r1', name: 'Verizon', type: 'expense', expectedAmt: 166.74, expectedCount: 1, matchedCount: 1, matchedTotal: 170 },
+      { ruleId: 'r1', name: 'Verizon', type: 'expense', expectedAmt: 166.74, expectedCount: 1, matchedCount: 1, unconfirmedCount: 0, matchedTotal: 170 },
     ]);
+  });
+
+  it('counts a forecast row as unconfirmed and leaves it out of what posted', () => {
+    const start = new Date(2026, 8, 1);
+    const end = new Date(2026, 9, 1);
+    const txs = [{ ...charge('2026-09-01'), planned: true }, charge('2026-09-05', 'Kroger', -80)];
+    const result = computeExpectedVsActual([verizon], txs, { start, end, now: today });
+    expect(result.expenseActual).toBe(80);
+    expect(result.rules[0]).toMatchObject({ matchedCount: 0, unconfirmedCount: 1, matchedTotal: 0 });
   });
 });

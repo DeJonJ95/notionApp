@@ -129,8 +129,6 @@ export async function findOrCreateBudgetDb(userId: string): Promise<BudgetDb> {
   };
 }
 
-// ── Recurring transaction engine ───────────────────────────────────────────
-
 export type RuleFrequency = 'weekly' | 'biweekly' | 'semimonthly' | 'monthly';
 
 // Given an anchor date and a frequency, list all occurrence dates from
@@ -214,9 +212,10 @@ export const HALF_PERIOD_DAYS: Record<RuleFrequency, number> = {
   monthly: 14,
 };
 
-/** Has this occurrence already been paid for real? Amount is not compared —
- *  a rule's fixed figure rarely equals the actual bill, which is the whole
- *  reason these slip past duplicate detection. */
+/** Least share of a bill a real payment must be to pay it, so a late fee can't. */
+export const MIN_PAYMENT_SHARE = 0.5;
+
+/** Has this occurrence already been paid for real, near its due date? */
 export function alreadyPaid(
   occurrence: { date: string; amount: number },
   ruleName: string,
@@ -229,6 +228,7 @@ export function alreadyPaid(
 
   return actuals.some((a) => {
     if (Math.sign(a.amount) !== Math.sign(occurrence.amount)) return false;
+    if (Math.abs(a.amount) < Math.abs(occurrence.amount) * MIN_PAYMENT_SHARE) return false;
     const at = new Date(a.date + 'T00:00:00').getTime();
     if (Number.isNaN(at) || Math.abs(at - t) > windowMs) return false;
     return vendorsSimilar(a.vendor, ruleName);
@@ -393,8 +393,6 @@ export type ParsedTransaction = {
   status?: string;     // 'Cleared' (real money) or 'Planned' (forecast). Default 'Cleared'.
 };
 
-// ── Recurring-generated rows ────────────────────────────────────────────
-
 /** Notes text stamped on every row the recurring engine creates. It is the
  *  only marker distinguishing a forecast row from one the user or an import
  *  put there, so both the engine and the import cleanup key off it. */
@@ -414,9 +412,6 @@ export type LedgerDuplicate = {
   reason: 'forecast-superseded' | 'repeat-import';
   matched: { date: string; vendor: string; amount: number };  // the row being kept
 };
-
-/** Alias kept for the original single-purpose name. */
-export type ForecastCollision = LedgerDuplicate;
 
 /** Find recurring forecast rows that the real transaction has since landed on
  *  top of. Amount is deliberately NOT compared: the whole reason these survive
@@ -529,9 +524,6 @@ export function findLedgerDuplicates(
   }
   return out;
 }
-
-/** Previous name, when this only handled the forecast case. */
-export const findForecastCollisions = findLedgerDuplicates;
 
 /** Is `date` inside any imported statement's coverage? A statement is the
  *  authoritative record for its period, so the engine must not invent a
@@ -742,8 +734,8 @@ function vendorTokens(s: string): string[] {
  *  shorter name.
  *
  *  Deliberately NOT used by `findDuplicateTransactions`: there a false
- *  positive silently discards a real transaction. Every caller of this pairs
- *  it with an amount check (within 30%), which is what separates, say, a
+ *  positive silently discards a real transaction. Callers deciding a bill was
+ *  paid pair it with an amount check, which is what separates, say, a
  *  "City of Detroit Paycheck" rule from a "City of Detroit Water" charge. */
 export function vendorsSimilar(a: string, b: string): boolean {
   if (vendorsMatch(a, b)) return true;
