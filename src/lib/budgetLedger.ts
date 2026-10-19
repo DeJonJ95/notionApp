@@ -80,3 +80,14 @@ export async function loadLedger(databaseId: string, order: 'asc' | 'desc' = 'de
   });
   return readLedger(pages);
 }
+
+/** Forecast rows the retired recurring engine wrote into the ledger. Bills are
+ *  now settled against statements directly, so the first read of a ledger that
+ *  still holds them archives them (a soft delete, restorable from the database). */
+export async function archiveLegacyForecasts(rows: Tx[]): Promise<Tx[]> {
+  const legacy = rows.filter((t) => isRecurringGeneratedNote(t.notes)).map((t) => t.pageId);
+  if (legacy.length > 0) {
+    await prisma.page.updateMany({ where: { id: { in: legacy } }, data: { isArchived: true } });
+  }
+  return rows.filter((t) => !isRecurringGeneratedNote(t.notes));
+}

@@ -42,8 +42,8 @@ export function parseMeta(parsed: unknown): StatementMeta {
 
 /** The dates a statement is the record for: its printed period when that is
  *  plausible and overlaps its own transactions, otherwise first to last
- *  transaction. Days in the period with no transactions are still covered, which
- *  is what lets an import supersede a forecast dated on one of them. */
+ *  transaction. Days in the period with no transactions are still covered, so a
+ *  bill due on one of them is judged against this statement. */
 export function statementRange(
   meta: { periodStart?: unknown; periodEnd?: unknown } | null | undefined,
   txDates: string[],

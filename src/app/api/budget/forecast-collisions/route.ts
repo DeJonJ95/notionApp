@@ -4,15 +4,12 @@ import { prisma } from '@/lib/prisma';
 import {
   findOrCreateBudgetDb,
   findLedgerDuplicates,
-  isRecurringGeneratedNote,
   type LedgerDuplicate,
 } from '@/lib/budgetDb';
 import { loadLedger } from '@/lib/budgetLedger';
 
-// Recurring forecast rows that the real transaction has landed on top of.
-// Normally prevented at the source (the engine skips import-covered dates, and
-// an import supersedes forecasts in its range), but rows written before those
-// guards existed still need clearing, and this also catches any that slip past.
+// Rows that came from importing the same statement twice. The route keeps its
+// original name; recurring forecasts are no longer written, so only this remains.
 
 export type ForecastCollisionsPayload = {
   collisions: LedgerDuplicate[];
@@ -20,14 +17,7 @@ export type ForecastCollisionsPayload = {
 
 async function loadRows(databaseId: string) {
   const { all } = await loadLedger(databaseId, 'asc');
-  const rows = all.map((t) => ({
-    pageId: t.pageId,
-    date: t.date,
-    vendor: t.vendor,
-    amount: t.amount,
-    isGenerated: isRecurringGeneratedNote(t.notes),
-  }));
-  return rows;
+  return all.filter((t) => !t.planned);
 }
 
 export async function GET() {

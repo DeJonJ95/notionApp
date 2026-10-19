@@ -215,138 +215,6 @@ export const HALF_PERIOD_DAYS: Record<RuleFrequency, number> = {
 /** Least share of a bill a real payment must be to pay it, so a late fee can't. */
 export const MIN_PAYMENT_SHARE = 0.5;
 
-/** Has this occurrence already been paid for real, near its due date? */
-export function alreadyPaid(
-  occurrence: { date: string; amount: number },
-  ruleName: string,
-  actuals: { date: string; vendor: string; amount: number }[],
-  withinDays: number,
-): boolean {
-  const t = new Date(occurrence.date + 'T00:00:00').getTime();
-  if (Number.isNaN(t)) return false;
-  const windowMs = withinDays * 86_400_000;
-
-  return actuals.some((a) => {
-    if (Math.sign(a.amount) !== Math.sign(occurrence.amount)) return false;
-    if (Math.abs(a.amount) < Math.abs(occurrence.amount) * MIN_PAYMENT_SHARE) return false;
-    const at = new Date(a.date + 'T00:00:00').getTime();
-    if (Number.isNaN(at) || Math.abs(at - t) > windowMs) return false;
-    return vendorsSimilar(a.vendor, ruleName);
-  });
-}
-
-// Process every active rule for a user — generate any past-due transactions
-// up through today, advance the anchor, and update lastGeneratedDate.
-export async function runRecurringEngine(userId: string, today: Date = new Date()): Promise<{
-  generated: number;
-  skipped: number;
-}> {
-  const rules = await prisma.recurringRule.findMany({
-    where: { userId, isActive: true },
-  });
-  if (rules.length === 0) return { generated: 0, skipped: 0 };
-
-  const db = await findOrCreateBudgetDb(userId);
-
-  // Periods already covered by an imported statement. The statement is the
-  // record of what actually happened there, so forecasting into it would
-  // double-count the real transaction the import brings in.
-  let coverage: { dateFrom: Date; dateTo: Date }[] = [];
-  try {
-    coverage = await prisma.importLog.findMany({
-      where: { userId },
-      select: { dateFrom: true, dateTo: true },
-    });
-  } catch (e) {
-    console.warn('[recurring-engine] import coverage unavailable:', (e as Error).message);
-  }
-
-  // Real (non-forecast) transactions, so a bill that already posted doesn't get
-  // forecast on top of. Coverage-skipping above only helps inside an imported
-  // range; a bill paid after the last statement still needs this.
-  let actuals: { date: string; vendor: string; amount: number }[] = [];
-  try {
-    const pages = await prisma.page.findMany({
-      where: { databaseId: db.id, isArchived: false },
-      include: { properties: { include: { property: { select: { name: true } } } } },
-    });
-    for (const p of pages) {
-      const vals: Record<string, any> = {};
-      for (const pv of p.properties) vals[pv.property.name] = pv.value;
-      const type = String(vals['Type'] ?? '');
-      if (type === 'Budget') continue;
-      if (isRecurringGeneratedNote(vals['Notes'])) continue; // another forecast
-      const rawAmt = Number(vals['Amount'] ?? 0);
-      if (!rawAmt) continue;
-      actuals.push({
-        date: String(vals['Date'] ?? '').slice(0, 10),
-        vendor: String(vals['Vendor'] ?? p.title ?? ''),
-        amount: type === 'Income' ? Math.abs(rawAmt) : -Math.abs(rawAmt),
-      });
-    }
-  } catch (e) {
-    console.warn('[recurring-engine] actuals unavailable:', (e as Error).message);
-  }
-
-  let generated = 0;
-  let skipped = 0;
-  const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
-
-  for (const rule of rules) {
-    // Start window: day AFTER the last generated date (so we never duplicate);
-    // if never generated, start at the anchor itself.
-    const startWindow = rule.lastGeneratedDate
-      ? new Date(rule.lastGeneratedDate.getFullYear(), rule.lastGeneratedDate.getMonth(), rule.lastGeneratedDate.getDate() + 1)
-      : new Date(rule.anchorDate);
-
-    const due = occurrencesBetween(rule.anchorDate, rule.frequency as RuleFrequency, startWindow, endOfToday);
-    if (due.length === 0) continue;
-
-    // Create one transaction per due date
-    const transactions: ParsedTransaction[] = due.map((d) => {
-      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const signed = rule.type === 'income' ? rule.amount : -rule.amount;
-      return {
-        date: iso,
-        vendor: rule.name,
-        description: recurringNote(rule.type, rule.name),
-        amount: signed,
-        category: rule.category,
-        // A forecast, not money the bank has confirmed. Marking it 'Planned'
-        // is what lets an import supersede it later.
-        status: 'Planned',
-      };
-    });
-    // Drop occurrences the ledger already accounts for: inside an imported
-    // statement's range, or already paid for real near the due date.
-    const nearDays = HALF_PERIOD_DAYS[rule.frequency as RuleFrequency] ?? 14;
-    const toWrite = transactions.filter(
-      (t) => !isDateCovered(t.date, coverage) && !alreadyPaid(t, rule.name, actuals, nearDays),
-    );
-    skipped += transactions.length - toWrite.length;
-    if (toWrite.length > 0) {
-      await writeTransactions(userId, db.id, toWrite);
-      generated += toWrite.length;
-    }
-
-    // Advance anchor + lastGeneratedDate
-    const lastDue = due[due.length - 1];
-    const nextAnchor = nextOccurrenceAfter(rule.anchorDate, rule.frequency as RuleFrequency, lastDue);
-    await prisma.recurringRule.update({
-      where: { id: rule.id },
-      data: {
-        anchorDate: nextAnchor,
-        lastGeneratedDate: lastDue,
-      },
-    });
-  }
-
-  if (skipped > 0) {
-    console.log(`[recurring-engine] skipped ${skipped} occurrence(s) already covered by an import`);
-  }
-  return { generated, skipped };
-}
-
 export type ForecastItem = {
   date: string;
   amount: number;       // signed: + = income, - = expense
@@ -367,7 +235,8 @@ export async function forecastOccurrences(userId: string, days: number, today: D
 
   const out: ForecastItem[] = [];
   for (const rule of rules) {
-    const occs = occurrencesBetween(rule.anchorDate, rule.frequency as RuleFrequency, start, end);
+    const first = new Date(rule.anchorDate.getFullYear(), rule.anchorDate.getMonth(), rule.anchorDate.getDate());
+    const occs = occurrencesBetween(rule.anchorDate, rule.frequency as RuleFrequency, start, end).filter((d) => d >= first);
     for (const d of occs) {
       out.push({
         date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
@@ -393,13 +262,8 @@ export type ParsedTransaction = {
   status?: string;     // 'Cleared' (real money) or 'Planned' (forecast). Default 'Cleared'.
 };
 
-/** Notes text stamped on every row the recurring engine creates. It is the
- *  only marker distinguishing a forecast row from one the user or an import
- *  put there, so both the engine and the import cleanup key off it. */
-export function recurringNote(type: string, name: string): string {
-  return `Recurring ${type}: ${name}`;
-}
-
+/** The Notes text the retired recurring engine stamped on the forecast rows it
+ *  wrote. Only used now to find and archive those rows. */
 export function isRecurringGeneratedNote(note: unknown): boolean {
   return /^Recurring (income|expense): /.test(String(note ?? ''));
 }
@@ -409,130 +273,47 @@ export type LedgerDuplicate = {
   date: string;
   vendor: string;
   amount: number;
-  reason: 'forecast-superseded' | 'repeat-import';
+  reason: 'repeat-import';
   matched: { date: string; vendor: string; amount: number };  // the row being kept
 };
 
-/** Find recurring forecast rows that the real transaction has since landed on
- *  top of. Amount is deliberately NOT compared: the whole reason these survive
- *  normal dedup is that a rule's fixed amount rarely equals the real paycheck
- *  or a variable bill. Instead: a similar vendor, the same direction of money,
- *  and a nearby date.
- *
- *  Only rows flagged `isGenerated` are ever proposed for removal, and only when
- *  a NON-generated row corroborates them, so two forecasts can't cancel out. */
 /** Below this, a same-day same-amount pair is far more likely to be genuine
  *  (verification trial deposits and their refund, interest, small fees) than a
- *  re-import, so the repeat-import pass leaves it alone. */
+ *  re-import, so it is left alone. */
 export const MICRO_TRANSACTION_LIMIT = 1;
 
 const cents = (n: number) => Math.round(n * 100);
 
-/** How far a real transaction may sit from the forecast it supersedes. Bills
- *  post early or late against a rule's anchor — an insurance premium anchored
- *  to the 25th can clear on the 14th — so a few days is far too tight. Stays
- *  under half a monthly period, so it can't reach an adjacent occurrence. */
-export const FORECAST_MATCH_WINDOW_DAYS = 14;
-
+/** The same real transaction imported twice: identical date and identical
+ *  amount, so two genuine same-day charges of different sizes are never
+ *  touched. Rows arrive oldest-first, so the original is kept and the later
+ *  copy proposed for removal. */
 export function findLedgerDuplicates(
-  rows: { pageId: string; date: string; vendor: string; amount: number; isGenerated: boolean }[],
-  windowDays = FORECAST_MATCH_WINDOW_DAYS,
+  rows: { pageId: string; date: string; vendor: string; amount: number }[],
 ): LedgerDuplicate[] {
-  const windowMs = windowDays * 86_400_000;
-  const time = (d: string) => new Date(d + 'T00:00:00').getTime();
   const out: LedgerDuplicate[] = [];
-  // Rows already spoken for, as either the kept or the removed side, so a
-  // single transaction can't be counted into two different pairs.
+  // Rows already spoken for, so one transaction can't be counted into two pairs.
   const spent = new Set<string>();
-
-  // ── Pass 1: a forecast the real transaction landed on top of ────────────
-  // Amount is NOT compared — a rule's fixed amount rarely equals reality, which
-  // is exactly why these survive import dedup.
-  const real = rows.filter((r) => !r.isGenerated);
-  // Collect every plausible pairing, then settle the closest ones first. With a
-  // window this wide, taking the first match in array order would happily pair
-  // a forecast with a transaction that belongs to the occurrence next door.
-  type Pair = { forecast: (typeof rows)[number]; hit: (typeof rows)[number]; distance: number };
-  const pairs: Pair[] = [];
-  for (const forecast of rows) {
-    if (!forecast.isGenerated) continue;
-    const t = time(forecast.date);
-    if (Number.isNaN(t)) continue;
-
-    for (const r of real) {
-      if (Math.sign(r.amount) !== Math.sign(forecast.amount)) continue;
-      const rt = time(r.date);
-      if (Number.isNaN(rt)) continue;
-      const distance = Math.abs(rt - t);
-      if (distance > windowMs) continue;
-      if (!vendorsSimilar(r.vendor, forecast.vendor)) continue;
-      pairs.push({ forecast, hit: r, distance });
-    }
-  }
-  pairs.sort((a, b) =>
-    a.distance - b.distance || a.forecast.pageId.localeCompare(b.forecast.pageId),
-  );
-
-  for (const { forecast, hit } of pairs) {
-    if (spent.has(forecast.pageId) || spent.has(hit.pageId)) continue;
-    spent.add(hit.pageId);
-    spent.add(forecast.pageId);
-    out.push({
-      pageId: forecast.pageId,
-      date: forecast.date,
-      vendor: forecast.vendor,
-      amount: forecast.amount,
-      reason: 'forecast-superseded',
-      matched: { date: hit.date, vendor: hit.vendor, amount: hit.amount },
-    });
-  }
-
-  // ── Pass 2: the same real transaction imported twice ────────────────────
-  // Stricter than pass 1 on purpose: identical date AND identical amount, so
-  // two genuine same-day charges of different sizes are never touched. Rows
-  // arrive oldest-first, so the original is kept and the later copy removed.
   for (let i = 0; i < rows.length; i++) {
     const later = rows[i];
-    if (later.isGenerated || spent.has(later.pageId)) continue;
-    if (!time(later.date)) continue;
-    // Tiny amounts are where legitimate near-identical pairs actually live:
-    // account-verification trial deposits and their reversal, interest, small
-    // fees. Removing one would be wrong, and a duplicate this size moves no
-    // total worth the risk.
+    if (spent.has(later.pageId) || !new Date(later.date + 'T00:00:00').getTime()) continue;
     if (Math.abs(later.amount) < MICRO_TRANSACTION_LIMIT) continue;
-
-    for (let j = 0; j < i; j++) {
-      const original = rows[j];
-      if (original.isGenerated || spent.has(original.pageId)) continue;
-      if (original.date !== later.date) continue;
-      // Exact to the cent. A tolerance would make 0.01 and 0.02 "equal".
-      if (cents(original.amount) !== cents(later.amount)) continue;
-      if (!vendorsSimilar(original.vendor, later.vendor)) continue;
-
-      spent.add(original.pageId);
-      spent.add(later.pageId);
-      out.push({
-        pageId: later.pageId,
-        date: later.date,
-        vendor: later.vendor,
-        amount: later.amount,
-        reason: 'repeat-import',
-        matched: { date: original.date, vendor: original.vendor, amount: original.amount },
-      });
-      break;
-    }
+    const original = rows.slice(0, i).find((o) =>
+      !spent.has(o.pageId) && o.date === later.date
+      && cents(o.amount) === cents(later.amount) && vendorsSimilar(o.vendor, later.vendor));
+    if (!original) continue;
+    spent.add(original.pageId);
+    spent.add(later.pageId);
+    out.push({
+      pageId: later.pageId,
+      date: later.date,
+      vendor: later.vendor,
+      amount: later.amount,
+      reason: 'repeat-import',
+      matched: { date: original.date, vendor: original.vendor, amount: original.amount },
+    });
   }
   return out;
-}
-
-/** Is `date` inside any imported statement's coverage? A statement is the
- *  authoritative record for its period, so the engine must not invent a
- *  transaction there and an import supersedes any forecast already written. */
-export function isDateCovered(
-  date: string,
-  ranges: { dateFrom: Date; dateTo: Date }[],
-): boolean {
-  return ranges.some((r) => date >= ymdOf(r.dateFrom) && date <= ymdOf(r.dateTo));
 }
 
 // Bulk-write transactions as pages with property values.

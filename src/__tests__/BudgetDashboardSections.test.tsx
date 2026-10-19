@@ -38,7 +38,6 @@ const dashboard = {
   variableSpendEstimate: 400,
   forecast: [],
   projectedMonthEnd: 6284,
-  generatedThisLoad: 0,
   trends: [],
   patternSuggestions: [],
   ruleVariance: [],

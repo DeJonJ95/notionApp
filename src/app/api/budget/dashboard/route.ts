@@ -3,7 +3,6 @@ import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import {
   findOrCreateBudgetDb,
-  runRecurringEngine,
   forecastOccurrences,
   detectRecurringPatterns,
   computeRuleVariance,
@@ -33,7 +32,7 @@ import {
   type ExpectedVsActual,
   type OverdueBill,
 } from '@/lib/budgetExpected';
-import { loadLedger, type Tx } from '@/lib/budgetLedger';
+import { archiveLegacyForecasts, loadLedger, type Tx } from '@/lib/budgetLedger';
 import { categorySpending, monthlyTrends } from '@/lib/budgetSpending';
 import { detectRepeatVendors, type RepeatVendor, type Subscription } from '@/lib/budgetRepeatVendors';
 
@@ -72,7 +71,6 @@ export type DashboardPayload = {
   variableSpendEstimate: number;   // per month, measured from history
   forecast: ForecastItem[];      // next 14 days of scheduled income/expense
   projectedMonthEnd: number;     // expected net = current + remaining scheduled this month
-  generatedThisLoad: number;     // how many tx were auto-created by the engine on this request
   trends: { month: string; income: number; expenses: number }[];
   patternSuggestions: PatternSuggestion[];
   ruleVariance: { ruleId: string; name: string; type: string; amount: number; category: string; variance: RuleVariance }[];
@@ -100,21 +98,15 @@ export async function GET(req: NextRequest) {
   const monthParam = req.nextUrl.searchParams.get('month');
 
   const db = await findOrCreateBudgetDb(userId);
-  // Run the recurring engine BEFORE pulling transactions so any newly-due
-  // paychecks/bills are included in the period totals on this same request.
-  let generated = 0;
-  try {
-    const result = await runRecurringEngine(userId);
-    generated = result.generated;
-  } catch (e) {
-    console.warn('[budget-dashboard] recurring engine skipped:', (e as Error).message);
-  }
-
-  const [{ all, monthlyBudgets, savingsRows }, allRules] = await Promise.all([
+  const [ledger, allRules, importLogs] = await Promise.all([
     loadLedger(db.id),
     prisma.recurringRule.findMany({ where: { userId } }),
+    prisma.importLog.findMany({ where: { userId }, select: { account: true, closingBalance: true, dateFrom: true, dateTo: true } }),
   ]);
+  const { monthlyBudgets, savingsRows } = ledger;
+  const all = await archiveLegacyForecasts(ledger.all);
   const activeRules = allRules.filter((r) => r.isActive);
+  const coverage = importLogs.map((l) => ({ account: l.account, from: ymd(l.dateFrom), to: ymd(l.dateTo) }));
 
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -135,14 +127,12 @@ export async function GET(req: NextRequest) {
   // would double up a credit-card payment (once as the charge, once as the
   // payment). They stay in `all` — recent transactions still list them, and
   // account balances genuinely change when money moves.
-  // Forecast rows say a bill is due, never that it was paid, so every total is
-  // real money only; `all` keeps them for the transaction list and bill checks.
+  // A row marked Planned is not money that moved, so every total is real money
+  // only; `all` keeps it for the transaction list.
   const real = all.filter((t) => !t.planned);
   const spendable = real.filter((t) => t.category !== TRANSFERS_CATEGORY);
 
   const usedThis = spendable.filter((t) => inRange(t.date, displayMonthStart, displayMonthEnd));
-  const forecastThis = all.filter((t) =>
-    t.planned && t.category !== TRANSFERS_CATEGORY && inRange(t.date, displayMonthStart, displayMonthEnd));
   const usedPrev = spendable.filter((t) => inRange(t.date, prevMonthStart, displayMonthStart));
   const monthLabel = displayMonthStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -194,34 +184,26 @@ export async function GET(req: NextRequest) {
     return d >= now && d <= monthEnd;
   });
   const scheduledNet = scheduledThisMonth.reduce((s, f) => s + f.amount, 0);
-  // Forecasts already due but not confirmed by a statement are still owed.
-  const unconfirmedNet = forecastThis.reduce((s, t) => s + t.amount, 0);
-  const projectedMonthEnd = (income - expenses) + unconfirmedNet + scheduledNet;
 
   let expectedVsActual = emptyExpectedVsActual();
   let overdueBills: OverdueBill[] = [];
   try {
-    expectedVsActual = computeExpectedVsActual(activeRules, all, { start: displayMonthStart, end: displayMonthEnd, now });
-    overdueBills = computeOverdueBills(activeRules, all, now);
+    expectedVsActual = computeExpectedVsActual(activeRules, all, { start: displayMonthStart, end: displayMonthEnd, now }, coverage);
+    overdueBills = computeOverdueBills(activeRules, all, now, coverage);
   } catch (e) {
     console.warn('[budget-dashboard] expected-vs-actual skipped:', (e as Error).message);
   }
   // A past-due bill with no real payment is either still owed or paid after the
   // last statement; both lower the balance from here, so projections take it today.
   const owed = overdueBills.map((b) => ({ date: ymd(now), amount: -b.amount }));
+  // Due dates this month with no payment yet are still owed, or still coming in.
+  const pendingNet = expectedVsActual.rules.reduce(
+    (s, r) => s + (r.expectedCount - r.matchedCount) * r.expectedAmt * (r.type === 'income' ? 1 : -1), 0);
+  const projectedMonthEnd = (income - expenses) + pendingNet + scheduledNet;
 
   // Anchored on the closing balance of the latest statement per account, then
   // rolled forward. Without a single statement balance we make no claim.
-  let accounts: AccountBalance[] = [];
-  try {
-    const importLogs = await prisma.importLog.findMany({
-      where: { userId },
-      select: { account: true, closingBalance: true, dateTo: true },
-    });
-    accounts = computeAccountBalancesFrom(importLogs, real);
-  } catch (e) {
-    console.warn('[budget-dashboard] account balances skipped:', (e as Error).message);
-  }
+  const accounts: AccountBalance[] = computeAccountBalancesFrom(importLogs, real);
   const hasBalances = accounts.some((a) => a.balance != null);
   const totalBalance = Math.round(accounts.reduce((s, a) => s + (a.balance ?? 0), 0) * 100) / 100;
   const { curve: balanceCurve, negativeOn: negativeBalanceDate } = hasBalances
@@ -367,7 +349,6 @@ export async function GET(req: NextRequest) {
     variableSpendEstimate,
     forecast,
     projectedMonthEnd,
-    generatedThisLoad: generated,
     trends,
     patternSuggestions,
     ruleVariance,

@@ -305,7 +305,7 @@ export function BudgetDashboard() {
         onImport={() => setImportOpen(true)}
       />
 
-      {/* Recurring forecasts the real transaction has already superseded */}
+      {/* The same statement imported twice */}
       {collisions && collisions.collisions.length > 0 && (
         <div className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3">
           <div className="flex items-start gap-2.5">
@@ -316,21 +316,11 @@ export function BudgetDashboard() {
                 {collisions.collisions.length === 1 ? 'transaction is' : 'transactions are'} inflating your totals
               </p>
               <p className="text-xs text-muted mt-0.5">
-                {(() => {
-                  const f = collisions.collisions.filter((c) => c.reason === 'forecast-superseded').length;
-                  const r = collisions.collisions.length - f;
-                  const parts = [];
-                  if (f) parts.push(`${f} predicted recurring ${f === 1 ? 'entry' : 'entries'} the real transaction replaced`);
-                  if (r) parts.push(`${r} ${r === 1 ? 'row' : 'rows'} from importing the same statement twice`);
-                  return parts.join(', and ');
-                })()}. The row being kept is shown on the right of each pair.
+                From importing the same statement twice. The row being kept is shown on the right of each pair.
               </p>
               <div className="mt-2 space-y-1 max-h-64 overflow-y-auto pr-1">
                 {collisions.collisions.slice(0, 20).map((c) => (
                   <div key={c.pageId} className="flex flex-wrap items-center gap-x-2 text-xs bg-bg rounded px-2 py-1">
-                    <span className={`px-1 rounded text-[10px] ${c.reason === 'repeat-import' ? 'bg-orange-500/15 text-orange-600' : 'bg-blue-500/15 text-blue-600'}`}>
-                      {c.reason === 'repeat-import' ? 're-import' : 'forecast'}
-                    </span>
                     <span className="text-muted">{c.date}</span>
                     <span className="truncate line-through opacity-70">{c.vendor}</span>
                     <span className="font-mono line-through opacity-70">{fmt2(Math.abs(c.amount))}</span>
@@ -442,13 +432,6 @@ export function BudgetDashboard() {
             {reconLoading ? 'Reconciling…' : 'Reconcile last import'}
           </button>
         </>
-      )}
-
-      {data.generatedThisLoad > 0 && (
-        <div className="rounded-lg border border-accent/30 bg-accent/5 px-3 py-2 text-sm flex items-center gap-2">
-          <Sparkles size={13} className="text-accent" />
-          Auto-added <strong>{data.generatedThisLoad}</strong> recurring transaction{data.generatedThisLoad !== 1 ? 's' : ''} since your last visit.
-        </div>
       )}
 
       {/* Feature 1: Coverage section */}

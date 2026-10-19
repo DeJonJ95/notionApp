@@ -12,6 +12,8 @@ describe('isForecastRow', () => {
     expect(isForecastRow({ Notes: 'Recurring expense: National Storage' })).toBe(true);
     expect(isForecastRow({ Status: 'Planned' })).toBe(true);
     expect(isForecastRow({ Status: 'Cleared', Notes: 'paid at the desk' })).toBe(false);
+    expect(isForecastRow({ Notes: 'CITY OF DETROIT PAYROLL 26062310' })).toBe(false);
+    expect(isForecastRow({ Notes: 'Recurring donation to the food bank' })).toBe(false);
   });
 });
 

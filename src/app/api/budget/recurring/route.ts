@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { nextOccurrenceAfter, type RuleFrequency } from '@/lib/budgetDb';
 
 const VALID_FREQUENCIES = ['weekly', 'biweekly', 'semimonthly', 'monthly'] as const;
 const VALID_TYPES = ['income', 'expense'] as const;
@@ -14,7 +15,14 @@ export async function GET() {
       where: { userId },
       orderBy: [{ type: 'asc' }, { anchorDate: 'asc' }],
     });
-    return NextResponse.json(rules);
+    // The anchor is the first due date, so show the next one from today instead.
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    return NextResponse.json(rules.map((r) => ({
+      ...r,
+      anchorDate: r.anchorDate < today ? nextOccurrenceAfter(r.anchorDate, r.frequency as RuleFrequency, yesterday) : r.anchorDate,
+    })));
   } catch (e: any) {
     // Most common cause: RecurringRule table doesn't exist yet (migration not run)
     console.error('[recurring GET] failed:', e?.message);
