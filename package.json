@@ -4,12 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --skip-generate && next build",
+    "build": "prisma generate && prisma db push --skip-generate && prisma db execute --file prisma/sql/budget-metrics.sql --schema prisma/schema.prisma && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
+    "eval:budget:fill": "jest --testMatch \"<rootDir>/evals/budget-assistant/fill_golden.ts\" --runInBand",
+    "eval:budget": "jest --testMatch \"<rootDir>/evals/budget-assistant/run.ts\" --runInBand",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"

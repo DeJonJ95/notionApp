@@ -20,6 +20,7 @@ model User {
   sessions            Session[]
   recurringRules      RecurringRule[]
   categorizationRules CategorizationRule[]
+  merchantPatterns    MerchantPattern[]
   savingsGoals        SavingsGoal[]
   clipperTokens       ClipperToken[]
   calendarTokens      CalendarToken[]
@@ -231,6 +232,20 @@ model CategorizationRule {
   // No unique on (userId, match) on purpose: the same vendor text needs
   // several rules when they differ by amount band.
   @@index([userId])
+}
+
+// Merchant groups for the budget assistant, e.g. "fast_food" and "delivery".
+// Each pattern is matched against a transaction's raw payee and vendor,
+// ignoring case and punctuation. Edited from the budget page, not by deploy.
+model MerchantPattern {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  groupName String
+  pattern   String
+  createdAt DateTime @default(now())
+
+  @@index([userId, groupName])
 }
 
 model SavingsGoal {

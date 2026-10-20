@@ -13,3 +13,7 @@ node_modules
 .claude/ledger/
 .claude/INDEX.md
 .claude/plans/
+
+# Budget assistant evals hold real figures from the owner's ledger; this repo is public.
+evals/budget-assistant/golden.json
+evals/budget-assistant/results/

@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-10-20T20:00:00.000Z",
+  "today": "2026-10-20",
+  "period": { "start": "2026-07-01", "end": "2026-09-30" },
+  "entries": [
+    {
+      "id": "month_over_month",
+      "question": "How did my spending change month to month from July through September 2026?",
+      "expected": {
+        "totals": { "2026-07": 436.74, "2026-08": 782, "2026-09": 372 },
+        "notable": [{ "month": "2026-09", "category": "Housing", "change_usd": -236 }]
+      },
+      "verified_against_statement": false
+    },
+    {
+      "id": "bill_payment_status",
+      "question": "Did I pay my bills on time from July 1 to September 30, 2026?",
+      "expected": {
+        "bills": [
+          { "bill": "Verizon", "due_date": "2026-08-01", "status": "late", "days_late": 1, "paid_date": "2026-08-02" },
+          { "bill": "Verizon", "due_date": "2026-09-01", "status": "missed", "days_late": null, "paid_date": null }
+        ]
+      },
+      "verified_against_statement": false
+    },
+    {
+      "id": "fast_food",
+      "question": "How much did I spend on fast food each month from July through September 2026, and in total?",
+      "expected": { "total": 60, "transactions": 3, "months": { "2026-07": 10, "2026-08": 20, "2026-09": 30 } },
+      "verified_against_statement": false
+    }
+  ]
+}

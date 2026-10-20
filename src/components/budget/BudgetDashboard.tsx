@@ -16,6 +16,7 @@ import { CategoryBudgetsModal } from './CategoryBudgetsModal';
 import { AddTransactionModal } from './AddTransactionModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
 import { StatementCoverageBar } from './StatementCoverageBar';
+import { BudgetAssistantButton } from './assistant/BudgetAssistantPanel';
 import { OverdueBills } from './OverdueBills';
 import { ExpectedVsReceived } from './ExpectedVsReceived';
 import { Section } from './Section';
@@ -203,7 +204,6 @@ export function BudgetDashboard() {
         />
       )}
 
-      {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold">Budget</h1>
@@ -292,6 +292,7 @@ export function BudgetDashboard() {
         >
           <Plus size={14} /> Add transaction
         </button>
+        <BudgetAssistantButton />
         <button
           onClick={() => setImportOpen(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/80"
@@ -376,7 +377,6 @@ export function BudgetDashboard() {
       <OverdueBills bills={data.overdueBills} />
 
 
-      {/* Feature 3: Reconciliation button + results */}
       {importsData && importsData.imports.length > 0 && (
         <>
           {reconciliation && (

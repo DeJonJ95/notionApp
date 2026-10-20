@@ -397,7 +397,7 @@
     },
     "src/components/budget/BudgetDashboard.tsx": {
       "fileLoc": 1270,
-      "functionLoc": 1200,
+      "functionLoc": 1199,
       "complexity": 102
     },
     "src/components/budget/CancelEmailModal.tsx": {
