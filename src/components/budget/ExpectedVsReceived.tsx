@@ -1,6 +1,7 @@
 'use client';
 import { AlertTriangle, BarChart3, CheckCircle2, Clock } from 'lucide-react';
 import type { ExpectedVsActual, RuleMatch } from '@/lib/budgetExpected';
+import { Section } from './Section';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
@@ -31,12 +32,8 @@ function RuleChip({ r }: { r: RuleMatch }) {
 export function ExpectedVsReceived({ data, monthLabel }: { data: ExpectedVsActual; monthLabel: string }) {
   if (data.incomeExpected <= 0 && data.expenseExpected <= 0) return null;
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <BarChart3 size={13} className="text-accent" />
-        <span className="text-xs font-semibold uppercase tracking-wide">Expected vs received — {monthLabel}</span>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+    <Section id="expected" title="Expected vs received" icon={<BarChart3 size={14} className="text-accent" />} right={<span className="text-xs text-muted shrink-0">{monthLabel}</span>}>
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-3 py-2">
           <div className="text-[10px] text-muted uppercase tracking-wide">Expected income</div>
           <div className="text-lg font-bold text-green-600">{fmt(data.incomeExpected)}</div>
@@ -69,6 +66,6 @@ export function ExpectedVsReceived({ data, monthLabel }: { data: ExpectedVsActua
           {data.rules.map((r) => <RuleChip key={r.ruleId} r={r} />)}
         </div>
       )}
-    </div>
+    </Section>
   );
 }

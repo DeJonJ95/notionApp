@@ -37,7 +37,7 @@ function BillGroup({ bills, kind }: { bills: OverdueBill[]; kind: keyof typeof G
     <div className={`rounded-xl border p-4 ${g.box}`}>
       <div className="flex items-center gap-2 mb-2">
         <g.Icon size={13} className={g.ink} />
-        <span className={`text-xs font-semibold uppercase tracking-wide ${g.ink}`}>{g.title}</span>
+        <h2 className={`text-base font-semibold ${g.ink}`}>{g.title}</h2>
         <span className="text-xs text-muted">({bills.length})</span>
         <span className={`ml-auto text-sm font-mono ${g.ink}`}>-{money(total)}</span>
       </div>

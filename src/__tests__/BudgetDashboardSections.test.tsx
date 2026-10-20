@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { BudgetDashboard } from '../components/budget/BudgetDashboard';
 
@@ -80,8 +80,8 @@ describe('BudgetDashboard collapsible sections', () => {
 
   it('shows the item count on a collapsed section, so folding hides nothing important', async () => {
     render(<BudgetDashboard />);
-    await screen.findByText('Recent transactions');
-    expect(screen.getByText('(1)')).toBeInTheDocument();
+    const header = (await screen.findByText('Recent transactions')).closest('button')!;
+    expect(within(header).getByText('1')).toBeInTheDocument();
   });
 
   it('expands on click and remembers the choice', async () => {
