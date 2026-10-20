@@ -494,770 +494,767 @@ export function BudgetDashboard() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2 items-start">
-      {/* Accounts — balances anchored on the latest statement per account */}
-      {data.accounts && data.accounts.length > 0 && (
-        <Section
-          id="accounts" defaultOpen={true} title="Accounts"
-          icon={<Landmark size={13} className="text-accent" />}
-          right={
-            data.hasBalances ? (
-              <span className="text-xs text-muted">Total {fmt2(data.totalBalance)}</span>
-            ) : null
-          }
-        >
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {data.accounts.map((a) => (
-              <div key={a.account} className="rounded-xl border border-border bg-surface p-3">
-                <div className="flex items-start gap-1">
-                  <div className="flex-1 min-w-0 text-xs text-muted truncate" title={a.account}>{a.account}</div>
-                  {a.account !== 'Unassigned' && (
-                    <button
-                      onClick={() => renameAccount(a.account)}
-                      title="Rename this account, or merge it into another by typing that name"
-                      aria-label={`Rename ${a.account}`}
-                      className="p-1 -m-1 rounded text-muted hover:text-accent hover:bg-bg shrink-0"
-                    >
-                      <Pencil size={11} />
-                    </button>
-                  )}
-                </div>
-                {a.balance != null ? (
-                  <>
-                    <div className={`text-xl font-bold ${a.balance >= 0 ? '' : 'text-red-500'}`}>
-                      {fmt2(a.balance)}
-                    </div>
-                    <div className="text-[10px] text-muted mt-0.5">
-                      Statement {a.asOf}
-                      {a.sinceStatement !== 0 && (
-                        <> · {a.sinceStatement > 0 ? '+' : '−'}{fmt2(Math.abs(a.sinceStatement))} since</>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-xl font-bold text-muted">—</div>
-                    <div className="text-[10px] text-muted mt-0.5">
-                      {a.txCount} tx · no statement balance yet
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-          {!data.hasBalances && (
-            <p className="text-xs text-muted mt-2">
-              Import a statement that shows a closing balance to project your balance forward.
-            </p>
-          )}
-        </Section>
-      )}
-
-      <ExpectedVsReceived data={data.expectedVsActual} monthLabel={data.monthLabel} />
-
-
-      {data.forecast.length > 0 && (
-        <Section id="upcoming" defaultOpen={false} count={data.forecast.length} title="Coming up in the next 14 days" icon={<Calendar size={13} className="text-blue-500" />}>
-          <div className="space-y-1.5">
-            {data.forecast.map((f, idx) => (
-              <div key={`${f.ruleId}-${idx}`} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-                <span className={`w-1 h-7 rounded-full ${f.amount >= 0 ? 'bg-green-500' : 'bg-red-500'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{f.name}</div>
-                  <div className="text-xs text-muted">{f.date} · {f.category}</div>
-                </div>
-                <div className={`text-sm font-mono ${f.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                  {f.amount >= 0 ? '+' : '-'}${Math.abs(f.amount).toFixed(2)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      <Section
-        id="budget-summary" title={data.autoBudget.hasManualBudget ? 'Budget' : 'Auto-budget'}
-        icon={<DollarSign size={14} className="text-accent" />}
-        right={
-          <Link href={`/database/${data.databaseId}`} className="text-xs text-muted hover:text-accent flex items-center gap-1 shrink-0">
-            Budget summary <ExternalLink size={10} />
-          </Link>
-        }
-      >
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Projected income</div>
-            <div className="text-lg font-bold text-green-600">{fmt(data.autoBudget.monthlyProjectedIncome)}</div>
-            <div className="text-[10px] text-muted">/mo from recurring rules</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Projected expenses</div>
-            <div className="text-lg font-bold text-red-500">{fmt(data.autoBudget.monthlyProjectedExpenses)}</div>
-            <div className="text-[10px] text-muted">/mo from recurring rules</div>
-          </div>
-          <div>
-            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Savings goals</div>
-            <div className="text-lg font-bold text-blue-600">{fmt(data.autoBudget.monthlySavingsTotal)}</div>
-            <div className="text-[10px] text-muted">
-              {data.autoBudget.monthlySavingsTotal > 0 ? 'Needed /mo to hit goals' : 'No goals set'}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Available to budget</div>
-            <div className={`text-lg font-bold ${data.autoBudget.availableToBudget > 0 ? 'text-green-600' : 'text-muted'}`}>
-              {fmt(data.autoBudget.availableToBudget)}
-            </div>
-            <div className="text-[10px] text-muted">
-              {data.autoBudget.hasManualBudget
-                ? 'Manual budgets set'
-                : data.autoBudget.monthlyProjectedIncome > 0
-                  ? 'Income − savings (auto)'
-                  : 'Set up recurring income'}
-            </div>
-          </div>
-        </div>
-      </Section>
-
-      {/* Month-by-month forecast */}
-      {data.monthlyForecast && data.monthlyForecast.length > 0 && (
-        <Section
-          id="forecast" defaultOpen={true} title="Forecast for the next 6 months"
-          icon={<Calendar size={13} className="text-accent" />}
-          right={
-            <span className="text-xs text-muted">
-              {data.hasBalances ? `From ${fmt2(data.totalBalance)} today` : 'Net only — no account balance yet'}
-            </span>
-          }
-        >
-          <div className="rounded-lg border border-border overflow-x-auto">
-            <table className="w-full text-sm min-w-[34rem]">
-              <thead className="bg-surface text-xs text-muted">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium">Month</th>
-                  <th className="text-right px-3 py-2 font-medium">Income</th>
-                  <th className="text-right px-3 py-2 font-medium">Bills</th>
-                  <th className="text-right px-3 py-2 font-medium">Other</th>
-                  <th className="text-right px-3 py-2 font-medium">Net</th>
-                  {data.hasBalances && <th className="text-right px-3 py-2 font-medium">Ending balance</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.monthlyForecast.map((m) => (
-                  <tr key={m.month} className="border-t border-border/40">
-                    <td className="px-3 py-1.5">
-                      {m.label}
-                      {m.isPartial && <span className="text-[10px] text-muted ml-1">(rest of month)</span>}
-                    </td>
-                    <td className="px-3 py-1.5 text-right font-mono text-xs text-green-600">{fmt(m.income)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-xs text-red-500">{fmt(m.recurringExpenses)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-xs text-muted">{fmt(m.variableExpenses)}</td>
-                    <td className={`px-3 py-1.5 text-right font-mono text-xs font-semibold ${m.net >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                      {fmt(m.net)}
-                    </td>
-                    {data.hasBalances && (
-                      <td className={`px-3 py-1.5 text-right font-mono text-xs font-semibold ${m.endingBalance >= 0 ? '' : 'text-red-500'}`}>
-                        {fmt(m.endingBalance)}
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-[11px] text-muted mt-1.5">
-            Income and Bills come from your recurring rules. <strong>Other</strong> is{' '}
-            {data.variableSpendEstimate > 0
-              ? `${fmt(data.variableSpendEstimate)}/mo, your average non-recurring spending over the last 3 complete months`
-              : 'not estimated yet — it needs a few complete months of history'}
-            . Anything you have not set up as a recurring rule and did not spend recently is not in here.
-          </p>
-          {data.hasBalances && data.monthlyForecast.some((m) => m.endingBalance < 0) && (
-            <p className="text-xs text-red-600 mt-1">
-              Projected to run out during{' '}
-              {data.monthlyForecast.find((m) => m.endingBalance < 0)!.label}.
-            </p>
-          )}
-        </Section>
-      )}
-
-      {/* Projected balance curve — next 45 days */}
-      {data.hasBalances && data.balanceCurve.length > 1 && (
-        <Section
-          id="balance-curve" defaultOpen={false} title="Projected balance, next 45 days"
-          icon={<TrendingDown size={13} className={data.negativeBalanceDate ? 'text-red-500' : 'text-accent'} />}
-        >
-          {(() => {
-            const pts = data.balanceCurve;
-            const values = pts.map((p) => p.balance);
-            const min = Math.min(0, ...values);
-            const max = Math.max(0, ...values);
-            const span = max - min || 1;
-            const W = 600;
-            const H = 140;
-            const PAD = 8;
-            const px = (i: number) => (i / (pts.length - 1)) * W;
-            const py = (v: number) => PAD + (1 - (v - min) / span) * (H - PAD * 2);
-            const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(p.balance).toFixed(1)}`).join(' ');
-            const area = `${line} L${W},${(H - PAD).toFixed(1)} L0,${(H - PAD).toFixed(1)} Z`;
-            const zeroY = py(0);
-            const tone = data.negativeBalanceDate ? 'text-red-500' : 'text-accent';
-            const low = pts.reduce((lo, p) => (p.balance < lo.balance ? p : lo), pts[0]);
-            return (
-              <div className="rounded-xl border border-border bg-surface p-3">
-                <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className={`w-full h-36 ${tone}`}>
-                  <path d={area} fill="currentColor" opacity={0.12} />
-                  {min < 0 && (
-                    <line
-                      x1="0" x2={W} y1={zeroY} y2={zeroY}
-                      stroke="currentColor" strokeDasharray="4 4" opacity={0.5}
-                      vectorEffect="non-scaling-stroke"
-                    />
-                  )}
-                  <path d={line} fill="none" stroke="currentColor" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-                </svg>
-                <div className="flex items-center justify-between text-[11px] text-muted mt-1">
-                  <span>{pts[0].date}</span>
-                  <span>
-                    Low {fmt2(low.balance)} on {low.date}
-                  </span>
-                  <span>{pts[pts.length - 1].date}</span>
-                </div>
-              </div>
-            );
-          })()}
-        </Section>
-      )}
-
-      {/* Budgets — per-category envelope target vs this month's spend */}
-      {data.categoryBudgets && data.categoryBudgets.length > 0 && (
-        <Section
-          id="budgets" defaultOpen={true} title="Budgets"
-          icon={<Wallet size={13} className="text-accent" />}
-          right={
-            <button
-              onClick={() => { setBudgetFocusCategory(null); setBudgetsOpen(true); }}
-              className="text-xs text-muted hover:text-accent"
-            >
-              Edit budgets
-            </button>
-          }
-        >
-          {(() => {
-            const budgeted = data.categoryBudgets.filter((c) => c.budgeted > 0);
-            const unbudgeted = data.categoryBudgets.filter((c) => c.budgeted <= 0);
-            const totalBudgeted = budgeted.reduce((s, c) => s + c.budgeted, 0);
-            const totalSpent = budgeted.reduce((s, c) => s + c.spent, 0);
-            const left = totalBudgeted - totalSpent;
-            const elapsed = data.categoryBudgets[0]?.pctOfMonthElapsed ?? 0;
-            return (
-              <div className="space-y-3">
-                {budgeted.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface px-3 py-2 text-xs">
-                    <span className="text-muted">Budgeted <strong className="text-text">{fmt(totalBudgeted)}</strong></span>
-                    <span className="text-muted">Spent <strong className="text-text">{fmt(totalSpent)}</strong></span>
-                    <span className={left >= 0 ? 'text-green-600' : 'text-red-500'}>
-                      {left >= 0 ? `${fmt(left)} left` : `${fmt(-left)} over`}
-                    </span>
-                    <div className="flex-1" />
-                    <span className="text-muted">{elapsed.toFixed(0)}% of month gone</span>
-                  </div>
-                )}
-
-                {budgeted.length > 0 && (
-                  <div className="space-y-2.5">
-                    {budgeted.map((c) => {
-                      const over = c.pctSpent > 100;
-                      const barCls = over ? 'bg-red-500' : c.pctSpent > 85 ? 'bg-amber-500' : 'bg-accent';
-                      return (
-                        <div key={c.category}>
-                          <div className="flex items-center justify-between gap-2 text-xs mb-1">
-                            <span className="font-medium truncate">{c.category}</span>
-                            <span className={over ? 'text-red-500' : 'text-muted'}>
-                              {fmt(c.spent)} of {fmt(c.budgeted)}
-                            </span>
-                          </div>
-                          <div className="relative h-2 bg-bg rounded-full overflow-hidden border border-border/40">
-                            <div
-                              className={`h-full rounded-full transition-all ${barCls}`}
-                              style={{ width: `${Math.min(100, c.pctSpent)}%` }}
-                            />
-                            {c.pctOfMonthElapsed > 0 && c.pctOfMonthElapsed < 100 && (
-                              <span
-                                className="absolute top-0 bottom-0 w-px bg-text/50"
-                                style={{ left: `${c.pctOfMonthElapsed}%` }}
-                                title="How much of the month has passed"
-                              />
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between gap-2 text-[11px] text-muted mt-0.5">
-                            <span>{c.pctSpent.toFixed(0)}% spent, {c.pctOfMonthElapsed.toFixed(0)}% of month gone</span>
-                            <span className={c.remaining >= 0 ? '' : 'text-red-500'}>
-                              {c.remaining >= 0 ? `${fmt2(c.remaining)} left` : `${fmt2(-c.remaining)} over`}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {unbudgeted.length > 0 && (
-                  <div>
-                    <p className="text-xs text-muted mb-1.5">
-                      {budgeted.length > 0 ? 'Spending with no budget set' : 'No budgets set yet. Pick a category to start.'}
-                    </p>
-                    <div className="space-y-1">
-                      {unbudgeted.map((c) => (
-                        <div key={c.category} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-                          <span className="flex-1 min-w-0 text-sm truncate">{c.category}</span>
-                          <span className="text-xs text-muted shrink-0">{fmt(c.spent)} spent</span>
-                          <button
-                            onClick={() => { setBudgetFocusCategory(c.category); setBudgetsOpen(true); }}
-                            className="px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text shrink-0"
-                          >
-                            Set budget
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </Section>
-      )}
-
-      {/* Excesses */}
-      {data.excesses.length > 0 && (
-        <Section id="excesses" defaultOpen={false} count={data.excesses.length} title="Spending excesses" icon={<AlertTriangle size={14} className="text-yellow-500" />}>
-          <div className="space-y-2">
-            {data.excesses.map((e) => (
-              <div key={e.category} className="flex items-center justify-between rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
-                <div>
-                  <div className="text-sm font-medium">{e.category}</div>
-                  <div className="text-xs text-muted">
-                    {fmt(e.spent)} this month · {e.vsPrior > 0 ? '+' : ''}{fmt(e.vsPrior)} vs last month
-                  </div>
-                </div>
-                <div className="text-sm font-semibold text-yellow-600">
-                  +{Math.round(e.pctChange)}%
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Where money is leaking */}
-      {waste && waste.findings.length > 0 && (
-        <Section
-          id="waste" defaultOpen={false} count={waste.findings.length} title="Where the waste is"
-          icon={<Sparkles size={13} className="text-accent" />}
-          right={
-            waste.totalAnnualImpact > 0 ? (
-              <span className="text-xs text-muted">
-                Up to <strong className="text-text">{fmt(waste.totalAnnualImpact)}/yr</strong> recoverable
-              </span>
-            ) : null
-          }
-        >
-          <p className="text-xs text-muted mb-2">
-            From {waste.transactionsAnalyzed} transactions across {waste.monthsAnalyzed} month
-            {waste.monthsAnalyzed === 1 ? '' : 's'}. Every figure is backed by the charges listed under it —
-            expand one to check the reasoning. Subscriptions are listed but left out of the headline,
-            since many are worth keeping.
-          </p>
-          <div className="space-y-1.5">
-            {waste.findings.map((f) => {
-              const open = expandedWaste.has(f.id);
-              const tone =
-                f.kind === 'fee' ? 'text-red-500 bg-red-500/10'
-                : f.kind === 'price-creep' ? 'text-orange-600 bg-orange-500/10'
-                : f.kind === 'category-drift' ? 'text-yellow-600 bg-yellow-500/10'
-                : 'text-blue-600 bg-blue-500/10';
-              const label =
-                f.kind === 'fee' ? 'fees'
-                : f.kind === 'price-creep' ? 'price rise'
-                : f.kind === 'category-drift' ? 'over normal'
-                : 'subscription';
-              return (
-                <div key={f.id} className="rounded-lg border border-border bg-surface overflow-hidden">
-                  <button
-                    onClick={() =>
-                      setExpandedWaste((prev) => {
-                        const next = new Set(prev);
-                        next.has(f.id) ? next.delete(f.id) : next.add(f.id);
-                        return next;
-                      })
-                    }
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg/50"
-                  >
-                    <ChevronRight
-                      size={12}
-                      className={`text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
-                    />
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${tone}`}>{label}</span>
-                    <span className="flex-1 min-w-0 text-sm truncate">{f.title}</span>
-                    <span className="text-xs font-mono text-muted shrink-0">{fmt(f.annualImpact)}/yr</span>
-                  </button>
-                  {open && (
-                    <div className="border-t border-border/60 px-3 py-2 space-y-1.5">
-                      <p className="text-xs text-muted">{f.detail}</p>
-                      {f.evidence.length > 0 && (
-                        <div className="space-y-0.5">
-                          <p className="text-[10px] uppercase tracking-wide text-muted">Charges behind this</p>
-                          {f.evidence.map((e, i) => (
-                            <div key={`${f.id}-${i}`} className="flex items-center gap-2 text-xs bg-bg rounded px-2 py-1">
-                              <span className="text-muted w-20 shrink-0 font-mono">{e.date}</span>
-                              <span className="flex-1 truncate">{e.vendor}</span>
-                              <span className="font-mono shrink-0">{fmt2(Math.abs(e.amount))}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Section>
-      )}
-
-      {/* Spending trends — last 6 months, income vs expenses */}
-      {data.trends && data.trends.some((t) => t.income || t.expenses) && (
-        <Section id="trends" defaultOpen={false} title="Trends over the last 6 months" icon={<BarChart3 size={13} className="text-accent" />}>
-          {(() => {
-            const max = Math.max(
-              1,
-              ...data.trends.map((t) => Math.max(t.income, t.expenses))
-            );
-            return (
-              <div className="flex items-end justify-between gap-2 h-40 px-1">
-                {data.trends.map((t) => (
-                  <div key={t.month} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
-                    <div className="w-full flex items-end justify-center gap-1 h-full">
-                      <div
-                        className="w-1/2 bg-green-500/70 rounded-t hover:bg-green-500 transition-colors"
-                        style={{ height: `${(t.income / max) * 100}%` }}
-                        title={`Income ${fmt(t.income)}`}
-                      />
-                      <div
-                        className="w-1/2 bg-red-500/70 rounded-t hover:bg-red-500 transition-colors"
-                        style={{ height: `${(t.expenses / max) * 100}%` }}
-                        title={`Expenses ${fmt(t.expenses)}`}
-                      />
-                    </div>
-                    <span className="text-[10px] text-muted whitespace-nowrap">{t.month}</span>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
-          <div className="flex items-center justify-center gap-4 mt-2 text-[11px] text-muted">
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500/70 inline-block" /> Income</span>
-            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/70 inline-block" /> Expenses</span>
-          </div>
-        </Section>
-      )}
-
-      {/* Subscriptions / recurring */}
-      {data.subscriptions.length > 0 && (
-        <Section id="subs" defaultOpen={false} count={data.subscriptions.length} title="Recurring charges" icon={<RefreshCw size={13} className="text-accent" />}>
-          <p className="text-xs text-muted mb-2">
-            Detected by repeated charges from the same vendor. Tap the email icon to draft a cancellation.
-          </p>
-          <div className="space-y-1">
-            {data.subscriptions.map((s) => (
-              <div key={s.vendor} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{s.vendor}</div>
-                  <div className="text-xs text-muted">
-                    ~{fmt2(s.monthlyEstimate)}/mo · {s.occurrences} charges · last {s.lastDate} · {s.category}
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setRecurringPrefill({ name: s.vendor, amount: s.monthlyEstimate, category: s.category });
-                    setRecurringOpen(true);
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
-                  title="Turn this into a tracked recurring bill"
-                >
-                  <Repeat size={12} /> Track
-                </button>
-                <button
-                  onClick={() => setCancelTarget(s)}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
-                  title="Draft cancellation email"
-                >
-                  <Mail size={12} /> Cancel
-                </button>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Other repeat vendors — strictly: 2+ charges from same vendor in 90d
-          that didn't pass the subscription heuristic (food/transport/varying
-          amounts). Lets you manually flag car payments, weekly coffee shops,
-          gas stations, utility bills with variable amounts, etc. */}
-      {data.repeatVendors && data.repeatVendors.length > 0 && (
-        <Section
-          id="repeat" defaultOpen={false} count={data.repeatVendors.length} title="Other repeat vendors"
-          icon={<Repeat size={13} className="text-muted" />}
-        >
-          <p className="text-xs text-muted mb-2">
-            Vendors with 2+ charges in the last 90 days that the auto-detector skipped.
-            Tap <strong>Track</strong> to make any of them recurring.
-          </p>
-          <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
-            {data.repeatVendors.slice(0, 30).map((v) => (
-              <div key={v.vendor} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{v.vendor}</div>
-                  <div className="text-xs text-muted">
-                    {v.occurrences}× · avg {fmt2(v.averageAmount)} · total {fmt(v.totalAmount)} · last {v.lastDate} · {v.category}
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setRecurringPrefill({ name: v.vendor, amount: v.averageAmount, category: v.category });
-                    setRecurringOpen(true);
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
-                  title="Make this a recurring expense"
-                >
-                  <Repeat size={12} /> Track
-                </button>
-              </div>
-            ))}
-            {data.repeatVendors.length > 30 && (
-              <p className="text-xs text-muted text-center py-1">
-                Showing top 30 by total spend.
-              </p>
-            )}
-          </div>
-        </Section>
-      )}
-
-      {/* Feature 5: Pattern suggestions */}
-      {data.patternSuggestions && data.patternSuggestions.length > 0 && (
-        <Section id="suggested" defaultOpen={false} count={data.patternSuggestions.length} title="Suggested recurring" icon={<Zap size={13} className="text-accent" />}>
-          <p className="text-xs text-muted mb-2">
-            Detected regular patterns. Tap <strong>Track</strong> to add as a recurring rule.
-          </p>
-          <div className="space-y-1">
-            {data.patternSuggestions.slice(0, 10).map((ps, idx) => (
-              <div key={idx} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{ps.vendor}</div>
-                  <div className="text-xs text-muted">
-                    {ps.type === 'income' ? '+' : '-'}${ps.averageAmount.toFixed(2)} · {ps.frequency} · {ps.occurrences}× · {(ps.confidence * 100).toFixed(0)}% confidence
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setRecurringPrefill({ name: ps.vendor, amount: ps.averageAmount, category: ps.category, type: ps.type });
-                    setRecurringOpen(true);
-                  }}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
-                >
-                  <Repeat size={12} /> Track
-                </button>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Feature 4: Rule variance shown in recurring section */}
-      {data.ruleVariance && data.ruleVariance.length > 0 && (
-        <Section id="variance" defaultOpen={false} title="Recurring rule variance" icon={<BarChart3 size={13} className="text-blue-500" />}>
-          <p className="text-xs text-muted mb-2">
-            How actual amounts compare to your recurring rule amounts.
-            <Link href={`/database/${data.databaseId}`} className="text-accent hover:underline ml-1">View all</Link>
-          </p>
-          <div className="space-y-1">
-            {data.ruleVariance.filter((rv) => rv.variance.sampleCount > 0).slice(0, 10).map((rv) => (
-              <div key={rv.ruleId} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
-                <span className={`w-1 h-8 rounded-full ${rv.type === 'income' ? 'bg-green-500' : 'bg-red-500'}`} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{rv.name}</div>
-                  <div className="text-xs text-muted">
-                    Rule: ${rv.amount.toFixed(2)} · Actual avg: {fmt2(rv.variance.averageAmount)}
-                    {Math.abs(rv.variance.variancePercent) > 5 && (
-                      <span className={`ml-1 ${rv.variance.variancePercent > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
-                        ({rv.variance.variancePercent > 0 ? '+' : ''}{rv.variance.variancePercent}% off)
-                      </span>
+        <div className="space-y-4 min-w-0">
+        {/* Accounts — balances anchored on the latest statement per account */}
+        {data.accounts && data.accounts.length > 0 && (
+          <Section
+            id="accounts" defaultOpen={true} title="Accounts"
+            icon={<Landmark size={13} className="text-accent" />}
+            right={
+              data.hasBalances ? (
+                <span className="text-xs text-muted">Total {fmt2(data.totalBalance)}</span>
+              ) : null
+            }
+          >
+            <div className="grid grid-cols-2 gap-3">
+              {data.accounts.map((a) => (
+                <div key={a.account} className="rounded-xl border border-border bg-surface p-3">
+                  <div className="flex items-start gap-1">
+                    <div className="flex-1 min-w-0 text-xs text-muted truncate" title={a.account}>{a.account}</div>
+                    {a.account !== 'Unassigned' && (
+                      <button
+                        onClick={() => renameAccount(a.account)}
+                        title="Rename this account, or merge it into another by typing that name"
+                        aria-label={`Rename ${a.account}`}
+                        className="p-1 -m-1 rounded text-muted hover:text-accent hover:bg-bg shrink-0"
+                      >
+                        <Pencil size={11} />
+                      </button>
                     )}
                   </div>
-                </div>
-                {Math.abs(rv.variance.variancePercent) > 10 && rv.variance.sampleCount >= 2 && (
-                  <button
-                    onClick={() => {
-                      setRecurringPrefill({ name: rv.name, amount: rv.variance.suggestedAmount, category: rv.category ?? 'Other' });
-                      setRecurringOpen(true);
-                    }}
-                    className="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/5 shrink-0"
-                  >
-                    Update to {fmt2(rv.variance.suggestedAmount)}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* Feature 1: Coverage section */}
-      {importsData && importsData.imports.length > 0 && (
-        <Section id="coverage" defaultOpen={false} title="Coverage" icon={<Layers size={13} className="text-accent" />}>
-          <div className="space-y-2">
-            {/* Timeline of imports */}
-            <div className="flex flex-wrap gap-2">
-              {importsData.imports.slice(0, 10).map((imp) => (
-                <button
-                  key={imp.id}
-                  onClick={() => runReconciliation(imp.dateFrom, imp.dateTo, imp.id)}
-                  disabled={reconLoading}
-                  className="rounded-lg border border-border bg-surface px-2.5 py-2 text-xs text-left hover:border-accent/50 hover:bg-bg disabled:opacity-60"
-                  title={`${imp.filename}: ${imp.txCount} transactions. Tap to reconcile this range.`}
-                >
-                  <span className="text-muted">{imp.dateFrom}</span>
-                  <span className="text-muted mx-1">→</span>
-                  <span className="text-muted">{imp.dateTo}</span>
-                  <span className="ml-1.5 text-accent">{imp.txCount} tx</span>
-                  {reconTarget === imp.id && (
-                    <Loader2 size={10} className="inline animate-spin ml-1.5 text-accent" />
+                  {a.balance != null ? (
+                    <>
+                      <div className={`text-xl font-bold ${a.balance >= 0 ? '' : 'text-red-500'}`}>
+                        {fmt2(a.balance)}
+                      </div>
+                      <div className="text-[10px] text-muted mt-0.5">
+                        Statement {a.asOf}
+                        {a.sinceStatement !== 0 && (
+                          <> · {a.sinceStatement > 0 ? '+' : '−'}{fmt2(Math.abs(a.sinceStatement))} since</>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-xl font-bold text-muted">—</div>
+                      <div className="text-[10px] text-muted mt-0.5">
+                        {a.txCount} tx · no statement balance yet
+                      </div>
+                    </>
                   )}
-                </button>
+                </div>
               ))}
             </div>
-            <p className="text-xs text-muted">Tap an import to reconcile that date range.</p>
+            {!data.hasBalances && (
+              <p className="text-xs text-muted mt-2">
+                Import a statement that shows a closing balance to project your balance forward.
+              </p>
+            )}
+          </Section>
+        )}
 
-            {/* Statements whose printed balances disagree with what came in.
-                A missing transaction leaves nothing behind to notice, so the
-                bank's own opening/closing figures are the only way to see it. */}
-            {(() => {
-              const off = (importsData.balanceChecks ?? []).filter(
-                (b) => Math.abs(b.discrepancy) > 0.01,
-              );
-              if (off.length === 0) return null;
-              return (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
-                  <p className="text-xs font-medium text-red-600 mb-1">
-                    {off.length === 1 ? 'A statement doesn’t' : `${off.length} statements don’t`} add up
-                  </p>
-                  <div className="space-y-1">
-                    {off.map((b) => (
-                      <p key={b.importId} className="text-xs text-muted">
-                        {b.account ?? 'Unassigned'}: statement moved{' '}
-                        <strong className="text-text">{fmt2(b.expectedNet)}</strong>, imported rows total{' '}
-                        <strong className="text-text">{fmt2(b.actualNet)}</strong> —{' '}
-                        <strong className={b.discrepancy > 0 ? 'text-red-500' : 'text-yellow-600'}>
-                          {fmt2(Math.abs(b.discrepancy))} {b.discrepancy > 0 ? 'missing' : 'extra'}
-                        </strong>{' '}
-                        across {b.txCount} transactions.
-                      </p>
-                    ))}
+        <ExpectedVsReceived data={data.expectedVsActual} monthLabel={data.monthLabel} />
+
+
+        {data.forecast.length > 0 && (
+          <Section id="upcoming" defaultOpen={false} count={data.forecast.length} title="Coming up in the next 14 days" icon={<Calendar size={13} className="text-blue-500" />}>
+            <div className="space-y-1.5">
+              {data.forecast.map((f, idx) => (
+                <div key={`${f.ruleId}-${idx}`} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                  <span className={`w-1 h-7 rounded-full ${f.amount >= 0 ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{f.name}</div>
+                    <div className="text-xs text-muted">{f.date} · {f.category}</div>
                   </div>
-                  <p className="text-[11px] text-muted mt-1.5">
-                    Compare that statement against the ledger and add what&apos;s missing with
-                    &ldquo;Add transaction&rdquo;.
-                  </p>
+                  <div className={`text-sm font-mono ${f.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {f.amount >= 0 ? '+' : '-'}${Math.abs(f.amount).toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {data.monthlyForecast && data.monthlyForecast.length > 0 && (
+          <Section
+            id="forecast" defaultOpen={true} title="Forecast for the next 6 months"
+            icon={<Calendar size={13} className="text-accent" />}
+            right={
+              <span className="text-xs text-muted">
+                {data.hasBalances ? `From ${fmt2(data.totalBalance)} today` : 'Net only — no account balance yet'}
+              </span>
+            }
+          >
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-surface text-xs text-muted">
+                  <tr>
+                    <th className="text-left px-2 py-2 font-medium">Month</th>
+                    <th className="text-right px-2 py-2 font-medium">Income</th>
+                    <th className="text-right px-2 py-2 font-medium">Bills</th>
+                    <th className="text-right px-2 py-2 font-medium">Other</th>
+                    <th className="text-right px-2 py-2 font-medium">Net</th>
+                    {data.hasBalances && <th className="text-right px-2 py-2 font-medium">Ending balance</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.monthlyForecast.map((m) => (
+                    <tr key={m.month} className="border-t border-border/40">
+                      <td className="px-2 py-1.5">
+                        {m.label}
+                        {m.isPartial && <span className="block text-[10px] text-muted">rest of month</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-mono text-xs text-green-600">{fmt(m.income)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono text-xs text-red-500">{fmt(m.recurringExpenses)}</td>
+                      <td className="px-2 py-1.5 text-right font-mono text-xs text-muted">{fmt(m.variableExpenses)}</td>
+                      <td className={`px-2 py-1.5 text-right font-mono text-xs font-semibold ${m.net >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {fmt(m.net)}
+                      </td>
+                      {data.hasBalances && (
+                        <td className={`px-2 py-1.5 text-right font-mono text-xs font-semibold ${m.endingBalance >= 0 ? '' : 'text-red-500'}`}>
+                          {fmt(m.endingBalance)}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[11px] text-muted mt-1.5">
+              Income and Bills come from your recurring rules. <strong>Other</strong> is{' '}
+              {data.variableSpendEstimate > 0
+                ? `${fmt(data.variableSpendEstimate)}/mo, your average non-recurring spending over the last 3 complete months`
+                : 'not estimated yet — it needs a few complete months of history'}
+              . Anything you have not set up as a recurring rule and did not spend recently is not in here.
+            </p>
+            {data.hasBalances && data.monthlyForecast.some((m) => m.endingBalance < 0) && (
+              <p className="text-xs text-red-600 mt-1">
+                Projected to run out during{' '}
+                {data.monthlyForecast.find((m) => m.endingBalance < 0)!.label}.
+              </p>
+            )}
+          </Section>
+        )}
+
+        {data.hasBalances && data.balanceCurve.length > 1 && (
+          <Section
+            id="balance-curve" defaultOpen={false} title="Projected balance, next 45 days"
+            icon={<TrendingDown size={13} className={data.negativeBalanceDate ? 'text-red-500' : 'text-accent'} />}
+          >
+            {(() => {
+              const pts = data.balanceCurve;
+              const values = pts.map((p) => p.balance);
+              const min = Math.min(0, ...values);
+              const max = Math.max(0, ...values);
+              const span = max - min || 1;
+              const W = 600;
+              const H = 140;
+              const PAD = 8;
+              const px = (i: number) => (i / (pts.length - 1)) * W;
+              const py = (v: number) => PAD + (1 - (v - min) / span) * (H - PAD * 2);
+              const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(p.balance).toFixed(1)}`).join(' ');
+              const area = `${line} L${W},${(H - PAD).toFixed(1)} L0,${(H - PAD).toFixed(1)} Z`;
+              const zeroY = py(0);
+              const tone = data.negativeBalanceDate ? 'text-red-500' : 'text-accent';
+              const low = pts.reduce((lo, p) => (p.balance < lo.balance ? p : lo), pts[0]);
+              return (
+                <div className="rounded-xl border border-border bg-surface p-3">
+                  <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className={`w-full h-36 ${tone}`}>
+                    <path d={area} fill="currentColor" opacity={0.12} />
+                    {min < 0 && (
+                      <line
+                        x1="0" x2={W} y1={zeroY} y2={zeroY}
+                        stroke="currentColor" strokeDasharray="4 4" opacity={0.5}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    )}
+                    <path d={line} fill="none" stroke="currentColor" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  </svg>
+                  <div className="flex items-center justify-between text-[11px] text-muted mt-1">
+                    <span>{pts[0].date}</span>
+                    <span>
+                      Low {fmt2(low.balance)} on {low.date}
+                    </span>
+                    <span>{pts[pts.length - 1].date}</span>
+                  </div>
                 </div>
               );
             })()}
-            {/* Gaps */}
-            {importsData.gaps.length > 0 && (
-              <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
-                <p className="text-xs font-medium text-yellow-700 mb-1">
-                  Coverage gaps
-                </p>
-                <div className="space-y-1">
-                  {importsData.gaps.map((g, idx) => (
-                    <p key={idx} className="text-xs text-muted">
-                      Missing {g.from} → {g.to} ({g.days} days)
-                    </p>
-                  ))}
-                </div>
-              </div>
-            )}
-            <p className="text-xs text-muted">
-              Last import: {importsData.lastImportDate ?? 'Never'} ({importsData.daysSinceLastImport != null ? `${importsData.daysSinceLastImport} days ago` : 'N/A'})
-            </p>
-          </div>
-        </Section>
-      )}
+          </Section>
+        )}
 
-      {/* Recent transactions */}
-      {data.recentTransactions.length > 0 && (
+        {data.recentTransactions.length > 0 && (
+          <Section
+            id="recent" defaultOpen={false} count={data.recentTransactions.length} title="Recent transactions"
+            icon={null}
+            right={
+              <Link href={`/database/${data.databaseId}`} className="text-xs text-muted hover:text-accent flex items-center gap-1">
+                View all <ExternalLink size={11} />
+              </Link>
+            }
+          >
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-surface text-xs text-muted">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-medium w-24">Date</th>
+                    <th className="text-left px-3 py-2 font-medium">Vendor</th>
+                    <th className="text-left px-3 py-2 font-medium">Category</th>
+                    <th className="text-right px-3 py-2 font-medium">Amount</th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recentTransactions.map((t) => (
+                    <tr key={t.pageId} className="border-t border-border/40 group/row">
+                      <td className="px-3 py-1.5 text-xs text-muted">{t.date}</td>
+                      <td className="px-3 py-1.5 truncate max-w-[200px]">
+                        {t.vendor}
+                        {t.planned && (
+                          <span className="ml-1.5 text-[10px] px-1 py-px rounded border border-yellow-500/40 text-yellow-700" title="Forecast from a recurring rule; not confirmed by a statement yet">
+                            Forecast
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs">
+                        <span className="inline-block px-1.5 py-0.5 bg-bg border border-border/50 rounded">
+                          {t.category}
+                        </span>
+                      </td>
+                      <td className={`px-3 py-1.5 text-right font-mono text-xs ${t.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
+                      </td>
+                      <td className="px-2 py-1">
+                        <button
+                          onClick={() => {
+                            setRecurringPrefill({
+                              name: t.vendor || 'Untitled',
+                              amount: Math.abs(t.amount),
+                              category: t.category,
+                              type: t.amount >= 0 ? 'income' : 'expense',
+                            });
+                            setRecurringOpen(true);
+                          }}
+                          className="p-1 rounded text-muted hover:text-accent hover:bg-bg opacity-0 group-hover/row:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
+                          title="Make this a recurring rule"
+                        >
+                          <Repeat size={12} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+        )}
+        {/* Feature 1: Coverage section */}
+        {importsData && importsData.imports.length > 0 && (
+          <Section id="coverage" defaultOpen={false} title="Coverage" icon={<Layers size={13} className="text-accent" />}>
+            <div className="space-y-2">
+              {/* Timeline of imports */}
+              <div className="flex flex-wrap gap-2">
+                {importsData.imports.slice(0, 10).map((imp) => (
+                  <button
+                    key={imp.id}
+                    onClick={() => runReconciliation(imp.dateFrom, imp.dateTo, imp.id)}
+                    disabled={reconLoading}
+                    className="rounded-lg border border-border bg-surface px-2.5 py-2 text-xs text-left hover:border-accent/50 hover:bg-bg disabled:opacity-60"
+                    title={`${imp.filename}: ${imp.txCount} transactions. Tap to reconcile this range.`}
+                  >
+                    <span className="text-muted">{imp.dateFrom}</span>
+                    <span className="text-muted mx-1">→</span>
+                    <span className="text-muted">{imp.dateTo}</span>
+                    <span className="ml-1.5 text-accent">{imp.txCount} tx</span>
+                    {reconTarget === imp.id && (
+                      <Loader2 size={10} className="inline animate-spin ml-1.5 text-accent" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted">Tap an import to reconcile that date range.</p>
+
+              {/* Statements whose printed balances disagree with what came in.
+                  A missing transaction leaves nothing behind to notice, so the
+                  bank's own opening/closing figures are the only way to see it. */}
+              {(() => {
+                const off = (importsData.balanceChecks ?? []).filter(
+                  (b) => Math.abs(b.discrepancy) > 0.01,
+                );
+                if (off.length === 0) return null;
+                return (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+                    <p className="text-xs font-medium text-red-600 mb-1">
+                      {off.length === 1 ? 'A statement doesn’t' : `${off.length} statements don’t`} add up
+                    </p>
+                    <div className="space-y-1">
+                      {off.map((b) => (
+                        <p key={b.importId} className="text-xs text-muted">
+                          {b.account ?? 'Unassigned'}: statement moved{' '}
+                          <strong className="text-text">{fmt2(b.expectedNet)}</strong>, imported rows total{' '}
+                          <strong className="text-text">{fmt2(b.actualNet)}</strong> —{' '}
+                          <strong className={b.discrepancy > 0 ? 'text-red-500' : 'text-yellow-600'}>
+                            {fmt2(Math.abs(b.discrepancy))} {b.discrepancy > 0 ? 'missing' : 'extra'}
+                          </strong>{' '}
+                          across {b.txCount} transactions.
+                        </p>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-muted mt-1.5">
+                      Compare that statement against the ledger and add what&apos;s missing with
+                      &ldquo;Add transaction&rdquo;.
+                    </p>
+                  </div>
+                );
+              })()}
+              {/* Gaps */}
+              {importsData.gaps.length > 0 && (
+                <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+                  <p className="text-xs font-medium text-yellow-700 mb-1">
+                    Coverage gaps
+                  </p>
+                  <div className="space-y-1">
+                    {importsData.gaps.map((g, idx) => (
+                      <p key={idx} className="text-xs text-muted">
+                        Missing {g.from} → {g.to} ({g.days} days)
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-muted">
+                Last import: {importsData.lastImportDate ?? 'Never'} ({importsData.daysSinceLastImport != null ? `${importsData.daysSinceLastImport} days ago` : 'N/A'})
+              </p>
+            </div>
+          </Section>
+        )}
+        </div>
+        <div className="space-y-4 min-w-0">
         <Section
-          id="recent" defaultOpen={false} count={data.recentTransactions.length} title="Recent transactions"
-          icon={null}
+          id="budget-summary" title="Monthly plan"
+          icon={<DollarSign size={14} className="text-accent" />}
           right={
-            <Link href={`/database/${data.databaseId}`} className="text-xs text-muted hover:text-accent flex items-center gap-1">
-              View all <ExternalLink size={11} />
+            <Link href={`/database/${data.databaseId}`} className="text-xs text-muted hover:text-accent flex items-center gap-1 shrink-0">
+              Budget summary <ExternalLink size={10} />
             </Link>
           }
         >
-          <div className="rounded-lg border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-surface text-xs text-muted">
-                <tr>
-                  <th className="text-left px-3 py-2 font-medium w-24">Date</th>
-                  <th className="text-left px-3 py-2 font-medium">Vendor</th>
-                  <th className="text-left px-3 py-2 font-medium">Category</th>
-                  <th className="text-right px-3 py-2 font-medium">Amount</th>
-                  <th className="w-8" />
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentTransactions.map((t) => (
-                  <tr key={t.pageId} className="border-t border-border/40 group/row">
-                    <td className="px-3 py-1.5 text-xs text-muted">{t.date}</td>
-                    <td className="px-3 py-1.5 truncate max-w-[200px]">
-                      {t.vendor}
-                      {t.planned && (
-                        <span className="ml-1.5 text-[10px] px-1 py-px rounded border border-yellow-500/40 text-yellow-700" title="Forecast from a recurring rule; not confirmed by a statement yet">
-                          Forecast
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-1.5 text-xs">
-                      <span className="inline-block px-1.5 py-0.5 bg-bg border border-border/50 rounded">
-                        {t.category}
-                      </span>
-                    </td>
-                    <td className={`px-3 py-1.5 text-right font-mono text-xs ${t.amount >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                      {t.amount >= 0 ? '+' : '-'}${Math.abs(t.amount).toFixed(2)}
-                    </td>
-                    <td className="px-2 py-1">
-                      <button
-                        onClick={() => {
-                          setRecurringPrefill({
-                            name: t.vendor || 'Untitled',
-                            amount: Math.abs(t.amount),
-                            category: t.category,
-                            type: t.amount >= 0 ? 'income' : 'expense',
-                          });
-                          setRecurringOpen(true);
-                        }}
-                        className="p-1 rounded text-muted hover:text-accent hover:bg-bg opacity-0 group-hover/row:opacity-100 [@media(hover:none)]:opacity-60 transition-opacity"
-                        title="Make this a recurring rule"
-                      >
-                        <Repeat size={12} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Projected income</div>
+              <div className="text-lg font-bold text-green-600">{fmt(data.autoBudget.monthlyProjectedIncome)}</div>
+              <div className="text-[10px] text-muted">/mo from recurring rules</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Projected expenses</div>
+              <div className="text-lg font-bold text-red-500">{fmt(data.autoBudget.monthlyProjectedExpenses)}</div>
+              <div className="text-[10px] text-muted">/mo from recurring rules</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Savings goals</div>
+              <div className="text-lg font-bold text-blue-600">{fmt(data.autoBudget.monthlySavingsTotal)}</div>
+              <div className="text-[10px] text-muted">
+                {data.autoBudget.monthlySavingsTotal > 0 ? 'Needed /mo to hit goals' : 'No goals set'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted uppercase tracking-wide mb-0.5">Available to budget</div>
+              <div className={`text-lg font-bold ${data.autoBudget.availableToBudget > 0 ? 'text-green-600' : 'text-muted'}`}>
+                {fmt(data.autoBudget.availableToBudget)}
+              </div>
+              <div className="text-[10px] text-muted">
+                {data.autoBudget.hasManualBudget
+                  ? 'Manual budgets set'
+                  : data.autoBudget.monthlyProjectedIncome > 0
+                    ? 'Income − savings (auto)'
+                    : 'Set up recurring income'}
+              </div>
+            </div>
           </div>
         </Section>
-      )}
+
+        {/* Budgets — per-category envelope target vs this month's spend */}
+        {data.categoryBudgets && data.categoryBudgets.length > 0 && (
+          <Section
+            id="budgets" defaultOpen={true} title="Category budgets"
+            icon={<Wallet size={13} className="text-accent" />}
+            right={
+              <button
+                onClick={() => { setBudgetFocusCategory(null); setBudgetsOpen(true); }}
+                className="text-xs text-muted hover:text-accent"
+              >
+                Edit budgets
+              </button>
+            }
+          >
+            {(() => {
+              const budgeted = data.categoryBudgets.filter((c) => c.budgeted > 0);
+              const unbudgeted = data.categoryBudgets.filter((c) => c.budgeted <= 0);
+              const totalBudgeted = budgeted.reduce((s, c) => s + c.budgeted, 0);
+              const totalSpent = budgeted.reduce((s, c) => s + c.spent, 0);
+              const left = totalBudgeted - totalSpent;
+              const elapsed = data.categoryBudgets[0]?.pctOfMonthElapsed ?? 0;
+              return (
+                <div className="space-y-3">
+                  {budgeted.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border bg-surface px-3 py-2 text-xs">
+                      <span className="text-muted">Budgeted <strong className="text-text">{fmt(totalBudgeted)}</strong></span>
+                      <span className="text-muted">Spent <strong className="text-text">{fmt(totalSpent)}</strong></span>
+                      <span className={left >= 0 ? 'text-green-600' : 'text-red-500'}>
+                        {left >= 0 ? `${fmt(left)} left` : `${fmt(-left)} over`}
+                      </span>
+                      <div className="flex-1" />
+                      <span className="text-muted">{elapsed.toFixed(0)}% of month gone</span>
+                    </div>
+                  )}
+
+                  {budgeted.length > 0 && (
+                    <div className="space-y-2.5">
+                      {budgeted.map((c) => {
+                        const over = c.pctSpent > 100;
+                        const barCls = over ? 'bg-red-500' : c.pctSpent > 85 ? 'bg-amber-500' : 'bg-accent';
+                        return (
+                          <div key={c.category}>
+                            <div className="flex items-center justify-between gap-2 text-xs mb-1">
+                              <span className="font-medium truncate">{c.category}</span>
+                              <span className={over ? 'text-red-500' : 'text-muted'}>
+                                {fmt(c.spent)} of {fmt(c.budgeted)}
+                              </span>
+                            </div>
+                            <div className="relative h-2 bg-bg rounded-full overflow-hidden border border-border/40">
+                              <div
+                                className={`h-full rounded-full transition-all ${barCls}`}
+                                style={{ width: `${Math.min(100, c.pctSpent)}%` }}
+                              />
+                              {c.pctOfMonthElapsed > 0 && c.pctOfMonthElapsed < 100 && (
+                                <span
+                                  className="absolute top-0 bottom-0 w-px bg-text/50"
+                                  style={{ left: `${c.pctOfMonthElapsed}%` }}
+                                  title="How much of the month has passed"
+                                />
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between gap-2 text-[11px] text-muted mt-0.5">
+                              <span>{c.pctSpent.toFixed(0)}% spent, {c.pctOfMonthElapsed.toFixed(0)}% of month gone</span>
+                              <span className={c.remaining >= 0 ? '' : 'text-red-500'}>
+                                {c.remaining >= 0 ? `${fmt2(c.remaining)} left` : `${fmt2(-c.remaining)} over`}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {unbudgeted.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted mb-1.5">
+                        {budgeted.length > 0 ? 'Spending with no budget set' : 'No budgets set yet. Pick a category to start.'}
+                      </p>
+                      <div className="space-y-1">
+                        {unbudgeted.map((c) => (
+                          <div key={c.category} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                            <span className="flex-1 min-w-0 text-sm truncate">{c.category}</span>
+                            <span className="text-xs text-muted shrink-0">{fmt(c.spent)} spent</span>
+                            <button
+                              onClick={() => { setBudgetFocusCategory(c.category); setBudgetsOpen(true); }}
+                              className="px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text shrink-0"
+                            >
+                              Set budget
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </Section>
+        )}
+
+        {data.excesses.length > 0 && (
+          <Section id="excesses" defaultOpen={false} count={data.excesses.length} title="Spending excesses" icon={<AlertTriangle size={14} className="text-yellow-500" />}>
+            <div className="space-y-2">
+              {data.excesses.map((e) => (
+                <div key={e.category} className="flex items-center justify-between rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+                  <div>
+                    <div className="text-sm font-medium">{e.category}</div>
+                    <div className="text-xs text-muted">
+                      {fmt(e.spent)} this month · {e.vsPrior > 0 ? '+' : ''}{fmt(e.vsPrior)} vs last month
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-yellow-600">
+                    +{Math.round(e.pctChange)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Where money is leaking */}
+        {waste && waste.findings.length > 0 && (
+          <Section
+            id="waste" defaultOpen={false} count={waste.findings.length} title="Where the waste is"
+            icon={<Sparkles size={13} className="text-accent" />}
+            right={
+              waste.totalAnnualImpact > 0 ? (
+                <span className="text-xs text-muted">
+                  Up to <strong className="text-text">{fmt(waste.totalAnnualImpact)}/yr</strong> recoverable
+                </span>
+              ) : null
+            }
+          >
+            <p className="text-xs text-muted mb-2">
+              From {waste.transactionsAnalyzed} transactions across {waste.monthsAnalyzed} month
+              {waste.monthsAnalyzed === 1 ? '' : 's'}. Every figure is backed by the charges listed under it —
+              expand one to check the reasoning. Subscriptions are listed but left out of the headline,
+              since many are worth keeping.
+            </p>
+            <div className="space-y-1.5">
+              {waste.findings.map((f) => {
+                const open = expandedWaste.has(f.id);
+                const tone =
+                  f.kind === 'fee' ? 'text-red-500 bg-red-500/10'
+                  : f.kind === 'price-creep' ? 'text-orange-600 bg-orange-500/10'
+                  : f.kind === 'category-drift' ? 'text-yellow-600 bg-yellow-500/10'
+                  : 'text-blue-600 bg-blue-500/10';
+                const label =
+                  f.kind === 'fee' ? 'fees'
+                  : f.kind === 'price-creep' ? 'price rise'
+                  : f.kind === 'category-drift' ? 'over normal'
+                  : 'subscription';
+                return (
+                  <div key={f.id} className="rounded-lg border border-border bg-surface overflow-hidden">
+                    <button
+                      onClick={() =>
+                        setExpandedWaste((prev) => {
+                          const next = new Set(prev);
+                          next.has(f.id) ? next.delete(f.id) : next.add(f.id);
+                          return next;
+                        })
+                      }
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg/50"
+                    >
+                      <ChevronRight
+                        size={12}
+                        className={`text-muted shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+                      />
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${tone}`}>{label}</span>
+                      <span className="flex-1 min-w-0 text-sm truncate">{f.title}</span>
+                      <span className="text-xs font-mono text-muted shrink-0">{fmt(f.annualImpact)}/yr</span>
+                    </button>
+                    {open && (
+                      <div className="border-t border-border/60 px-3 py-2 space-y-1.5">
+                        <p className="text-xs text-muted">{f.detail}</p>
+                        {f.evidence.length > 0 && (
+                          <div className="space-y-0.5">
+                            <p className="text-[10px] uppercase tracking-wide text-muted">Charges behind this</p>
+                            {f.evidence.map((e, i) => (
+                              <div key={`${f.id}-${i}`} className="flex items-center gap-2 text-xs bg-bg rounded px-2 py-1">
+                                <span className="text-muted w-20 shrink-0 font-mono">{e.date}</span>
+                                <span className="flex-1 truncate">{e.vendor}</span>
+                                <span className="font-mono shrink-0">{fmt2(Math.abs(e.amount))}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+        )}
+
+        {/* Spending trends — last 6 months, income vs expenses */}
+        {data.trends && data.trends.some((t) => t.income || t.expenses) && (
+          <Section id="trends" defaultOpen={false} title="Trends over the last 6 months" icon={<BarChart3 size={13} className="text-accent" />}>
+            {(() => {
+              const max = Math.max(
+                1,
+                ...data.trends.map((t) => Math.max(t.income, t.expenses))
+              );
+              return (
+                <div className="flex items-end justify-between gap-2 h-40 px-1">
+                  {data.trends.map((t) => (
+                    <div key={t.month} className="flex-1 flex flex-col items-center gap-1 h-full justify-end">
+                      <div className="w-full flex items-end justify-center gap-1 h-full">
+                        <div
+                          className="w-1/2 bg-green-500/70 rounded-t hover:bg-green-500 transition-colors"
+                          style={{ height: `${(t.income / max) * 100}%` }}
+                          title={`Income ${fmt(t.income)}`}
+                        />
+                        <div
+                          className="w-1/2 bg-red-500/70 rounded-t hover:bg-red-500 transition-colors"
+                          style={{ height: `${(t.expenses / max) * 100}%` }}
+                          title={`Expenses ${fmt(t.expenses)}`}
+                        />
+                      </div>
+                      <span className="text-[10px] text-muted whitespace-nowrap">{t.month}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div className="flex items-center justify-center gap-4 mt-2 text-[11px] text-muted">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-green-500/70 inline-block" /> Income</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-red-500/70 inline-block" /> Expenses</span>
+            </div>
+          </Section>
+        )}
+
+        {data.subscriptions.length > 0 && (
+          <Section id="subs" defaultOpen={false} count={data.subscriptions.length} title="Recurring charges" icon={<RefreshCw size={13} className="text-accent" />}>
+            <p className="text-xs text-muted mb-2">
+              Detected by repeated charges from the same vendor. Tap the email icon to draft a cancellation.
+            </p>
+            <div className="space-y-1">
+              {data.subscriptions.map((s) => (
+                <div key={s.vendor} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{s.vendor}</div>
+                    <div className="text-xs text-muted">
+                      ~{fmt2(s.monthlyEstimate)}/mo · {s.occurrences} charges · last {s.lastDate} · {s.category}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setRecurringPrefill({ name: s.vendor, amount: s.monthlyEstimate, category: s.category });
+                      setRecurringOpen(true);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
+                    title="Turn this into a tracked recurring bill"
+                  >
+                    <Repeat size={12} /> Track
+                  </button>
+                  <button
+                    onClick={() => setCancelTarget(s)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
+                    title="Draft cancellation email"
+                  >
+                    <Mail size={12} /> Cancel
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Other repeat vendors — strictly: 2+ charges from same vendor in 90d
+            that didn't pass the subscription heuristic (food/transport/varying
+            amounts). Lets you manually flag car payments, weekly coffee shops,
+            gas stations, utility bills with variable amounts, etc. */}
+        {data.repeatVendors && data.repeatVendors.length > 0 && (
+          <Section
+            id="repeat" defaultOpen={false} count={data.repeatVendors.length} title="Other repeat vendors"
+            icon={<Repeat size={13} className="text-muted" />}
+          >
+            <p className="text-xs text-muted mb-2">
+              Vendors with 2+ charges in the last 90 days that the auto-detector skipped.
+              Tap <strong>Track</strong> to make any of them recurring.
+            </p>
+            <div className="space-y-1 max-h-96 overflow-y-auto pr-1">
+              {data.repeatVendors.slice(0, 30).map((v) => (
+                <div key={v.vendor} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{v.vendor}</div>
+                    <div className="text-xs text-muted">
+                      {v.occurrences}× · avg {fmt2(v.averageAmount)} · total {fmt(v.totalAmount)} · last {v.lastDate} · {v.category}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setRecurringPrefill({ name: v.vendor, amount: v.averageAmount, category: v.category });
+                      setRecurringOpen(true);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
+                    title="Make this a recurring expense"
+                  >
+                    <Repeat size={12} /> Track
+                  </button>
+                </div>
+              ))}
+              {data.repeatVendors.length > 30 && (
+                <p className="text-xs text-muted text-center py-1">
+                  Showing top 30 by total spend.
+                </p>
+              )}
+            </div>
+          </Section>
+        )}
+
+        {/* Feature 5: Pattern suggestions */}
+        {data.patternSuggestions && data.patternSuggestions.length > 0 && (
+          <Section id="suggested" defaultOpen={false} count={data.patternSuggestions.length} title="Suggested recurring" icon={<Zap size={13} className="text-accent" />}>
+            <p className="text-xs text-muted mb-2">
+              Detected regular patterns. Tap <strong>Track</strong> to add as a recurring rule.
+            </p>
+            <div className="space-y-1">
+              {data.patternSuggestions.slice(0, 10).map((ps, idx) => (
+                <div key={idx} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{ps.vendor}</div>
+                    <div className="text-xs text-muted">
+                      {ps.type === 'income' ? '+' : '-'}${ps.averageAmount.toFixed(2)} · {ps.frequency} · {ps.occurrences}× · {(ps.confidence * 100).toFixed(0)}% confidence
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setRecurringPrefill({ name: ps.vendor, amount: ps.averageAmount, category: ps.category, type: ps.type });
+                      setRecurringOpen(true);
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs border border-border hover:bg-bg text-muted hover:text-text"
+                  >
+                    <Repeat size={12} /> Track
+                  </button>
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Feature 4: Rule variance shown in recurring section */}
+        {data.ruleVariance && data.ruleVariance.length > 0 && (
+          <Section id="variance" defaultOpen={false} title="Recurring rule variance" icon={<BarChart3 size={13} className="text-blue-500" />}>
+            <p className="text-xs text-muted mb-2">
+              How actual amounts compare to your recurring rule amounts.
+              <Link href={`/database/${data.databaseId}`} className="text-accent hover:underline ml-1">View all</Link>
+            </p>
+            <div className="space-y-1">
+              {data.ruleVariance.filter((rv) => rv.variance.sampleCount > 0).slice(0, 10).map((rv) => (
+                <div key={rv.ruleId} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2">
+                  <span className={`w-1 h-8 rounded-full ${rv.type === 'income' ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{rv.name}</div>
+                    <div className="text-xs text-muted">
+                      Rule: ${rv.amount.toFixed(2)} · Actual avg: {fmt2(rv.variance.averageAmount)}
+                      {Math.abs(rv.variance.variancePercent) > 5 && (
+                        <span className={`ml-1 ${rv.variance.variancePercent > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                          ({rv.variance.variancePercent > 0 ? '+' : ''}{rv.variance.variancePercent}% off)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {Math.abs(rv.variance.variancePercent) > 10 && rv.variance.sampleCount >= 2 && (
+                    <button
+                      onClick={() => {
+                        setRecurringPrefill({ name: rv.name, amount: rv.variance.suggestedAmount, category: rv.category ?? 'Other' });
+                        setRecurringOpen(true);
+                      }}
+                      className="text-xs px-2 py-1 rounded border border-accent/30 text-accent hover:bg-accent/5 shrink-0"
+                    >
+                      Update to {fmt2(rv.variance.suggestedAmount)}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+        </div>
       </div>
     </div>
   );

@@ -98,8 +98,8 @@ describe('BudgetDashboard collapsible sections', () => {
 
   it('collapses an open section and remembers that too', async () => {
     render(<BudgetDashboard />);
-    // 'Budgets' is also a header button, so target the section heading itself.
-    fireEvent.click(await screen.findByRole('heading', { name: 'Budgets' }));
+    // A header button is also labelled Budgets, so target the section heading itself.
+    fireEvent.click(await screen.findByRole('heading', { name: 'Category budgets' }));
     await waitFor(() => expect(screen.queryByText('Food & Dining')).not.toBeInTheDocument());
     expect(window.localStorage.getItem('kove-budget-section:budgets')).toBe('0');
   });

@@ -9,14 +9,13 @@ interface Props {
   right?: React.ReactNode;
   count?: number;
   defaultOpen?: boolean;
-  wide?: boolean;
   children: React.ReactNode;
 }
 
 // One box per dashboard section, folding down to its header. The header keeps
 // its count and `right` content while folded, so the number that matters stays
 // visible. Open or closed is remembered per section in localStorage.
-export function Section({ id, title, icon, right, count, defaultOpen = true, wide, children }: Props) {
+export function Section({ id, title, icon, right, count, defaultOpen = true, children }: Props) {
   const storageKey = `kove-budget-section:${id}`;
   const [open, setOpen] = useState(() => {
     try {
@@ -36,7 +35,7 @@ export function Section({ id, title, icon, right, count, defaultOpen = true, wid
     });
 
   return (
-    <section className={`rounded-xl border border-border bg-bg min-w-0 ${wide ? 'md:col-span-2' : ''}`}>
+    <section className="rounded-xl border border-border bg-bg min-w-0">
       <div className="flex items-center gap-3 px-4 py-3">
         <button onClick={toggle} aria-expanded={open} className="flex flex-1 min-w-0 items-center gap-2 text-left">
           <ChevronRight size={16} className={`shrink-0 text-muted transition-transform ${open ? 'rotate-90' : ''}`} />
