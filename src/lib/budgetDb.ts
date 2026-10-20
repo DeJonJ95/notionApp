@@ -1091,8 +1091,8 @@ export function checkImportBalances(
     if (imp.openingBalance == null || imp.closingBalance == null) continue;
     if (!Number.isFinite(imp.openingBalance) || !Number.isFinite(imp.closingBalance)) continue;
 
-    const from = ymdOf(imp.dateFrom);
-    const to = ymdOf(imp.dateTo);
+    const from = imp.dateFrom.toISOString().slice(0, 10);
+    const to = imp.dateTo.toISOString().slice(0, 10);
     const wantAccount = (imp.account ?? '').trim();
 
     const matched = transactions.filter((t) => {
@@ -1151,7 +1151,7 @@ export function computeAccountBalancesFrom(
     const account = (imp.account ?? '').trim();
     if (!account) continue;
     if (imp.closingBalance == null || !Number.isFinite(imp.closingBalance)) continue;
-    const dateTo = ymdOf(imp.dateTo);
+    const dateTo = imp.dateTo.toISOString().slice(0, 10);
     const current = anchors.get(account);
     if (!current || dateTo >= current.dateTo) {
       anchors.set(account, { closingBalance: imp.closingBalance, dateTo });

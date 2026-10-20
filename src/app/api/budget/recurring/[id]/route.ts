@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { onSchedule } from '@/lib/budgetExpected';
+
+// The dialog shows the next due date, not the stored anchor. Saving that back
+// must not move the anchor, which also marks where the rule's history starts.
+function movedAnchor(existing: { anchorDate: Date; frequency: string }, frequency: string | undefined, raw: unknown): Date | null {
+  const d = new Date(String(raw));
+  if (isNaN(d.getTime())) return null;
+  const sameSchedule = (frequency ?? existing.frequency) === existing.frequency && onSchedule(existing, d);
+  return sameSchedule ? null : d;
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   const session = await auth();
@@ -35,8 +45,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     data.type = body.type;
   }
   if (body.anchorDate) {
-    const d = new Date(body.anchorDate);
-    if (!isNaN(d.getTime())) data.anchorDate = d;
+    const anchor = movedAnchor(existing, data.frequency, body.anchorDate);
+    if (anchor) data.anchorDate = anchor;
   }
   if (typeof body.isActive === 'boolean') data.isActive = body.isActive;
 

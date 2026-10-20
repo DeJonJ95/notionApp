@@ -16,6 +16,9 @@ describe('matchKnownAccount', () => {
     expect(matchKnownAccount('Sapphire 5555', known)).toBe('Sapphire 5555');
     expect(matchKnownAccount('Card 1234', ['Checking 1234', 'Visa 1234'])).toBe('Card 1234');
     expect(matchKnownAccount(null, known)).toBe('');
+    expect(matchKnownAccount('Savings Statement 2026', ['Visa 2026'])).toBe('Savings Statement 2026');
+    expect(matchKnownAccount('Card ending ...2026', ['Checking -------2026'])).toBe('Checking -------2026');
+    expect(matchKnownAccount('Account 9876 (2025)', known)).toBe('Savings 9876');
   });
 });
 

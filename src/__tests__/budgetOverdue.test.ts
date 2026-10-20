@@ -1,4 +1,4 @@
-import { computeExpectedVsActual, computeOverdueBills, type Coverage, type RuleLike } from '../lib/budgetExpected';
+import { computeExpectedVsActual, computeOverdueBills, onSchedule, type Coverage, type RuleLike } from '../lib/budgetExpected';
 
 const today = new Date(2026, 8, 17);
 const longAgo = new Date(2025, 0, 1);
@@ -141,5 +141,21 @@ describe('computeExpectedVsActual', () => {
     expect(result.expenseActual).toBe(0);
     expect(result.rules[0]).toMatchObject({ matchedCount: 0, unconfirmedCount: 1, matchedTotal: 0 });
     expect(computeExpectedVsActual([verizon], txs, sep, [september]).rules[0].unconfirmedCount).toBe(0);
+  });
+});
+
+describe('onSchedule', () => {
+  const storage = { anchorDate: new Date(2026, 9, 1), frequency: 'monthly' };
+  const gym = { anchorDate: new Date(2026, 9, 6), frequency: 'weekly' };
+
+  it('treats the next due date the dialog shows as no change', () => {
+    expect(onSchedule(storage, new Date(2026, 10, 1))).toBe(true);
+    expect(onSchedule(gym, new Date(2026, 9, 27))).toBe(true);
+  });
+
+  it('treats a new day, an earlier start, or an off-phase week as a change', () => {
+    expect(onSchedule(storage, new Date(2026, 10, 3))).toBe(false);
+    expect(onSchedule(storage, new Date(2026, 8, 1))).toBe(false);
+    expect(onSchedule(gym, new Date(2026, 9, 28))).toBe(false);
   });
 });

@@ -25,8 +25,10 @@ export type Ledger = {
   savingsRows: { text: string; amount: number }[];  // Type=Savings rows, matched to goals by name
 };
 
-/** The recurring engine's placeholder for a due item, or any row marked Planned. */
+/** A row nobody has confirmed: marked Planned, or written by the retired
+ *  recurring engine and never set to Cleared by the user. */
 export function isForecastRow(vals: Record<string, unknown>): boolean {
+  if (vals['Status'] === 'Cleared') return false;
   return vals['Status'] === 'Planned' || isRecurringGeneratedNote(vals['Notes']);
 }
 
@@ -83,11 +85,13 @@ export async function loadLedger(databaseId: string, order: 'asc' | 'desc' = 'de
 
 /** Forecast rows the retired recurring engine wrote into the ledger. Bills are
  *  now settled against statements directly, so the first read of a ledger that
- *  still holds them archives them (a soft delete, restorable from the database). */
+ *  still holds them archives them (a soft delete). A row the user set to Cleared
+ *  is a confirmed payment and stays. */
 export async function archiveLegacyForecasts(rows: Tx[]): Promise<Tx[]> {
-  const legacy = rows.filter((t) => isRecurringGeneratedNote(t.notes)).map((t) => t.pageId);
+  const isLegacy = (t: Tx) => t.planned && isRecurringGeneratedNote(t.notes);
+  const legacy = rows.filter(isLegacy).map((t) => t.pageId);
   if (legacy.length > 0) {
     await prisma.page.updateMany({ where: { id: { in: legacy } }, data: { isArchived: true } });
   }
-  return rows.filter((t) => !isRecurringGeneratedNote(t.notes));
+  return rows.filter((t) => !isLegacy(t));
 }

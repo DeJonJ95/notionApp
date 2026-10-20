@@ -89,11 +89,19 @@ export function emptyExpectedVsActual(): ExpectedVsActual {
 // The engine advances a rule's anchor past today, and the weekly/biweekly
 // branch of occurrencesBetween only walks forward from the anchor, so it has
 // to be rolled back before it can see the dates a report is about.
-function duesBetween(rule: RuleLike, from: Date, to: Date): Date[] {
+function duesBetween(rule: Pick<RuleLike, 'anchorDate' | 'frequency'>, from: Date, to: Date): Date[] {
   const stride = rule.frequency === 'weekly' ? 7 : rule.frequency === 'biweekly' ? 14 : 0;
   const anchor = new Date(rule.anchorDate);
   if (stride > 0) while (anchor > from) anchor.setDate(anchor.getDate() - stride);
   return occurrencesBetween(anchor, rule.frequency as RuleFrequency, from, to);
+}
+
+/** Whether `date` is one of the rule's due dates on or after its anchor, so
+ *  storing it as the anchor would leave the schedule and its history unchanged. */
+export function onSchedule(rule: Pick<RuleLike, 'anchorDate' | 'frequency'>, date: Date): boolean {
+  const day = dayStart(date);
+  if (day < dayStart(rule.anchorDate)) return false;
+  return duesBetween(rule, day, day).some((d) => d.getTime() === day.getTime());
 }
 
 /** Pairs each due date with the real payment that settled it, oldest first, so

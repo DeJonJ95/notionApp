@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
   const { monthlyBudgets, savingsRows } = ledger;
   const all = await archiveLegacyForecasts(ledger.all);
   const activeRules = allRules.filter((r) => r.isActive);
-  const coverage = importLogs.map((l) => ({ account: l.account, from: ymd(l.dateFrom), to: ymd(l.dateTo) }));
+  const coverage = importLogs.map((l) => ({ account: l.account, from: l.dateFrom.toISOString().slice(0, 10), to: l.dateTo.toISOString().slice(0, 10) }));
 
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);

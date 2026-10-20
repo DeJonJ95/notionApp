@@ -7,7 +7,7 @@ import {
 const imp = (account: string | null, closingBalance: number | null, dateTo: string) => ({
   account,
   closingBalance,
-  dateTo: new Date(dateTo + 'T00:00:00'),
+  dateTo: new Date(dateTo + 'T00:00:00Z'),
 });
 
 describe('computeAccountBalancesFrom', () => {

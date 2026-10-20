@@ -58,8 +58,8 @@ export async function POST(req: NextRequest) {
         data: {
           userId,
           filename: `import-${range.from}-to-${range.to}`,
-          dateFrom: new Date(range.from + 'T00:00:00'),
-          dateTo: new Date(range.to + 'T00:00:00'),
+          dateFrom: new Date(range.from + 'T00:00:00Z'),
+          dateTo: new Date(range.to + 'T00:00:00Z'),
           txCount: transactions.length,
           account: accountName || null,
           openingBalance: num(meta?.openingBalance),

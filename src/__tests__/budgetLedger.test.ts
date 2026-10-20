@@ -1,4 +1,7 @@
-import { isForecastRow, readLedger } from '../lib/budgetLedger';
+const updateMany = jest.fn();
+jest.mock('../lib/prisma', () => ({ prisma: { page: { updateMany: (...a: unknown[]) => updateMany(...a) } } }));
+
+import { archiveLegacyForecasts, isForecastRow, readLedger } from '../lib/budgetLedger';
 import { detectRepeatVendors } from '../lib/budgetRepeatVendors';
 
 const page = (id: string, vals: Record<string, unknown>, title = 'Untitled') => ({
@@ -14,6 +17,7 @@ describe('isForecastRow', () => {
     expect(isForecastRow({ Status: 'Cleared', Notes: 'paid at the desk' })).toBe(false);
     expect(isForecastRow({ Notes: 'CITY OF DETROIT PAYROLL 26062310' })).toBe(false);
     expect(isForecastRow({ Notes: 'Recurring donation to the food bank' })).toBe(false);
+    expect(isForecastRow({ Notes: 'Recurring expense: Rent', Status: 'Cleared' })).toBe(false);
   });
 });
 
@@ -33,6 +37,20 @@ describe('readLedger', () => {
     ]);
     expect(Object.fromEntries(monthlyBudgets)).toEqual({ 'Food & Dining': 400 });
     expect(savingsRows).toEqual([{ text: 'Transfer Emergency fund', amount: 50 }]);
+  });
+});
+
+describe('archiveLegacyForecasts', () => {
+  it('archives unconfirmed engine forecasts and keeps the ones the user confirmed', async () => {
+    updateMany.mockReset();
+    const { all } = readLedger([
+      page('f', { Type: 'Expense', Amount: 900, Date: '2026-09-01', Status: 'Planned', Notes: 'Recurring expense: Rent' }),
+      page('c', { Type: 'Expense', Amount: 905, Date: '2026-10-01', Status: 'Cleared', Notes: 'Recurring expense: Rent' }),
+      page('p', { Type: 'Expense', Amount: 40, Date: '2026-10-05', Status: 'Planned', Notes: 'Concert tickets' }),
+    ]);
+    const kept = await archiveLegacyForecasts(all);
+    expect(updateMany).toHaveBeenCalledWith({ where: { id: { in: ['f'] } }, data: { isArchived: true } });
+    expect(kept.map((t) => [t.pageId, t.planned])).toEqual([['c', false], ['p', true]]);
   });
 });
 

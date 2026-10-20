@@ -12,8 +12,8 @@ const imp = (
   account,
   openingBalance,
   closingBalance,
-  dateFrom: new Date(from + 'T00:00:00'),
-  dateTo: new Date(to + 'T00:00:00'),
+  dateFrom: new Date(from + 'T00:00:00Z'),
+  dateTo: new Date(to + 'T00:00:00Z'),
 });
 
 const tx = (date: string, amount: number, account: string | null = 'Checking') => ({

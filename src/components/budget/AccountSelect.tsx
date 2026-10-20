@@ -4,7 +4,13 @@ import { useState } from 'react';
 const NEW_ACCOUNT = '__new__';
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-const lastFour = (s: string) => s.match(/(\d{4})\D*$/)?.[1];
+// An account's last four digits: the final run of four or more digits, unless
+// it is a bare year like 2026 with no mask in front (".", "-", "*", "x", "#").
+function lastFour(s: string): string | undefined {
+  const runs = [...s.matchAll(/([.*#xX-]?)(\d{4,})/g)].reverse();
+  const hit = runs.find(([, mask, digits]) => mask || digits.length > 4 || !/^(19|20)\d{2}$/.test(digits));
+  return hit?.[2].slice(-4);
+}
 
 /** The tracked account a statement's printed label refers to, so "CHECKING ...1234"
  *  lands on "Checking 1234" instead of starting a second account. Returns the label
