@@ -707,7 +707,7 @@ export function BudgetDashboard() {
                 <tbody>
                   {data.recentTransactions.map((t) => (
                     <tr key={t.pageId} className="border-t border-border/40 group/row">
-                      <td className="px-3 py-1.5 text-xs text-muted">{t.date}</td>
+                      <td className="px-3 py-1.5 text-xs text-muted whitespace-nowrap">{t.date}</td>
                       <td className="px-3 py-1.5 truncate max-w-[200px]">
                         {t.vendor}
                         {t.planned && (
