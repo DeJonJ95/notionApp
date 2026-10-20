@@ -1,8 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-
-type Groups = Record<string, { id: string; pattern: string }[]>;
+import type { MerchantGroups as Groups } from '@/lib/budgetAssist/merchantGroups';
 
 async function call(init?: RequestInit, query = ''): Promise<Groups> {
   const r = await fetch(`/api/budget/merchant-groups${query}`, init);

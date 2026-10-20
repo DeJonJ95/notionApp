@@ -5,8 +5,6 @@ import { logDeepSeek } from '@/lib/logUsage';
 // config and key as the journal assistant. Thinking stays disabled, so no
 // reasoning_content has to be replayed between rounds.
 
-const URL = 'https://api.deepseek.com/chat/completions';
-
 export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
 
 export type ChatMessage =
@@ -27,7 +25,7 @@ export async function chatWithTools(messages: ChatMessage[], tools: unknown[], o
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 40_000);
   try {
-    const r = await fetch(URL, {
+    const r = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
       body: JSON.stringify({ ...DEEPSEEK_MODEL, messages, tools, tool_choice: 'auto', temperature: opts.temperature, max_tokens: 1500 }),

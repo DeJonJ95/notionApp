@@ -13,15 +13,19 @@ const MAX_SPAN_DAYS = 731;
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Dates are YYYY-MM-DD')
   .refine((d) => !Number.isNaN(Date.parse(d + 'T00:00:00Z')) && new Date(d + 'T00:00:00Z').toISOString().startsWith(d), 'Not a real date');
 const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Months are YYYY-MM');
+const DATES = { start_date: isoDate, end_date: isoDate };
 
-const dateRange = z.object({ start_date: isoDate, end_date: isoDate }).strict()
-  .refine((a) => a.start_date <= a.end_date, 'start_date must not be after end_date')
+const datesInOrder = <T extends { start_date: string; end_date: string }>(schema: z.ZodType<T>) =>
+  schema.refine((a) => a.start_date <= a.end_date, 'start_date must not be after end_date');
+const dateRange = datesInOrder(z.object(DATES).strict())
   .refine((a) => (Date.parse(a.end_date) - Date.parse(a.start_date)) / 86_400_000 <= MAX_SPAN_DAYS, 'Ranges are limited to two years');
 
 const DATE_PROPS = {
   start_date: { type: 'string', description: 'First day, YYYY-MM-DD, inclusive' },
   end_date: { type: 'string', description: 'Last day, YYYY-MM-DD, inclusive' },
 };
+
+const allRequired = (properties: Record<string, unknown>) => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 
 type Spec = {
   description: string;
@@ -35,80 +39,63 @@ const sql = (strings: TemplateStringsArray, ...values: unknown[]) => prisma.$que
 const FIXED_SPECS: Record<string, Spec> = {
   spend_by_category: {
     description: 'Spend per category between two dates, plus an "All categories" total row. Spend is posted outflows; transfers, card payments and forecasts are excluded; refunds net against their category.',
-    parameters: { type: 'object', properties: DATE_PROPS, required: ['start_date', 'end_date'], additionalProperties: false },
+    parameters: allRequired(DATE_PROPS),
     schema: dateRange,
     run: (a, c) => sql`SELECT * FROM spend_by_category(${c.userId}, ${c.databaseId}, ${a.start_date}::date, ${a.end_date}::date)`,
   },
   month_over_month: {
     description: 'For the N most recent closed months, each category\'s spend against the month before, with $ and % change and an "All categories" row per month. notable is true when a change is at least $25 and at least 15%. Rows are ranked by absolute $ change.',
-    parameters: {
-      type: 'object',
-      properties: {
-        months: { type: 'integer', minimum: 1, maximum: 12, description: 'How many closed months' },
-        include_current_month: { type: 'boolean', description: 'Also include the current partial month' },
-      },
-      required: ['months', 'include_current_month'],
-      additionalProperties: false,
-    },
+    parameters: allRequired({
+      months: { type: 'integer', minimum: 1, maximum: 12, description: 'How many closed months' },
+      include_current_month: { type: 'boolean', description: 'Also include the current partial month' },
+    }),
     schema: z.object({ months: z.number().int().min(1).max(12), include_current_month: z.boolean() }).strict(),
     run: (a, c) => sql`SELECT * FROM month_over_month(${c.userId}, ${c.databaseId}, ${a.months}::int, ${a.include_current_month}::boolean)`,
   },
   budget_variance: {
     description: 'Planned (monthly budget) against actual spend per category for one month, with remaining and over/under, plus totals.',
-    parameters: { type: 'object', properties: { month: { type: 'string', description: 'YYYY-MM' } }, required: ['month'], additionalProperties: false },
+    parameters: allRequired({ month: { type: 'string', description: 'YYYY-MM' } }),
     schema: z.object({ month }).strict(),
     run: (a, c) => sql`SELECT * FROM budget_variance(${c.userId}, ${c.databaseId}, ${`${a.month}-01`}::date)`,
   },
   month_to_date_pace: {
     description: 'Spend so far in a month against a straight-line pace through its budget (planned x days elapsed / days in month), with a projected month-end figure.',
-    parameters: { type: 'object', properties: { month: { type: 'string', description: 'YYYY-MM, usually the current month' } }, required: ['month'], additionalProperties: false },
+    parameters: allRequired({ month: { type: 'string', description: 'YYYY-MM, usually the current month' } }),
     schema: z.object({ month }).strict(),
     run: (a, c) => sql`SELECT * FROM month_to_date_pace(${c.userId}, ${c.databaseId}, ${`${a.month}-01`}::date)`,
   },
   bill_payment_status: {
     description: 'Each recurring bill due between two dates (and not in the future): due date, paid date and amount, status (on_time, late, missed, not_confirmed) and days late.',
-    parameters: { type: 'object', properties: DATE_PROPS, required: ['start_date', 'end_date'], additionalProperties: false },
+    parameters: allRequired(DATE_PROPS),
     schema: dateRange,
     run: (a, c) => sql`SELECT * FROM bill_payment_status(${c.userId}, ${c.databaseId}, ${a.start_date}::date, ${a.end_date}::date)`,
   },
   top_transactions: {
     description: 'The largest purchases between two dates, optionally within one category.',
-    parameters: {
-      type: 'object',
-      properties: {
-        ...DATE_PROPS,
-        category: { type: ['string', 'null'], description: 'Exact category name, or null for all' },
-        limit: { type: 'integer', minimum: 1, maximum: 25 },
-      },
-      required: ['start_date', 'end_date', 'category', 'limit'],
-      additionalProperties: false,
-    },
-    schema: z.object({
-      start_date: isoDate, end_date: isoDate, category: z.string().trim().min(1).max(60).nullable(), limit: z.number().int().min(1).max(25),
-    }).strict().refine((a) => a.start_date <= a.end_date, 'start_date must not be after end_date'),
+    parameters: allRequired({
+      ...DATE_PROPS,
+      category: { type: ['string', 'null'], description: 'Exact category name, or null for all' },
+      limit: { type: 'integer', minimum: 1, maximum: 25 },
+    }),
+    schema: datesInOrder(z.object({
+      ...DATES, category: z.string().trim().min(1).max(60).nullable(), limit: z.number().int().min(1).max(25),
+    }).strict()),
     run: (a, c) => sql`SELECT * FROM top_transactions(${c.userId}, ${c.databaseId}, ${a.start_date}::date, ${a.end_date}::date, ${a.category}, ${a.limit}::int)`,
   },
 };
 
 // The group enum is the user's own merchant groups, so it is built per request.
-function merchantSpec(groups: string[]): Spec {
+function specs(groups: string[]): Record<string, Spec> {
   const groupEnum = groups.length > 0 ? groups : ['fast_food'];
   return {
-    description: 'Spend at a merchant group between two dates: a "total" row, one "month" row per month, and the "transaction" rows that make it up.',
-    parameters: {
-      type: 'object',
-      properties: { group: { type: 'string', enum: groupEnum }, ...DATE_PROPS },
-      required: ['group', 'start_date', 'end_date'],
-      additionalProperties: false,
+    ...FIXED_SPECS,
+    spend_by_merchant_group: {
+      description: 'Spend at a merchant group between two dates: a "total" row, one "month" row per month, and the "transaction" rows that make it up.',
+      parameters: allRequired({ group: { type: 'string', enum: groupEnum }, ...DATE_PROPS }),
+      schema: datesInOrder(z.object({ group: z.enum(groupEnum as [string, ...string[]]), ...DATES }).strict()),
+      run: (a, c) => sql`SELECT * FROM spend_by_merchant_group(${c.userId}, ${c.databaseId}, ${a.group}, ${a.start_date}::date, ${a.end_date}::date)`,
     },
-    schema: z.object({ group: z.enum(groupEnum as [string, ...string[]]), start_date: isoDate, end_date: isoDate }).strict()
-      .refine((a) => a.start_date <= a.end_date, 'start_date must not be after end_date'),
-    run: (a, c) => sql`SELECT * FROM spend_by_merchant_group(${c.userId}, ${c.databaseId}, ${a.group}, ${a.start_date}::date, ${a.end_date}::date)`,
   };
-}
-
-function specs(groups: string[]): Record<string, Spec> {
-  return { ...FIXED_SPECS, spend_by_merchant_group: merchantSpec(groups) };
 }
 
 /** Tool definitions in the OpenAI format DeepSeek accepts. */
@@ -122,13 +109,11 @@ export function toolDefinitions(groups: string[]) {
 const cell = (v: unknown): Row[string] => {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   if (typeof v === 'bigint') return Number(v);
-  if (v === undefined) return null;
-  return v as Row[string];
+  return (v ?? null) as Row[string];
 };
 
 export type ToolOutcome = { args: Record<string, unknown>; rows: Row[]; error?: string };
 
-/** Validates the model's arguments, then runs the matching SQL function. */
 export async function runTool(name: string, rawArgs: string, groups: string[], ctx: ToolContext): Promise<ToolOutcome> {
   const spec = specs(groups)[name];
   let args: unknown;

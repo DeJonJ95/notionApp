@@ -7,7 +7,6 @@ import { calendarLines, detroitToday } from './periods';
 import { runTool, toolDefinitions, type Row, type ToolContext } from './tools';
 
 export const MAX_ROUNDS = 5;
-const TEMPERATURE = 0.2;
 // Rows beyond this still reach the "How I got this" panel, just not the model.
 const MAX_ROWS_TO_MODEL = 120;
 
@@ -37,17 +36,6 @@ async function coveredThrough(userId: string): Promise<string | null> {
   return cov?.through ?? null;
 }
 
-async function runCalls(calls: { id: string; function: { name: string; arguments: string } }[], groups: string[], ctx: ToolContext, sources: Source[]) {
-  const results: ChatMessage[] = [];
-  for (const call of calls) {
-    const outcome = await runTool(call.function.name, call.function.arguments, groups, ctx);
-    sources.push({ tool: call.function.name, ...outcome });
-    const payload = outcome.error ? { error: outcome.error } : { rows: outcome.rows.slice(0, MAX_ROWS_TO_MODEL), total_rows: outcome.rows.length };
-    results.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(payload) });
-  }
-  return results;
-}
-
 /** Answers one question: the model picks tools, SQL computes, the model explains. */
 export async function answerBudgetQuestion(input: { userId: string; question: string; history?: Turn[] }): Promise<AssistantReply> {
   const db = await findOrCreateBudgetDb(input.userId);
@@ -61,10 +49,15 @@ export async function answerBudgetQuestion(input: { userId: string; question: st
   ];
   const sources: Source[] = [];
   for (let round = 1; round <= MAX_ROUNDS; round++) {
-    const { content, toolCalls } = await chatWithTools(messages, tools, { userId: input.userId, temperature: TEMPERATURE });
+    const { content, toolCalls } = await chatWithTools(messages, tools, { userId: input.userId, temperature: 0.2 });
     if (toolCalls.length === 0) return { reply: content.trim(), sources, rounds: round };
     messages.push({ role: 'assistant', content: content || null, tool_calls: toolCalls });
-    messages.push(...(await runCalls(toolCalls, groups, ctx, sources)));
+    for (const call of toolCalls) {
+      const outcome = await runTool(call.function.name, call.function.arguments, groups, ctx);
+      sources.push({ tool: call.function.name, ...outcome });
+      const payload = outcome.error ? { error: outcome.error } : { rows: outcome.rows.slice(0, MAX_ROWS_TO_MODEL), total_rows: outcome.rows.length };
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(payload) });
+    }
   }
   return { reply: 'I could not finish that within five lookups. Try asking about one period or one category at a time.', sources, rounds: MAX_ROUNDS };
 }
