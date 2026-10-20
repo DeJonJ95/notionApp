@@ -143,7 +143,6 @@ export function occurrencesBetween(
 ): Date[] {
   if (to < from) return [];
   const result: Date[] = [];
-  // ── Weekly/Biweekly: simple stride ──────────────────────────────────────
   if (frequency === 'weekly' || frequency === 'biweekly') {
     const strideDays = frequency === 'weekly' ? 7 : 14;
     // Roll anchor forward in stride steps until we're >= from
@@ -155,7 +154,6 @@ export function occurrencesBetween(
     }
     return result;
   }
-  // ── Monthly: same day-of-month each month ───────────────────────────────
   if (frequency === 'monthly') {
     const day = anchor.getDate();
     let y = from.getFullYear();
@@ -171,7 +169,6 @@ export function occurrencesBetween(
     }
     return result;
   }
-  // ── Semimonthly: anchor day + (anchor day + 14, capped to end-of-month) ─
   if (frequency === 'semimonthly') {
     const day1 = anchor.getDate();
     const day2 = day1 + 14; // may overflow into next month; we clamp below
@@ -372,7 +369,6 @@ export async function writeTransactions(
   return { created };
 }
 
-// ── Savings goals ───────────────────────────────────────────────────────
 
 /** Whole months left before `deadline`, rounded up, never less than 1.
  *  Calendar arithmetic rather than average-day division, which would read two
@@ -432,7 +428,6 @@ export function monthlySavingsContribution(
   return Math.round(total * 100) / 100;
 }
 
-// ── Categorization rules ────────────────────────────────────────────────
 
 export type CategorizationRuleLike = {
   match: string;
@@ -478,7 +473,6 @@ export function matchCategorizationRule<T extends CategorizationRuleLike>(
   });
 }
 
-// ── Vendor name matching ────────────────────────────────────────────────
 
 // Words that carry no identity and only get in the way of matching.
 const VENDOR_NOISE_WORDS = new Set(['inc', 'llc', 'llp', 'ltd', 'co', 'corp', 'the']);
@@ -544,7 +538,6 @@ export function vendorsMatch(a: string, b: string): boolean {
   return longer.includes(shorter);
 }
 
-// ── Cross-import duplicate detection ────────────────────────────────────
 
 export type DuplicateMatch = {
   incoming: ParsedTransaction;
@@ -579,7 +572,6 @@ export function findDuplicateTransactions(
   return results;
 }
 
-// ── Reconciliation: expected vs actual ──────────────────────────────────
 
 export type ReconciliationResult = {
   matched: { ruleName: string; type: string; dueDate: string; amount: number; matchedAmount: number }[];
@@ -663,7 +655,6 @@ export function reconcileTransactions(
   return { matched, missing, unexpected };
 }
 
-// ── Variance tracking ───────────────────────────────────────────────────
 
 export type RuleVariance = {
   averageAmount: number;
@@ -708,7 +699,6 @@ export function computeRuleVariance(
   };
 }
 
-// ── Pattern auto-detection ──────────────────────────────────────────────
 
 export type PatternSuggestion = {
   vendor: string;
@@ -815,7 +805,6 @@ export function detectRecurringPatterns(
   return suggestions;
 }
 
-// ── Display month resolution ─────────────────────────────────────────────
 
 /** Pick the month the dashboard should show. An explicit `YYYY-MM` wins;
  *  malformed values are ignored. Otherwise show the current month, unless it
@@ -851,7 +840,6 @@ export function resolveDisplayMonth(
   return monthOf(now.getFullYear(), now.getMonth());
 }
 
-// ── Category budgets (Type=Budget envelope rows) ─────────────────────────
 
 // How many times a period occurs in a year. Mirrors the table used by
 // `normalizeBudgetAmount` in DatabaseView so the dashboard and the
@@ -948,7 +936,6 @@ export function computeCategoryBudgets(
   return rows;
 }
 
-// ── Multi-month forecast ─────────────────────────────────────────────────
 
 export type MonthForecast = {
   month: string;             // YYYY-MM
@@ -1066,7 +1053,6 @@ export function estimateVariableMonthlySpend(
   return Math.round((total / perMonth.size) * 100) / 100;
 }
 
-// ── Statement integrity ──────────────────────────────────────────────────
 
 export type ImportBalanceCheck = {
   importId: string;
@@ -1134,7 +1120,6 @@ export function checkImportBalances(
   return out;
 }
 
-// ── Account balances ─────────────────────────────────────────────────────
 
 /** Bucket for transactions whose account we don't know. Never carries a
  *  balance claim — we have no statement to anchor it to. */
@@ -1233,33 +1218,4 @@ export function buildBalanceCurve(
     curve.push({ date, balance: Math.round(running * 100) / 100 });
   }
   return { curve, negativeOn };
-}
-
-// ── Coverage gap computation ─────────────────────────────────────────────
-
-export type CoverageGap = { from: string; to: string; days: number };
-
-/** Given an array of [dateFrom, dateTo] pairs (chronologically sorted),
- *  return gaps > minGapDays between consecutive ranges. */
-export function computeCoverageGaps(
-  ranges: { dateFrom: Date; dateTo: Date }[],
-  minGapDays: number = 3,
-): CoverageGap[] {
-  const gaps: CoverageGap[] = [];
-  if (ranges.length < 2) return gaps;
-  const sorted = [...ranges].sort((a, b) => a.dateFrom.getTime() - b.dateFrom.getTime());
-  for (let i = 1; i < sorted.length; i++) {
-    const prevEnd = sorted[i - 1].dateTo;
-    const currStart = sorted[i].dateFrom;
-    const gapMs = currStart.getTime() - prevEnd.getTime();
-    const gapDays = Math.round(gapMs / (1000 * 60 * 60 * 24)) - 1;
-    if (gapDays > minGapDays) {
-      gaps.push({
-        from: new Date(prevEnd.getTime() + 86400000).toISOString().slice(0, 10),
-        to: new Date(currStart.getTime() - 86400000).toISOString().slice(0, 10),
-        days: gapDays,
-      });
-    }
-  }
-  return gaps;
 }

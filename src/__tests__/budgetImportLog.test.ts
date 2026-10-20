@@ -1,67 +1,44 @@
-import { computeCoverageGaps } from '../lib/budgetDb';
+import { statementCoverage } from '../lib/budgetStatement';
 
-describe('computeCoverageGaps', () => {
-  it('returns empty array for fewer than 2 ranges', () => {
-    expect(computeCoverageGaps([])).toEqual([]);
-    expect(computeCoverageGaps([{ dateFrom: new Date('2026-01-01'), dateTo: new Date('2026-01-15') }])).toEqual([]);
+const r = (from: string, to: string, account: string | null = null) => ({ account, from, to });
+
+describe('statementCoverage', () => {
+  it('returns nothing without a usable import', () => {
+    expect(statementCoverage([])).toBeNull();
+    expect(statementCoverage([r('2026-02-10', '2026-02-01'), r('soon', '2026-02-01')])).toBeNull();
   });
 
-  it('returns empty array for contiguous coverage with no gaps', () => {
-    const ranges = [
-      { dateFrom: new Date('2026-01-01'), dateTo: new Date('2026-01-15') },
-      { dateFrom: new Date('2026-01-16'), dateTo: new Date('2026-01-31') },
-    ];
-    expect(computeCoverageGaps(ranges)).toEqual([]);
+  it('reports how far contiguous statements reach', () => {
+    expect(statementCoverage([r('2026-01-01', '2026-01-15'), r('2026-01-16', '2026-01-31')]))
+      .toEqual({ account: null, from: '2026-01-01', through: '2026-01-31', gaps: [] });
   });
 
-  it('detects a gap between two ranges', () => {
-    const ranges = [
-      { dateFrom: new Date('2026-01-01'), dateTo: new Date('2026-01-15') },
-      { dateFrom: new Date('2026-01-25'), dateTo: new Date('2026-01-31') },
-    ];
-    const gaps = computeCoverageGaps(ranges);
-    expect(gaps).toHaveLength(1);
-    expect(gaps[0]).toEqual({ from: '2026-01-16', to: '2026-01-24', days: 9 });
+  it('names the missing half of September between partial uploads', () => {
+    const cov = statementCoverage([
+      r('2026-07-01', '2026-07-31'), r('2026-08-01', '2026-08-31'), r('2026-09-01', '2026-09-15'), r('2026-10-01', '2026-10-20'),
+    ]);
+    expect(cov?.through).toBe('2026-10-20');
+    expect(cov?.gaps).toEqual([{ from: '2026-09-16', to: '2026-09-30', days: 15 }]);
   });
 
-  it('ignores gaps smaller than minGapDays', () => {
-    const ranges = [
-      { dateFrom: new Date('2026-01-01'), dateTo: new Date('2026-01-15') },
-      { dateFrom: new Date('2026-01-17'), dateTo: new Date('2026-01-31') },
-    ];
-    // Gap is 1 day, default minGapDays is 3
-    expect(computeCoverageGaps(ranges)).toEqual([]);
+  it('bridges a quiet gap of three days or fewer', () => {
+    expect(statementCoverage([r('2026-01-01', '2026-01-15'), r('2026-01-19', '2026-01-31')])?.gaps).toEqual([]);
+    expect(statementCoverage([r('2026-01-01', '2026-01-15'), r('2026-01-19', '2026-01-31')], 2)?.gaps).toHaveLength(1);
   });
 
-  it('handles overlapping ranges (no gap)', () => {
-    const ranges = [
-      { dateFrom: new Date('2026-01-01'), dateTo: new Date('2026-01-20') },
-      { dateFrom: new Date('2026-01-15'), dateTo: new Date('2026-01-31') },
-    ];
-    expect(computeCoverageGaps(ranges)).toEqual([]);
+  it('does not invent a gap after a long import that contains a shorter one', () => {
+    const cov = statementCoverage([r('2026-07-01', '2026-09-30'), r('2026-08-01', '2026-08-15'), r('2026-10-01', '2026-10-31')]);
+    expect(cov?.gaps).toEqual([]);
+    expect(cov?.through).toBe('2026-10-31');
   });
 
-  it('detects multiple gaps', () => {
-    const ranges = [
-      { dateFrom: new Date('2026-01-01'), dateTo: new Date('2026-01-10') },
-      { dateFrom: new Date('2026-01-20'), dateTo: new Date('2026-01-25') },
-      { dateFrom: new Date('2026-02-05'), dateTo: new Date('2026-02-10') },
-    ];
-    const gaps = computeCoverageGaps(ranges);
-    expect(gaps).toHaveLength(2);
-    expect(gaps[0].days).toBe(9);
-    expect(gaps[1].days).toBe(10);
-  });
-
-  it('respects custom minGapDays parameter', () => {
-    const ranges = [
-      { dateFrom: new Date('2026-01-01'), dateTo: new Date('2026-01-10') },
-      { dateFrom: new Date('2026-01-14'), dateTo: new Date('2026-01-20') },
-    ];
-    // Gap is 3 days — with minGapDays=2, this qualifies
-    const gaps = computeCoverageGaps(ranges, 2);
-    expect(gaps).toHaveLength(1);
-    // With minGapDays=5, it does not
-    expect(computeCoverageGaps(ranges, 5)).toEqual([]);
+  it('follows the latest statement\'s account and counts unnamed imports for it', () => {
+    const cov = statementCoverage([
+      r('2026-05-01', '2026-08-31', 'Old Checking'),
+      r('2026-07-13', '2026-08-12', 'Huntington'),
+      r('2026-08-13', '2026-09-16'),
+      r('2026-10-01', '2026-10-16', 'Huntington'),
+    ]);
+    expect(cov).toEqual({ account: 'Huntington', from: '2026-07-13', through: '2026-10-16', gaps: [{ from: '2026-09-17', to: '2026-09-30', days: 14 }] });
   });
 });

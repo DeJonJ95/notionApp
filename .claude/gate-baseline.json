@@ -396,9 +396,9 @@
       "anyCount": 1
     },
     "src/components/budget/BudgetDashboard.tsx": {
-      "fileLoc": 1289,
-      "functionLoc": 1219,
-      "complexity": 103
+      "fileLoc": 1270,
+      "functionLoc": 1200,
+      "complexity": 102
     },
     "src/components/budget/CancelEmailModal.tsx": {
       "functionLoc": 133,
@@ -572,11 +572,11 @@
       "commentRatio": 0.378
     },
     "src/lib/budgetDb.ts": {
-      "fileLoc": 1265,
+      "fileLoc": 1221,
       "functionLoc": 100,
       "complexity": 21,
       "anyCount": 1,
-      "commentRatio": 0.173
+      "commentRatio": 0.165
     },
     "src/lib/budgetImportFile.ts": {
       "commentRatio": 0.2

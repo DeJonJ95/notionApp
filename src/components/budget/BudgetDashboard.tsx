@@ -15,7 +15,7 @@ import { SavingsGoalsModal } from './SavingsGoalsModal';
 import { CategoryBudgetsModal } from './CategoryBudgetsModal';
 import { AddTransactionModal } from './AddTransactionModal';
 import { CategorizationRulesModal } from './CategorizationRulesModal';
-import { ImportReminderBanner } from './ImportReminderBanner';
+import { StatementCoverageBar } from './StatementCoverageBar';
 import { OverdueBills } from './OverdueBills';
 import { ExpectedVsReceived } from './ExpectedVsReceived';
 import { Section } from './Section';
@@ -300,11 +300,7 @@ export function BudgetDashboard() {
         </button>
       </div>
 
-      {/* Feature 6: Import reminder banner */}
-      <ImportReminderBanner
-        daysSinceLastImport={importsData?.daysSinceLastImport ?? null}
-        onImport={() => setImportOpen(true)}
-      />
+      {importsData && <StatementCoverageBar coverage={importsData.coverage} onImport={() => setImportOpen(true)} />}
 
       {/* The same statement imported twice */}
       {collisions && collisions.collisions.length > 0 && (
@@ -807,21 +803,6 @@ export function BudgetDashboard() {
                   </div>
                 );
               })()}
-              {/* Gaps */}
-              {importsData.gaps.length > 0 && (
-                <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
-                  <p className="text-xs font-medium text-yellow-700 mb-1">
-                    Coverage gaps
-                  </p>
-                  <div className="space-y-1">
-                    {importsData.gaps.map((g, idx) => (
-                      <p key={idx} className="text-xs text-muted">
-                        Missing {g.from} → {g.to} ({g.days} days)
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
               <p className="text-xs text-muted">
                 Last import: {importsData.lastImportDate ?? 'Never'} ({importsData.daysSinceLastImport != null ? `${importsData.daysSinceLastImport} days ago` : 'N/A'})
               </p>

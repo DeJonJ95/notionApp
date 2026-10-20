@@ -46,7 +46,7 @@ const dashboard = {
 
 const routeBody = (url: string) => {
   if (url.includes('/api/budget/dashboard')) return dashboard;
-  if (url.includes('/api/budget/imports')) return { imports: [], lastImportDate: null, daysSinceLastImport: null, gaps: [], balanceChecks: [] };
+  if (url.includes('/api/budget/imports')) return { imports: [], lastImportDate: null, daysSinceLastImport: null, coverage: null, balanceChecks: [] };
   if (url.includes('/api/budget/waste')) return { findings: [], totalAnnualImpact: 0, monthsAnalyzed: 0, transactionsAnalyzed: 0 };
   return { collisions: [] };
 };

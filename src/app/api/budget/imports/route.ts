@@ -7,6 +7,7 @@ import {
   type ImportBalanceCheck,
 } from '@/lib/budgetDb';
 import { loadLedger } from '@/lib/budgetLedger';
+import { statementCoverage, type StatementCoverage } from '@/lib/budgetStatement';
 
 export type ImportLogEntry = {
   id: string;
@@ -21,7 +22,8 @@ export type ImportsPayload = {
   imports: ImportLogEntry[];
   lastImportDate: string | null;
   daysSinceLastImport: number | null;
-  gaps: { from: string; to: string; days: number }[];
+  // How far statements reach for the current account, and the holes in between
+  coverage: StatementCoverage | null;
   // Statements whose own opening/closing balances don't match what was imported
   balanceChecks: ImportBalanceCheck[];
 };
@@ -56,27 +58,9 @@ export async function GET() {
     daysSinceLastImport = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   }
 
-  // Compute coverage gaps: gaps > 3 days between import date ranges
-  const gaps: { from: string; to: string; days: number }[] = [];
-  if (entries.length >= 2) {
-    // Sort chronologically ascending for gap detection
-    const sorted = [...logs].sort(
-      (a, b) => a.dateFrom.getTime() - b.dateFrom.getTime()
-    );
-    for (let i = 1; i < sorted.length; i++) {
-      const prevEnd = sorted[i - 1].dateTo;
-      const currStart = sorted[i].dateFrom;
-      const gapMs = currStart.getTime() - prevEnd.getTime();
-      const gapDays = Math.round(gapMs / (1000 * 60 * 60 * 24)) - 1;
-      if (gapDays > 3) {
-        gaps.push({
-          from: new Date(prevEnd.getTime() + 86400000).toISOString().slice(0, 10),
-          to: new Date(currStart.getTime() - 86400000).toISOString().slice(0, 10),
-          days: gapDays,
-        });
-      }
-    }
-  }
+  const coverage = statementCoverage(
+    logs.map((l) => ({ account: l.account, from: l.dateFrom.toISOString().slice(0, 10), to: l.dateTo.toISOString().slice(0, 10) })),
+  );
 
   // Reconcile each statement against its own printed balances. Best-effort:
   // a failure here must not stop the coverage list from rendering.
@@ -93,7 +77,7 @@ export async function GET() {
     imports: entries,
     lastImportDate,
     daysSinceLastImport,
-    gaps,
+    coverage,
     balanceChecks,
   };
 
