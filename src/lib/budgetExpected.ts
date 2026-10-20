@@ -30,6 +30,13 @@ export type LedgerTx = {
 /** The dates an imported statement is the record for, and its account when named. */
 export type Coverage = { account: string | null; from: string; to: string };
 
+/** One due date in the window and what settled it, for the breakdown list. */
+export type DueDateStatus = {
+  due: string;
+  state: 'paid' | BillState;
+  payment: { date: string; vendor: string; amount: number } | null;
+};
+
 export type RuleMatch = {
   ruleId: string;
   name: string;
@@ -39,6 +46,7 @@ export type RuleMatch = {
   matchedCount: number;
   unconfirmedCount: number;
   matchedTotal: number;
+  dueDates: DueDateStatus[];
 };
 
 export type BillState = 'overdue' | 'unconfirmed';
@@ -127,6 +135,12 @@ function firstDue(rule: RuleLike): Date {
 /** Settles a rule's due dates from `from` through `to`. Settling starts a
  *  lookback earlier and runs a horizon past the end, so a payment is claimed by
  *  the due date it belongs to rather than whichever falls inside the window. */
+const toDueDate = (s: Settled): DueDateStatus => ({
+  due: ymd(s.due),
+  state: s.payment ? 'paid' : s.covered ? 'overdue' : 'unconfirmed',
+  payment: s.payment && { date: s.payment.date, vendor: s.payment.vendor, amount: Math.abs(s.payment.amount) },
+});
+
 function settledBetween(rule: RuleLike, txs: LedgerTx[], coverage: Coverage[], window: { from: Date; to: Date }): Settled[] {
   const { from, to } = window;
   const dues = duesBetween(rule, addDays(from, -LOOKBACK_DAYS), addDays(to, NEXT_DUE_HORIZON_DAYS));
@@ -165,6 +179,7 @@ export function computeExpectedVsActual(
       matchedCount: paid.length,
       unconfirmedCount: settled.filter((s) => !s.payment && !s.covered).length,
       matchedTotal,
+      dueDates: settled.map(toDueDate),
     });
   }
 

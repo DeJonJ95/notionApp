@@ -86,7 +86,10 @@ describe('computeExpectedVsActual', () => {
     expect(result.expenseExpected).toBe(166.74);
     expect(result.expenseActual).toBe(170);
     expect(result.rules).toEqual([
-      { ruleId: 'r1', name: 'Verizon', type: 'expense', expectedAmt: 166.74, expectedCount: 1, matchedCount: 1, unconfirmedCount: 0, matchedTotal: 170 },
+      {
+        ruleId: 'r1', name: 'Verizon', type: 'expense', expectedAmt: 166.74, expectedCount: 1, matchedCount: 1, unconfirmedCount: 0, matchedTotal: 170,
+        dueDates: [{ due: '2026-09-01', state: 'paid', payment: { date: '2026-09-02', vendor: 'Verizon', amount: 170 } }],
+      },
     ]);
   });
 
@@ -106,6 +109,15 @@ describe('computeExpectedVsActual', () => {
     const rent: RuleLike = { ...verizon, id: 'rent', name: 'Rent', amount: 900, anchorDate: new Date(2026, 9, 1) };
     const result = computeExpectedVsActual([rent], [], { ...sep, now: new Date(2026, 9, 19) });
     expect(result.rules[0].expectedCount).toBe(1);
+  });
+
+  it('lists each due date with what settled it, or why nothing did', () => {
+    const gym: RuleLike = { ...verizon, id: 'g', name: 'Gym', amount: 10, frequency: 'weekly', anchorDate: new Date(2026, 8, 22) };
+    const txs = [charge('2026-09-01', 'Gym', -10)];
+    const result = computeExpectedVsActual([gym], txs, { ...sep, now: new Date(2026, 8, 16) }, [statement('2026-09-01', '2026-09-10')]);
+    expect(result.rules[0].dueDates.map((d) => [d.due, d.state, d.payment?.amount ?? null])).toEqual([
+      ['2026-09-01', 'paid', 10], ['2026-09-08', 'overdue', null], ['2026-09-15', 'unconfirmed', null],
+    ]);
   });
 
   it('does not let other spending make a missed bill look paid', () => {

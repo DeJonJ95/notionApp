@@ -1,31 +1,103 @@
 'use client';
-import { AlertTriangle, BarChart3, CheckCircle2, Clock } from 'lucide-react';
-import type { ExpectedVsActual, RuleMatch } from '@/lib/budgetExpected';
+import { useState } from 'react';
+import { AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock } from 'lucide-react';
+import type { DueDateStatus, ExpectedVsActual, RuleMatch } from '@/lib/budgetExpected';
 import { Section } from './Section';
+
+type Side = 'income' | 'expense';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+const fmt2 = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+const day = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-const TONE = {
-  paid: 'border-green-500/30 bg-green-500/5 text-green-700',
-  waiting: 'border-yellow-500/30 bg-yellow-500/5 text-yellow-700',
-  missing: 'border-red-500/30 bg-red-500/5 text-red-600',
+const STATE = {
+  paid: { Icon: CheckCircle2, ink: 'text-green-600' },
+  unconfirmed: { Icon: Clock, ink: 'text-yellow-600' },
+  overdue: { Icon: AlertTriangle, ink: 'text-red-500' },
 };
 
-// A due date with only a forecast row is waiting on a statement, never paid.
-function RuleChip({ r }: { r: RuleMatch }) {
-  const paid = r.matchedCount >= r.expectedCount;
-  const waiting = !paid && (r.matchedCount > 0 || r.unconfirmedCount > 0);
-  const Icon = paid ? CheckCircle2 : waiting ? Clock : AlertTriangle;
+function detail(d: DueDateStatus, side: Side): string {
+  if (d.payment) return `${side === 'income' ? 'Received' : 'Paid'} ${fmt2(d.payment.amount)} on ${day(d.payment.date)} · ${d.payment.vendor}`;
+  if (d.state === 'overdue') return 'No payment on the statement that covers this date';
+  return 'Not confirmed yet: no imported statement reaches this date';
+}
+
+const dueRows = (rules: RuleMatch[], side: Side) =>
+  rules
+    .filter((r) => (r.type === 'income') === (side === 'income'))
+    .flatMap((r) => r.dueDates.map((d) => ({ r, d })))
+    .sort((a, b) => a.d.due.localeCompare(b.d.due));
+
+function DueRows({ rows, side }: { rows: ReturnType<typeof dueRows>; side: Side }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border ${TONE[paid ? 'paid' : waiting ? 'waiting' : 'missing']}`}
-      title={r.unconfirmedCount > 0 ? 'Due date passed; no imported statement reaches it yet' : undefined}
-    >
-      <Icon size={10} />
-      {r.name} <span className="opacity-70">({r.matchedCount}/{r.expectedCount})</span>
-      {r.unconfirmedCount > 0 && <span>· {r.unconfirmedCount} not confirmed</span>}
-    </span>
+    <ul className="mt-2 divide-y divide-border rounded-lg border border-border">
+      {rows.map(({ r, d }) => {
+        const { Icon, ink } = STATE[d.state];
+        return (
+          <li key={`${r.ruleId}-${d.due}`} className="flex items-start gap-3 px-3 py-2">
+            <Icon size={14} className={`mt-1 shrink-0 ${ink}`} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium truncate">{r.name}</span>
+                <span className="text-sm font-mono shrink-0">{fmt2(r.expectedAmt)}</span>
+              </div>
+              <div className="text-xs text-muted">Due {day(d.due)} · {detail(d, side)}</div>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Tile({ label, value, tone, note }: { label: string; value: string; tone: string; note?: string }) {
+  return (
+    <div className={`rounded-lg border px-3 py-2 ${tone}`}>
+      <div className="text-[10px] text-muted uppercase tracking-wide">{label}</div>
+      <div className="text-lg font-bold">{value}</div>
+      {note && <div className="text-[10px]">{note}</div>}
+    </div>
+  );
+}
+
+const GREEN = 'bg-green-500/5 border-green-500/20 text-green-600';
+const RED = 'bg-red-500/5 border-red-500/20 text-red-500';
+
+function sideTiles(data: ExpectedVsActual, side: Side) {
+  if (side === 'income') {
+    const short = data.incomeExpected - data.incomeActual;
+    return [
+      <Tile key="e" label="Expected income" value={fmt(data.incomeExpected)} tone={GREEN} />,
+      <Tile key="a" label="Received" value={fmt(data.incomeActual)} tone={short > 0 ? 'bg-green-500/5 border-green-500/20 text-yellow-600' : GREEN} note={short > 0 ? `${fmt(short)} still due` : undefined} />,
+    ];
+  }
+  const left = data.expenseExpected - data.expenseActual;
+  return [
+    <Tile key="e" label="Expected expenses" value={fmt(data.expenseExpected)} tone={RED} />,
+    <Tile key="a" label="Paid" value={fmt(data.expenseActual)} tone={left < 0 ? 'bg-red-500/5 border-red-500/20 text-orange-500' : RED} note={left > 0 ? `${fmt(left)} still expected` : undefined} />,
+  ];
+}
+
+// Each pair of figures opens the due dates behind it, so a total can be traced
+// to the bills or paychecks that make it up.
+function SidePair({ data, side }: { data: ExpectedVsActual; side: Side }) {
+  const [open, setOpen] = useState(false);
+  const rows = dueRows(data.rules, side);
+  const noun = side === 'income' ? 'paycheck' : 'bill';
+  return (
+    <div>
+      <button onClick={() => setOpen(!open)} aria-expanded={open} disabled={rows.length === 0} className="w-full text-left">
+        <div className="grid grid-cols-2 gap-3">{sideTiles(data, side)}</div>
+        {rows.length > 0 && (
+          <span className="mt-1 flex items-center gap-1 text-xs text-accent">
+            <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+            {open ? 'Hide' : 'Show'} {rows.length} {rows.length === 1 ? noun : `${noun}s`}
+          </span>
+        )}
+      </button>
+      {open && <DueRows rows={rows} side={side} />}
+    </div>
   );
 }
 
@@ -33,39 +105,10 @@ export function ExpectedVsReceived({ data, monthLabel }: { data: ExpectedVsActua
   if (data.incomeExpected <= 0 && data.expenseExpected <= 0) return null;
   return (
     <Section id="expected" title="Expected vs received" icon={<BarChart3 size={14} className="text-accent" />} right={<span className="text-xs text-muted shrink-0">{monthLabel}</span>}>
-      <div className="grid grid-cols-2 gap-3 mb-3">
-        <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-3 py-2">
-          <div className="text-[10px] text-muted uppercase tracking-wide">Expected income</div>
-          <div className="text-lg font-bold text-green-600">{fmt(data.incomeExpected)}</div>
-        </div>
-        <div className="rounded-lg bg-green-500/5 border border-green-500/20 px-3 py-2">
-          <div className="text-[10px] text-muted uppercase tracking-wide">Received</div>
-          <div className={`text-lg font-bold ${data.incomeActual >= data.incomeExpected ? 'text-green-600' : 'text-yellow-600'}`}>
-            {fmt(data.incomeActual)}
-          </div>
-          {data.incomeActual < data.incomeExpected && (
-            <div className="text-[10px] text-yellow-600">{fmt(data.incomeExpected - data.incomeActual)} still due</div>
-          )}
-        </div>
-        <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2">
-          <div className="text-[10px] text-muted uppercase tracking-wide">Expected expenses</div>
-          <div className="text-lg font-bold text-red-500">{fmt(data.expenseExpected)}</div>
-        </div>
-        <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-3 py-2">
-          <div className="text-[10px] text-muted uppercase tracking-wide">Paid</div>
-          <div className={`text-lg font-bold ${data.expenseActual <= data.expenseExpected ? 'text-red-500' : 'text-orange-500'}`}>
-            {fmt(data.expenseActual)}
-          </div>
-          {data.expenseActual < data.expenseExpected && (
-            <div className="text-[10px] text-muted">{fmt(data.expenseExpected - data.expenseActual)} still expected</div>
-          )}
-        </div>
+      <div className="space-y-4">
+        <SidePair data={data} side="income" />
+        <SidePair data={data} side="expense" />
       </div>
-      {data.rules.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {data.rules.map((r) => <RuleChip key={r.ruleId} r={r} />)}
-        </div>
-      )}
     </Section>
   );
 }
