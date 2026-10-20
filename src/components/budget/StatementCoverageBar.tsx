@@ -64,7 +64,6 @@ export function StatementCoverageBar({ coverage, onImport }: { coverage: Stateme
         ))}
         {coverage.account && <p className="text-xs text-muted">{coverage.account}</p>}
       </div>
-      <ImportButton onImport={onImport} />
     </div>
   );
 }
