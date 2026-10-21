@@ -59,7 +59,7 @@ const FIXED_SPECS: Record<string, Spec> = {
     run: (a, c) => sql`SELECT * FROM budget_variance(${c.userId}, ${c.databaseId}, ${`${a.month}-01`}::date)`,
   },
   month_to_date_pace: {
-    description: 'Spend so far in a month against a straight-line pace through its budget (planned x days elapsed / days in month), with a projected month-end figure.',
+    description: 'Spend so far in a month against a straight-line pace through its budget (planned x days elapsed / days in month), with a projected month-end figure. Days elapsed stop at data_through, the last day imported statements reach; say so when it is before today.',
     parameters: allRequired({ month: { type: 'string', description: 'YYYY-MM, usually the current month' } }),
     schema: z.object({ month }).strict(),
     run: (a, c) => sql`SELECT * FROM month_to_date_pace(${c.userId}, ${c.databaseId}, ${`${a.month}-01`}::date)`,
@@ -115,7 +115,9 @@ const cell = (v: unknown): Row[string] => {
 export type ToolOutcome = { args: Record<string, unknown>; rows: Row[]; error?: string };
 
 export async function runTool(name: string, rawArgs: string, groups: string[], ctx: ToolContext): Promise<ToolOutcome> {
-  const spec = specs(groups)[name];
+  const all = specs(groups);
+  // The name comes from the model, so "toString" must not resolve to an inherited property.
+  const spec = Object.hasOwn(all, name) ? all[name] : undefined;
   let args: unknown;
   try {
     args = JSON.parse(rawArgs || '{}');

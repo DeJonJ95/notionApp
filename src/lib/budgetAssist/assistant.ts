@@ -9,6 +9,10 @@ import { runTool, toolDefinitions, type Row, type ToolContext } from './tools';
 export const MAX_ROUNDS = 5;
 // Rows beyond this still reach the "How I got this" panel, just not the model.
 const MAX_ROWS_TO_MODEL = 120;
+// The route's maxDuration is 120s; finishing by 100s leaves room for setup and the response.
+export const DEADLINE_MS = 100_000;
+const ROUND_TIMEOUT_MS = 40_000;
+const MIN_ROUND_MS = 10_000;
 
 export type Source = { tool: string; args: Record<string, unknown>; rows: Row[]; error?: string };
 export type Turn = { role: 'user' | 'assistant'; content: string };
@@ -48,8 +52,14 @@ export async function answerBudgetQuestion(input: { userId: string; question: st
     { role: 'user', content: input.question },
   ];
   const sources: Source[] = [];
+  const deadline = Date.now() + DEADLINE_MS;
   for (let round = 1; round <= MAX_ROUNDS; round++) {
-    const { content, toolCalls } = await chatWithTools(messages, tools, { userId: input.userId, temperature: 0.2 });
+    const left = deadline - Date.now();
+    if (left < MIN_ROUND_MS) {
+      return { reply: 'I ran out of time looking that up. Try asking about one period or one category at a time.', sources, rounds: round - 1 };
+    }
+    const opts = { userId: input.userId, temperature: 0.2, timeoutMs: Math.min(ROUND_TIMEOUT_MS, left) };
+    const { content, toolCalls } = await chatWithTools(messages, tools, opts);
     if (toolCalls.length === 0) return { reply: content.trim(), sources, rounds: round };
     messages.push({ role: 'assistant', content: content || null, tool_calls: toolCalls });
     for (const call of toolCalls) {

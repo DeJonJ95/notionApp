@@ -112,8 +112,9 @@ LANGUAGE sql STABLE AS $$
       tx_type = 'Expense'
       -- A refund is an Income row filed under a spending category; it nets
       -- against that category. Income under Other (pay, and refunds the
-      -- importer could not attribute) is not spend.
-      OR (tx_type = 'Income' AND category NOT IN ('Other', 'Transfers'))
+      -- importer could not attribute) is not spend, and neither is money back
+      -- from savings, investments or a loan.
+      OR (tx_type = 'Income' AND category NOT IN ('Other', 'Transfers', 'Investments', 'Emergency Fund', 'Debt'))
     )
     -- Savings rows move money to the user's own savings, so they are not spend.
 $$;
@@ -253,14 +254,20 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 -- Linear pace: by day d of an n-day month, spend should be at most planned * d / n.
+-- d stops at data_through, the last day an imported statement reaches (today when
+-- nothing is imported), so days the bank has not reported yet are not counted.
 DROP FUNCTION IF EXISTS month_to_date_pace(text, text, date);
 CREATE FUNCTION month_to_date_pace(p_user_id text, p_database_id text, p_month date)
 RETURNS TABLE (category text, planned double precision, spent double precision, expected_by_now double precision,
                over_pace_by double precision, projected_month_end double precision, days_elapsed int,
-               days_in_month int, status text, is_total boolean)
+               days_in_month int, status text, is_total boolean, data_through date)
 LANGUAGE sql STABLE AS $$
   WITH m AS (SELECT budget_month_start(p_month) AS start, extract(day FROM budget_month_end(p_month))::int AS days),
-  e AS (SELECT start, days, greatest(least(budget_today() - start + 1, days), 0) AS elapsed FROM m),
+  t AS (
+    SELECT least(budget_today(), coalesce(max(il."dateTo")::date, budget_today())) AS through
+    FROM "ImportLog" il WHERE il."userId" = p_user_id
+  ),
+  e AS (SELECT start, days, through, greatest(least(through - start + 1, days), 0) AS elapsed FROM m, t),
   v AS (SELECT * FROM budget_variance(p_user_id, p_database_id, p_month) WHERE category <> 'All spending')
   SELECT v.category,
          v.planned,
@@ -271,9 +278,11 @@ LANGUAGE sql STABLE AS $$
          e.elapsed,
          e.days,
          CASE WHEN v.planned IS NULL THEN 'no budget'
+              WHEN e.elapsed = 0 THEN 'no statement data yet'
               WHEN v.actual > v.planned * e.elapsed / e.days THEN 'over pace'
               ELSE 'on or under pace' END,
-         v.is_total
+         v.is_total,
+         e.through
   FROM v, e
   ORDER BY v.is_total, v.planned IS NULL, v.actual - coalesce(v.planned * e.elapsed / e.days, 0) DESC
 $$;
@@ -281,7 +290,9 @@ $$;
 -- Metric: merchant groups ---------------------------------------------------------
 
 -- A transaction belongs to a group when one of the group's patterns appears in
--- its raw payee or its vendor, ignoring case and anything but letters and digits.
+-- its vendor, ignoring case and anything but letters and digits. The raw payee is
+-- not searched: on manual rows Notes is free text, and a delivery order's raw text
+-- names the restaurant, which would count it in two groups.
 DROP FUNCTION IF EXISTS spend_by_merchant_group(text, text, text, date, date);
 CREATE FUNCTION spend_by_merchant_group(p_user_id text, p_database_id text, p_group text, p_start_date date, p_end_date date)
 RETURNS TABLE (kind text, month date, tx_date date, vendor text, payee text, category text,
@@ -298,8 +309,7 @@ LANGUAGE sql STABLE AS $$
     WHERE EXISTS (
       SELECT 1 FROM pats
       WHERE length(pats.p) >= 3
-        AND (regexp_replace(lower(coalesce(s.payee, '')), '[^a-z0-9]', '', 'g') LIKE '%' || pats.p || '%'
-             OR regexp_replace(lower(coalesce(s.vendor, '')), '[^a-z0-9]', '', 'g') LIKE '%' || pats.p || '%')
+        AND regexp_replace(lower(coalesce(s.vendor, '')), '[^a-z0-9]', '', 'g') LIKE '%' || pats.p || '%'
     )
   )
   SELECT u.* FROM (

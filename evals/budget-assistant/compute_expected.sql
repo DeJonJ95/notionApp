@@ -56,7 +56,10 @@ pages AS (
 ),
 tx AS (
   SELECT id, created,
-         left(dt, 10)::date AS d,
+         -- An impossible date such as 2026-02-30 is skipped, not cast; CASE keeps the cast from running on it.
+         CASE WHEN dt !~ '^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])' OR left(dt, 4) = '0000' THEN NULL
+              WHEN substr(dt, 9, 2)::int > extract(day FROM make_date(left(dt, 4)::int, substr(dt, 6, 2)::int, 1) + interval '1 month' - interval '1 day') THEN NULL
+              ELSE left(dt, 10)::date END AS d,
          coalesce(typ, '') AS typ,
          coalesce(cat, 'Other') AS cat,
          abs(amt::numeric) AS amt,
@@ -68,17 +71,18 @@ tx AS (
            AND (status = 'Planned' OR notes LIKE 'Recurring expense: %' OR notes LIKE 'Recurring income: %') AS forecast
   FROM pages
   WHERE coalesce(typ, '') <> 'Budget'
-    AND amt ~ '^-?[0-9]+(\.[0-9]+)?$' AND amt::numeric <> 0
-    AND dt ~ '^\d{4}-\d{2}-\d{2}'
+    AND amt ~ '^\s*-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?\s*$' AND amt::numeric <> 0
 ),
 -- Spend: expenses positive, refunds (income under a spending category) negative;
--- transfers, forecasts, pay and unattributed income left out.
+-- transfers, forecasts, pay, unattributed income and money back from savings,
+-- investments or a loan left out.
 spend AS (
   SELECT id, d, cat, CASE WHEN typ = 'Expense' THEN amt ELSE -amt END AS amount, vendor, notes
   FROM tx
-  WHERE NOT forecast
+  WHERE d IS NOT NULL
+    AND NOT forecast
     AND cat <> 'Transfers'
-    AND (typ = 'Expense' OR (typ = 'Income' AND cat NOT IN ('Other', 'Transfers')))
+    AND (typ = 'Expense' OR (typ = 'Income' AND cat NOT IN ('Other', 'Transfers', 'Investments', 'Emergency Fund', 'Debt')))
 ),
 -- Question 1: month over month. The thresholds are the documented defaults.
 months AS (
@@ -108,7 +112,7 @@ mom_json AS (
     ), '[]'::jsonb)
   ) AS j
 ),
--- Question 3: fast food, matched on statement text or vendor without case or punctuation.
+-- Question 3: fast food, matched on the vendor without case or punctuation.
 ff AS (
   SELECT to_char(s.d, 'YYYY-MM') AS month, s.amount
   FROM spend s, params
@@ -117,8 +121,7 @@ ff AS (
       SELECT 1 FROM "MerchantPattern" mp
       WHERE mp."userId" = params.user_id AND mp."groupName" = 'fast_food'
         AND length(regexp_replace(lower(mp.pattern), '[^a-z0-9]', '', 'g')) >= 3
-        AND (regexp_replace(lower(coalesce(s.notes, '')), '[^a-z0-9]', '', 'g') LIKE '%' || regexp_replace(lower(mp.pattern), '[^a-z0-9]', '', 'g') || '%'
-          OR regexp_replace(lower(s.vendor), '[^a-z0-9]', '', 'g') LIKE '%' || regexp_replace(lower(mp.pattern), '[^a-z0-9]', '', 'g') || '%')
+        AND regexp_replace(lower(s.vendor), '[^a-z0-9]', '', 'g') LIKE '%' || regexp_replace(lower(mp.pattern), '[^a-z0-9]', '', 'g') || '%'
     )
 ),
 ff_json AS (
@@ -180,7 +183,7 @@ pairs AS (
          ARRAY(SELECT x FROM unnest(string_to_array(rn.n, ' ')) x WHERE x <> '' AND x NOT IN ('of', 'and', 'for', 'to', 'at', 'in', 'on', 'a')) AS ta,
          ARRAY(SELECT x FROM unnest(string_to_array(tn.n, ' ')) x WHERE x <> '' AND x NOT IN ('of', 'and', 'for', 'to', 'at', 'in', 'on', 'a')) AS tb
   FROM rules r
-  JOIN tx t ON NOT t.forecast AND t.typ <> 'Income' AND t.amt >= r.amount * 0.5
+  JOIN tx t ON t.d IS NOT NULL AND NOT t.forecast AND t.typ <> 'Income' AND t.amt >= r.amount * 0.5
   JOIN names rn ON rn.key = 'rule:' || r.id
   JOIN names tn ON tn.key = 'tx:' || t.id
 ),

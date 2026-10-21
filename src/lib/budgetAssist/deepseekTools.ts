@@ -14,6 +14,9 @@ export type ChatMessage =
 
 type Opts = { userId: string; temperature: number; timeoutMs?: number };
 
+/** An error whose message is written for the person asking; anything else stays server-side. */
+export class AssistantError extends Error {}
+
 export function deepseekConfigured(): boolean {
   return Boolean(process.env.DEEPSEEK_API_KEY);
 }
@@ -21,7 +24,7 @@ export function deepseekConfigured(): boolean {
 /** One completion round. Returns the assistant message, with any tool calls it asked for. */
 export async function chatWithTools(messages: ChatMessage[], tools: unknown[], opts: Opts): Promise<{ content: string; toolCalls: ToolCall[] }> {
   const key = process.env.DEEPSEEK_API_KEY;
-  if (!key) throw new Error('No AI provider is configured');
+  if (!key) throw new AssistantError('No AI provider is configured');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 40_000);
   try {
@@ -33,14 +36,14 @@ export async function chatWithTools(messages: ChatMessage[], tools: unknown[], o
     });
     if (!r.ok) {
       console.error('budget assistant deepseek error:', r.status, (await r.text()).slice(0, 500));
-      throw new Error('The assistant could not reach its model. Try again.');
+      throw new AssistantError('The assistant could not reach its model. Try again.');
     }
     const j = await r.json();
     if (j.usage) await logDeepSeek('budget-assistant', j.usage, opts.userId);
     const message = j.choices?.[0]?.message ?? {};
     return { content: String(message.content ?? ''), toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls : [] };
   } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') throw new Error('The assistant took too long. Try again.');
+    if (e instanceof Error && e.name === 'AbortError') throw new AssistantError('The assistant took too long. Try again.');
     throw e;
   } finally {
     clearTimeout(timer);

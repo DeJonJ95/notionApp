@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { sessionUserId } from '@/lib/sessionUser';
 import { checkDailyBudget, budgetExceededResponse } from '@/lib/usageGuard';
 import { answerBudgetQuestion } from '@/lib/budgetAssist/assistant';
-import { deepseekConfigured } from '@/lib/budgetAssist/deepseekTools';
+import { AssistantError, deepseekConfigured } from '@/lib/budgetAssist/deepseekTools';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -27,6 +27,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(await answerBudgetQuestion({ userId, ...parsed.data }));
   } catch (e) {
     console.error('budget assistant failed:', e);
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'The assistant failed. Try again.' }, { status: 502 });
+    return NextResponse.json({ error: e instanceof AssistantError ? e.message : 'The assistant failed. Try again.' }, { status: 502 });
   }
 }

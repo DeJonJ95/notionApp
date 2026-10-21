@@ -10,8 +10,8 @@ async function call(init?: RequestInit, query = ''): Promise<Groups> {
   return d.groups as Groups;
 }
 
-// Patterns are matched against each transaction's raw payee and vendor,
-// ignoring case and punctuation, so "McDonald's" also catches "MCDONALDS 7946".
+// Patterns are matched against each transaction's vendor, ignoring case and
+// punctuation, so "McDonald's" also catches "MCDONALDS 7946".
 export function MerchantGroupsDialog({ onClose }: { onClose: () => void }) {
   const [groups, setGroups] = useState<Groups>({});
   const [group, setGroup] = useState('fast_food');
@@ -35,7 +35,7 @@ export function MerchantGroupsDialog({ onClose }: { onClose: () => void }) {
           <h2 className="text-base font-semibold">Merchant groups</h2>
           <button onClick={onClose} aria-label="Close" className="p-1 rounded hover:bg-bg"><X size={16} /></button>
         </div>
-        <p className="text-sm mb-3">The assistant counts a purchase in a group when one of these names appears in its statement text or vendor.</p>
+        <p className="text-sm mb-3">The assistant counts a purchase in a group when one of these names appears in its vendor.</p>
         {Object.entries(groups).map(([name, rows]) => (
           <div key={name} className="mb-3">
             <h3 className="text-sm font-semibold mb-1">{name}</h3>

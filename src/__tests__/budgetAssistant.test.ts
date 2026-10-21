@@ -13,7 +13,7 @@ jest.mock('../lib/budgetDb', () => ({
 }));
 jest.mock('../lib/logUsage', () => ({ logDeepSeek: async () => {} }));
 
-import { answerBudgetQuestion, MAX_ROUNDS } from '../lib/budgetAssist/assistant';
+import { answerBudgetQuestion, DEADLINE_MS, MAX_ROUNDS } from '../lib/budgetAssist/assistant';
 
 type Body = { messages: { role: string; content: string | null; tool_call_id?: string }[]; tools: { function: { name: string; parameters: { properties: Record<string, { enum?: string[] }> } } }[]; temperature: number };
 const bodies: Body[] = [];
@@ -70,6 +70,7 @@ test('rejects invalid arguments before any query and tells the model why', async
       call('c2', 'spend_by_merchant_group', { group: 'coffee', start_date: '2026-09-01', end_date: '2026-09-30' }),
       call('c3', 'spend_by_category', { start_date: '2026-09-01', end_date: '2026-09-30', user_id: 'someone-else' }),
       call('c4', 'run_sql', { query: 'select 1' }),
+      call('c5', 'toString', {}),
     ] },
     { content: 'I could not run those.' },
   );
@@ -80,9 +81,10 @@ test('rejects invalid arguments before any query and tells the model why', async
     expect.stringMatching(/Invalid arguments/),
     expect.stringMatching(/Invalid arguments/),
     'Unknown tool run_sql',
+    'Unknown tool toString',
   ]);
   const errors = bodies[1].messages.filter((m) => m.role === 'tool').map((m) => JSON.parse(String(m.content)).error);
-  expect(errors).toHaveLength(4);
+  expect(errors).toHaveLength(5);
 });
 
 test('stops after five rounds of tool calls', async () => {
@@ -92,4 +94,21 @@ test('stops after five rounds of tool calls', async () => {
   expect(bodies).toHaveLength(MAX_ROUNDS);
   expect(out.rounds).toBe(MAX_ROUNDS);
   expect(out.reply).toMatch(/five lookups/);
+});
+
+test('stops before the route runs out of time', async () => {
+  queryRaw.mockResolvedValue([]);
+  const start = Date.now();
+  let now = start;
+  jest.spyOn(Date, 'now').mockImplementation(() => now);
+  jest.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    now += 46_000;
+    const message = { content: '', tool_calls: [call('c', 'bill_payment_status', { start_date: '2026-09-01', end_date: '2026-09-30' })] };
+    return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
+  });
+  const out = await answerBudgetQuestion({ userId: 'u1', question: 'slow model' });
+  expect(bodies).toHaveLength(2);
+  expect(now - start).toBeLessThanOrEqual(DEADLINE_MS);
+  expect(out).toMatchObject({ rounds: 2, reply: expect.stringMatching(/ran out of time/) });
 });
