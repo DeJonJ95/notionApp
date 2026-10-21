@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
+import { isOwner } from '@/lib/owner';
 import { upsertListing } from '@/lib/jobs/ingest';
 import { parseJobPostingFromHtml, stripHtml } from '@/lib/jobs/jsonld';
 import {
@@ -26,6 +27,19 @@ function isBlockedHost(host: string): boolean {
   return false;
 }
 
+function parseTarget(body: unknown): URL | string {
+  const parsed = bodySchema.safeParse(body);
+  if (!parsed.success) return 'A valid job URL is required';
+  let target: URL;
+  try {
+    target = new URL(parsed.data.url);
+  } catch {
+    return 'Invalid URL';
+  }
+  if (!/^https?:$/.test(target.protocol) || isBlockedHost(target.hostname)) return 'That URL is not allowed';
+  return target;
+}
+
 // Capture a job from any URL: fetch the page server-side, prefer schema.org
 // JobPosting JSON-LD (covers most ATS + company sites), fall back to cleaned
 // page text + a DeepSeek title/company extraction.
@@ -33,21 +47,13 @@ export async function POST(req: NextRequest) {
   const session = await auth();
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const parsed = bodySchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'A valid job URL is required' }, { status: 400 });
+  // Sign-up is open, and this hands an attacker-chosen server's response to Node's fetch decoders.
+  if (!isOwner(session)) {
+    return NextResponse.json({ error: 'URL import is not available on this account yet.' }, { status: 403 });
   }
 
-  let target: URL;
-  try {
-    target = new URL(parsed.data.url);
-  } catch {
-    return NextResponse.json({ error: 'Invalid URL' }, { status: 400 });
-  }
-  if (!/^https?:$/.test(target.protocol) || isBlockedHost(target.hostname)) {
-    return NextResponse.json({ error: 'That URL is not allowed' }, { status: 400 });
-  }
+  const target = parseTarget(await req.json().catch(() => null));
+  if (typeof target === 'string') return NextResponse.json({ error: target }, { status: 400 });
 
   // Fetch the page (browser-like UA; many ATS block default fetch agents).
   let html: string;
