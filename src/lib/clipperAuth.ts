@@ -15,6 +15,7 @@ import { createHash, randomBytes } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from './prisma';
 import { auth } from './auth';
+import { isOwnerEmail } from './owner';
 
 const TOKEN_BYTES = 32; // 256 bits, base64url-encoded → 43 chars
 const TOKEN_HASH_ALG = 'sha256';
@@ -36,6 +37,7 @@ export function hashToken(token: string): string {
 export type ClipperContext = {
   userId: string;
   tokenId: string;
+  email: string | null;
 };
 
 /**
@@ -55,7 +57,7 @@ export async function verifyClipperToken(req: NextRequest): Promise<ClipperConte
   const tokenHash = hashToken(token);
   const row = await prisma.clipperToken.findUnique({
     where: { tokenHash },
-    select: { id: true, userId: true },
+    select: { id: true, userId: true, user: { select: { email: true } } },
   });
   if (!row) return null;
 
@@ -63,7 +65,7 @@ export async function verifyClipperToken(req: NextRequest): Promise<ClipperConte
     .update({ where: { id: row.id }, data: { lastUsedAt: new Date() } })
     .catch(() => {});
 
-  return { userId: row.userId, tokenId: row.id };
+  return { userId: row.userId, tokenId: row.id, email: row.user.email };
 }
 
 /**
@@ -83,9 +85,15 @@ export async function verifyClipperAuth(req: NextRequest): Promise<ClipperContex
 
   const session = await auth();
   const userId = (session?.user as any)?.id;
-  if (userId) return { userId, tokenId: 'session' };
+  if (userId) return { userId, tokenId: 'session', email: session?.user?.email ?? null };
 
   return null;
+}
+
+// Sign-up is open, so routes that fetch a caller-supplied URL server-side stay owner-only.
+export async function verifyOwnerClipperAuth(req: NextRequest): Promise<ClipperContext | null> {
+  const ctx = await verifyClipperAuth(req);
+  return ctx && isOwnerEmail(ctx.email) ? ctx : null;
 }
 
 // Standard CORS preamble for clipper endpoints. The extension's origin

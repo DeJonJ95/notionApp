@@ -3,7 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyClipperAuth, corsPreflight, jsonWithCors } from '@/lib/clipperAuth';
+import { verifyOwnerClipperAuth, corsPreflight, jsonWithCors } from '@/lib/clipperAuth';
 import { analyzeImage, isTransientVisionError } from '@/lib/vision/shopTheLook';
 import { findShopLink } from '@/lib/shopSearch';
 import { logCall, logGemini } from '@/lib/logUsage';
@@ -17,7 +17,7 @@ export async function OPTIONS(req: NextRequest) {
 
 // POST: analyze image → find shop links → store → return
 export async function POST(req: NextRequest) {
-  const ctx = await verifyClipperAuth(req);
+  const ctx = await verifyOwnerClipperAuth(req);
   if (!ctx) return jsonWithCors(req, { error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

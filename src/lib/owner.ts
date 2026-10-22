@@ -7,9 +7,13 @@ import type { Session } from 'next-auth';
 
 const ownerEmail = (process.env.OWNER_EMAIL ?? '').trim().toLowerCase();
 
+export function isOwnerEmail(email: string | null | undefined): boolean {
+  if (!ownerEmail) return false; // unconfigured = nobody is owner; never accidentally open the gate
+  const normalized = email?.trim().toLowerCase();
+  return !!normalized && normalized === ownerEmail;
+}
+
 /** True if there's an OWNER_EMAIL set and it matches the session's email. */
 export function isOwner(session: Session | null | undefined): boolean {
-  if (!ownerEmail) return false; // unconfigured = nobody is owner; never accidentally open the gate
-  const email = session?.user?.email?.trim().toLowerCase();
-  return !!email && email === ownerEmail;
+  return isOwnerEmail(session?.user?.email);
 }

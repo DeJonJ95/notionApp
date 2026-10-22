@@ -4,7 +4,7 @@
 import { NextRequest } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { putBytes } from '@/lib/r2';
-import { verifyClipperAuth, corsPreflight, jsonWithCors } from '@/lib/clipperAuth';
+import { verifyOwnerClipperAuth, corsPreflight, jsonWithCors } from '@/lib/clipperAuth';
 import { logCall } from '@/lib/logUsage';
 
 // Canvas placement constants — mirror what CanvasPageEditor uses
@@ -23,7 +23,7 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await verifyClipperAuth(req);
+  const ctx = await verifyOwnerClipperAuth(req);
   if (!ctx) return jsonWithCors(req, { error: 'Unauthorized' }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));

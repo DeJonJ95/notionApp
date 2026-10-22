@@ -195,9 +195,7 @@
       "functionLoc": 89,
       "complexity": 17,
       "banned": 1,
-      "anyCount": 1,
-      "castChain": 1,
-      "commentRatio": 0.195
+      "commentRatio": 0.194
     },
     "src/app/api/clipper/save-image/route.ts": {
       "functionLoc": 111,
@@ -594,7 +592,7 @@
     "src/lib/clipperAuth.ts": {
       "anyCount": 2,
       "castChain": 1,
-      "commentRatio": 0.326
+      "commentRatio": 0.314
     },
     "src/lib/inbox.ts": {
       "anyCount": 3,
