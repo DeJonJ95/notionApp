@@ -6,8 +6,9 @@ import { relationTargetOk } from '@/lib/ownership';
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; propId: string } }
+  props: { params: Promise<{ id: string; propId: string }> }
 ) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -46,8 +47,9 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; propId: string } }
+  props: { params: Promise<{ id: string; propId: string }> }
 ) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   if (!(session?.user as any)?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

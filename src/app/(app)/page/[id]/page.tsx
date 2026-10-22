@@ -32,7 +32,8 @@ function collectImages(blocks: CanvasBlockData[]): { src: string; blockId: strin
   return out;
 }
 
-export default async function PageRoute({ params }: { params: { id: string } }) {
+export default async function PageRoute(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth();
   const userId = (session?.user as any)?.id;
 

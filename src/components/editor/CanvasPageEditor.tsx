@@ -745,7 +745,7 @@ function DocOutlineRail({
   scrollRef,
   blocks,
 }: {
-  scrollRef: React.RefObject<HTMLDivElement>;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
   blocks: CanvasBlockData[];
 }) {
   const [headings, setHeadings] = useState<OutlineHeading[]>([]);

@@ -9,7 +9,8 @@ import { prisma } from '@/lib/prisma';
 const SNIPPET_MAX = 240;
 const BLOCKS_TO_SCAN = 4;
 
-export async function GET(_: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth();
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

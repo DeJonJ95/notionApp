@@ -26,11 +26,12 @@ function findUrl(...values: (string | undefined)[]): string {
   return '';
 }
 
-export default async function ClipperSharePage({
-  searchParams,
-}: {
-  searchParams: { title?: string; text?: string; url?: string; img?: string };
-}) {
+export default async function ClipperSharePage(
+  props: {
+    searchParams: Promise<{ title?: string; text?: string; url?: string; img?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const session = await auth();
   if (!(session?.user as any)?.id) {
     // Preserve the share params through the sign-in round trip so the

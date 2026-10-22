@@ -7,7 +7,8 @@ export const runtime = 'nodejs';
 // Mark a listing as applied. Called by the user ("Mark as applied") or the
 // extension after autofill+submit. Creates the application if the user
 // skipped tailoring, and records the status transition in the timeline.
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth();
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

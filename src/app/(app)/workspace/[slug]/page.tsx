@@ -6,11 +6,12 @@ import { NewPageButton } from '@/components/sidebar/NewPageButton';
 import { NewDatabaseButton } from '@/components/database/NewDatabaseButton';
 import { EntityIcon } from '@/components/icons/registry';
 
-export default async function WorkspacePage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function WorkspacePage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const session = await auth();
   const userId = (session?.user as any)?.id;
 

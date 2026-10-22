@@ -18,7 +18,8 @@ const patchSchema = z.object({
 
 // Update an application. A status change appends an ApplicationEvent so the
 // timeline reflects how it moved through the pipeline.
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth();
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

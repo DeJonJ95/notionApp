@@ -8,7 +8,8 @@ const MAX_ROWS = 1000;
 
 /** Body: `{ text, source? }` for a CSV or pasted list, or `{ rows }` for
  *  rows the client already built (a walk-in added at the door). */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const event = await prisma.event.findFirst({ where: { id: params.id, ownerId: userId }, select: { id: true } });

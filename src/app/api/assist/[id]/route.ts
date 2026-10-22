@@ -5,7 +5,8 @@ import { prisma } from '@/lib/prisma';
 export const runtime = 'nodejs';
 
 // "Start over": forget this to-do's conversation. Applied changes stay applied.
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { count } = await prisma.assistThread.deleteMany({ where: { id: params.id, userId } });

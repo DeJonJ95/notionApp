@@ -9,7 +9,7 @@ type Drag = { id: string; sx: number; sy: number; origin: Point; lane: Point; la
 type Deps = {
   model: MapModel;
   zoom: number;
-  plane: RefObject<HTMLDivElement>;
+  plane: RefObject<HTMLDivElement | null>;
   waitsOn?: MapProp;
   setValue: (pageId: string, prop: MapProp, value: unknown) => void;
   select: (id: string) => void;

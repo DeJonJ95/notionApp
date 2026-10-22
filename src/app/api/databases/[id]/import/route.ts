@@ -6,7 +6,8 @@ import type { ImportRow } from '@/lib/rowImport';
 
 const MAX_ROWS = 1000;
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const session = await auth();
   const userId = (session?.user as { id?: string } | undefined)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

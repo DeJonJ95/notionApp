@@ -44,10 +44,10 @@
     "src/app/(app)/clipper/share/page.tsx": {
       "anyCount": 1,
       "castChain": 1,
-      "commentRatio": 0.323
+      "commentRatio": 0.317
     },
     "src/app/(app)/database/[id]/page.tsx": {
-      "functionLoc": 230,
+      "functionLoc": 225,
       "anyCount": 3
     },
     "src/app/(app)/docs/page.tsx": {
@@ -189,7 +189,7 @@
       "castChain": 3
     },
     "src/app/api/calendar/[token]/route.ts": {
-      "commentRatio": 0.171
+      "commentRatio": 0.167
     },
     "src/app/api/clipper/extract-image/route.ts": {
       "functionLoc": 89,

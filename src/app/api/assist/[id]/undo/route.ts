@@ -9,7 +9,8 @@ import type { AssistResult } from '@/lib/assist/types';
 export const runtime = 'nodejs';
 
 // Reverses the thread's newest apply from the undo records stored with it.
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const thread = await prisma.assistThread.findFirst({ where: { id: params.id, userId } });

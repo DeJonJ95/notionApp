@@ -5,7 +5,7 @@ import { currentUserId } from '@/lib/events/session';
 import { suggestInvites } from '@/lib/events/suggest';
 import { duplicateReason } from '@/lib/events/match';
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 async function context(eventId: string) {
   const userId = await currentUserId();
@@ -23,7 +23,8 @@ async function context(eventId: string) {
 
 /** Query: `from` (comma-separated event ids; default the latest earlier
  *  event), `include` (came | came-or-rsvped), `maxNoShows` (blank = any). */
-export async function GET(req: NextRequest, { params }: Ctx) {
+export async function GET(req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const ctx = await context(params.id);
   if (!ctx) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const q = req.nextUrl.searchParams;
@@ -71,7 +72,8 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
 const postSchema = z.object({ personIds: z.array(z.string()).min(1).max(1000) });
 
-export async function POST(req: NextRequest, { params }: Ctx) {
+export async function POST(req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const ctx = await context(params.id);
   if (!ctx) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const parsed = postSchema.safeParse(await req.json().catch(() => null));

@@ -9,7 +9,8 @@ export const runtime = 'nodejs';
 // cascade-delete with the listing (see schema.prisma onDelete: Cascade), so a
 // single delete cleans up the whole pipeline. Generated files live in R2, so
 // they are cleared separately on a best-effort basis.
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

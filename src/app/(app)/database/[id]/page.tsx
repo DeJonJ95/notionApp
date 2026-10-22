@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Trash2, ChevronRight, FolderOutput, Edit3, Check, X } from 'lucide-react';
@@ -64,7 +64,19 @@ async function withMapFirst<T extends { id: string; views: { type: string }[] }>
   return { ...db, views: [...views.filter((v) => v.type === 'map'), ...views.filter((v) => v.type !== 'map')] };
 }
 
-export default function DatabasePage({ params }: { params: { id: string } }) {
+// Databases are dense; on a phone the default 1:1 scale is too close.
+// Back off to 0.75 there. CSS `zoom` (not transform) so layout/scroll
+// still reflow correctly. iOS Safari + Android Chrome both support it.
+function usePhoneZoom() {
+  const [zoom, setZoom] = useState(1);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) setZoom(0.75);
+  }, []);
+  return zoom;
+}
+
+export default function DatabasePage(props: { params: Promise<{ id: string }> }) {
+  const params = use(props.params);
   const wantsMap = useSearchParams().get('view') === 'map';
   const router = useRouter();
   const [database, setDatabase] = useState<Database | null>(null);
@@ -75,13 +87,7 @@ export default function DatabasePage({ params }: { params: { id: string } }) {
   const moveRef = useRef<HTMLDivElement | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
-  // Databases are dense; on a phone the default 1:1 scale is too close.
-  // Back off to 0.75 there. CSS `zoom` (not transform) so layout/scroll
-  // still reflow correctly. iOS Safari + Android Chrome both support it.
-  const [dbZoom, setDbZoom] = useState(1);
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.innerWidth < 768) setDbZoom(0.75);
-  }, []);
+  const dbZoom = usePhoneZoom();
   useEffect(() => {
     fetchDatabase();
     fetch('/api/workspaces')

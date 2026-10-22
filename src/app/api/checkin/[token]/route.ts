@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { selfCheckIn, tooManyCheckIns } from '@/lib/events/checkin';
 
-type Ctx = { params: { token: string } };
+type Ctx = { params: Promise<{ token: string }> };
 
 const bodySchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -19,13 +19,15 @@ function findEvent(token: string) {
   });
 }
 
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export async function GET(_req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const event = await findEvent(params.token);
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ name: event.name, date: event.date, venue: event.venue, open: event.checkInOpen });
 }
 
-export async function POST(req: NextRequest, { params }: Ctx) {
+export async function POST(req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const event = await findEvent(params.token);
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   if (!event.checkInOpen) return NextResponse.json({ error: 'Check-in is closed' }, { status: 403 });

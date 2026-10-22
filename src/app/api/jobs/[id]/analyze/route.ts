@@ -26,7 +26,8 @@ function pickRecommended(result: AnalysisResult, resumes: ResumeRow[]): string {
 
 // Scan one listing against the user's resumes and persist the analysis
 // (1:1, regenerable — re-running replaces it).
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

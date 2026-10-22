@@ -11,8 +11,9 @@ async function ownView(dbId: string, viewId: string, userId: string) {
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string; viewId: string } }
+  props: { params: Promise<{ id: string; viewId: string }> }
 ) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -45,10 +46,8 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  _: NextRequest,
-  { params }: { params: { id: string; viewId: string } }
-) {
+export async function DELETE(_: NextRequest, props: { params: Promise<{ id: string; viewId: string }> }) {
+  const params = await props.params;
   const session = await getServerSession(authOptions);
   const userId = (session?.user as any)?.id;
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

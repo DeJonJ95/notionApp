@@ -16,7 +16,8 @@ const bodySchema = z.object({ accept: z.array(z.number().int().min(0)).min(1).ma
 // Applies the ticked changes of the thread's stored plan. The plan comes from
 // the server's own record, never the request, and is re-checked against the
 // task list as it is now.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));

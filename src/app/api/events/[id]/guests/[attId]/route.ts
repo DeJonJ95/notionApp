@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { currentUserId } from '@/lib/events/session';
 
-type Ctx = { params: { id: string; attId: string } };
+type Ctx = { params: Promise<{ id: string; attId: string }> };
 
 const patchSchema = z.object({
   attended: z.boolean().optional(),
@@ -16,8 +16,9 @@ const patchSchema = z.object({
 async function owned(ctx: Ctx) {
   const userId = await currentUserId();
   if (!userId) return null;
+  const { id, attId } = await ctx.params;
   return prisma.attendance.findFirst({
-    where: { id: ctx.params.attId, eventId: ctx.params.id, event: { ownerId: userId } },
+    where: { id: attId, eventId: id, event: { ownerId: userId } },
     select: { id: true, personId: true, contactGiven: true },
   });
 }
@@ -34,12 +35,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const pending = contact ? { contactGiven: null } : {};
   const checkIn = attended === undefined ? {} : { attended, checkedInAt: attended ? new Date() : null };
   const invite = sent === undefined ? {} : { invitedAt: sent ? new Date() : null };
-  const row = await prisma.attendance.update({ where: { id: ctx.params.attId }, data: { ...rest, ...checkIn, ...invite, ...pending } });
+  const row = await prisma.attendance.update({ where: { id: (await ctx.params).attId }, data: { ...rest, ...checkIn, ...invite, ...pending } });
   return NextResponse.json(row);
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   if (!(await owned(ctx))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  await prisma.attendance.delete({ where: { id: ctx.params.attId } });
+  await prisma.attendance.delete({ where: { id: (await ctx.params).attId } });
   return NextResponse.json({ ok: true });
 }

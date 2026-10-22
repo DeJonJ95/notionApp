@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment, type JSX } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {

@@ -9,7 +9,7 @@ const clamp = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
 // Starts at 70% and keeps zooming out as the map outgrows its window, until the person zooms by hand.
 // A left-to-right timeline only fits its height and scrolls sideways, so cards stay readable.
-export function useAutoZoom(box: RefObject<HTMLElement>, width: number, height: number, across = false) {
+export function useAutoZoom(box: RefObject<HTMLElement | null>, width: number, height: number, across = false) {
   const [fit, setFit] = useState(DEFAULT_ZOOM);
   const [manual, setManual] = useState<number | null>(null);
   const size = useRef({ w: 0, h: 0 });
@@ -41,7 +41,7 @@ export function useAutoZoom(box: RefObject<HTMLElement>, width: number, height: 
 }
 
 // Ctrl/Cmd + wheel (and a trackpad pinch, which browsers report as ctrl+wheel) zooms around the pointer; a plain wheel still scrolls.
-function useWheelZoom(box: RefObject<HTMLElement>, current: { current: number }, set: (z: number) => void, across: boolean) {
+function useWheelZoom(box: RefObject<HTMLElement | null>, current: { current: number }, set: (z: number) => void, across: boolean) {
   useEffect(() => {
     const el = box.current;
     if (!el) return;

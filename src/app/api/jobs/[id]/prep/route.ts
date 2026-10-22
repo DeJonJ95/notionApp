@@ -27,7 +27,8 @@ async function pickResume(userId: string, preferred: (string | null | undefined)
 
 // Build (or rebuild) the interview prep pack for one job and store it on the
 // listing, so it survives reloads and the user can practice against it.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const apiKey = process.env.DEEPSEEK_API_KEY;

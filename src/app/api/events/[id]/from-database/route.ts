@@ -19,7 +19,8 @@ export async function GET() {
 
 /** Body: `{ databaseId, nextEventId? }`. Copies a Guest List database into
  *  this event; its "Sunday Invite" column lands on `nextEventId` when given. */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await currentUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);

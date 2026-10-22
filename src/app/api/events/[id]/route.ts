@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { currentUserId } from '@/lib/events/session';
 import { loadEventView } from '@/lib/events/eventView';
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
@@ -22,14 +22,16 @@ async function owned(id: string) {
   return prisma.event.findFirst({ where: { id, ownerId: userId }, select: { id: true, ownerId: true } });
 }
 
-export async function GET(_req: NextRequest, { params }: Ctx) {
+export async function GET(_req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const userId = await currentUserId();
   const event = userId ? await loadEventView(params.id, userId) : null;
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json(event);
 }
 
-export async function PATCH(req: NextRequest, { params }: Ctx) {
+export async function PATCH(req: NextRequest, props: Ctx) {
+  const params = await props.params;
   if (!(await owned(params.id))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const parsed = patchSchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
@@ -40,7 +42,8 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   return NextResponse.json(event);
 }
 
-export async function DELETE(_req: NextRequest, { params }: Ctx) {
+export async function DELETE(_req: NextRequest, props: Ctx) {
+  const params = await props.params;
   const event = await owned(params.id);
   if (!event) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   // An unnamed "+1" exists only through its event, so it goes with it.

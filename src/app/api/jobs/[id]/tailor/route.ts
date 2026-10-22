@@ -61,7 +61,8 @@ async function recruiterMessage(job: Job, resumeText: string, userId: string): P
 // Apply the approved tweaks, store the styled and ATS-safe files plus the ATS
 // report on the JobApplication, and drop the files they replace (at most one
 // set per application). Unlocated tweaks come back so the UI can flag them.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
