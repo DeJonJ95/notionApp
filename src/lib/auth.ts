@@ -3,7 +3,7 @@ import { PrismaAdapter } from '@auth/prisma-adapter';
 import EmailProvider from 'next-auth/providers/email';
 import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from './prisma';
-import { isOwner } from './owner';
+import { isAllowedEmail, isOwner } from './owner';
 
 const emailServerPort = process.env.EMAIL_SERVER_PORT ? Number(process.env.EMAIL_SERVER_PORT) : undefined;
 
@@ -69,6 +69,10 @@ export const authOptions: NextAuthOptions = {
     verifyRequest: '/signin',
   },
   callbacks: {
+    // Runs before a magic link is sent and before any account is created or linked.
+    async signIn({ user }) {
+      return isAllowedEmail(user.email);
+    },
     async session({ session, user }) {
       if (session.user) {
         (session.user as any).id = user.id;

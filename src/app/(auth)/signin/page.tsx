@@ -8,6 +8,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   OAuthCallback: 'Google sign-in failed. Check that your OAuth redirect URI is configured correctly in Google Cloud Console.',
   OAuthCreateAccount: 'Could not create account. Please try again.',
   Callback: 'Authentication callback error. Please try again.',
+  AccessDenied: 'This email does not have access to Kove.',
   Default: 'Something went wrong. Please try again.',
 };
 
