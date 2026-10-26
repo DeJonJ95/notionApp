@@ -42,7 +42,7 @@
     {
       "matches": ["http://*/*", "https://*/*"],
       "exclude_matches": ["https://hiring.cafe/*", "https://hiringcafe.com/*", "https://claude.ai/*"],
-      "js": ["jobcapture.js"],
+      "js": ["jobdetect.js", "jobcapture.js"],
       "run_at": "document_idle"
     }
   ]

@@ -12,7 +12,7 @@
       "banned": 1
     },
     "extension/background.js": {
-      "commentRatio": 0.168
+      "commentRatio": 0.165
     },
     "extension/claude.js": {
       "functionLoc": 171,
@@ -27,7 +27,7 @@
       "complexity": 24
     },
     "extension/jobcapture.js": {
-      "functionLoc": 203
+      "functionLoc": 98
     },
     "src/app/(app)/admin/page.tsx": {
       "anyCount": 1,

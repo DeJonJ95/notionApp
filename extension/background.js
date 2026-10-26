@@ -217,9 +217,19 @@ chrome.runtime.onInstalled.addListener(() => {
     title: 'Save image to notes',
     contexts: ['image'],
   });
+  // Manual override for job pages the auto-detection misses.
+  chrome.contextMenus.create({
+    id: 'clipper-capture-job',
+    title: 'Capture this job',
+    contexts: ['page', 'selection', 'link'],
+  });
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === 'clipper-capture-job') {
+    if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'captureJob' }).catch(() => {});
+    return;
+  }
   if (info.menuItemId !== 'clipper-save-image') return;
   if (!info.srcUrl || !tab?.id) return;
   // Ask the content script to surface the picker with this image
