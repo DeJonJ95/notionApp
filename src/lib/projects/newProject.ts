@@ -1,9 +1,9 @@
 import { prisma } from '@/lib/prisma';
-import { detectProps } from '@/components/database/map/mapModel';
+import { STATUS_OPTIONS, detectProps } from '@/components/database/map/mapModel';
 import { nextCycleValue } from './cycle';
 
 const TASK_FIELDS = [
-  { name: 'Status', type: 'select', options: ['Not Started', 'In Progress', 'Complete'] },
+  { name: 'Status', type: 'select', options: STATUS_OPTIONS },
   { name: 'Phase', type: 'select', options: [] },
   { name: 'Due Date', type: 'date' },
   { name: 'Assignee', type: 'text' },

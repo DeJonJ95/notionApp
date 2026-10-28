@@ -53,6 +53,8 @@ export const STATUS_STYLE: Record<StatusKey, { label: string; color: string }> =
   waiting: { label: 'Waiting', color: '#787774' },
 };
 
+export const STATUS_OPTIONS = ['Not Started', 'In Progress', 'Complete'];
+
 export function parseConfig(formula?: string | null): Record<string, unknown> {
   try {
     const j = JSON.parse(formula || '');

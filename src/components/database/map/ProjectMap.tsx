@@ -6,7 +6,7 @@ import { confirmDialog, toast } from '@/components/ui/feedback';
 import { buildModel, detectProps, downstreamOf, isArchived, type MapDb, type MapModel } from './mapModel';
 import { MapToolbar } from './MapToolbar';
 import { CycleDialog, type CycleProject } from './CycleDialog';
-import { createPhaseField, createWaitsOn, deleteProject } from './mapApi';
+import { createPhaseField, createStatusField, createWaitsOn, deleteProject } from './mapApi';
 import { useSearchParams } from 'next/navigation';
 import { useAutoZoom } from './useAutoZoom';
 import { usePhaseTabs } from './usePhaseTabs';
@@ -104,6 +104,12 @@ function toolbarFor(st: ToolbarState, act: ToolbarActions) {
   };
 }
 
+function fieldAdders(dbId: string, onChanged: () => void) {
+  const make = (create: (id: string) => Promise<unknown>, what: string) => () =>
+    create(dbId).then(onChanged).catch(() => toast.error(`Couldn’t add ${what}.`));
+  return { phase: make(createPhaseField, 'the Phase field'), waitsOn: make(createWaitsOn, 'the relation'), status: make(createStatusField, 'the Status field') };
+}
+
 export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
   const { merged, setValue } = useValueEdits(database, onChanged);
   const props = useMemo(() => detectProps(merged), [merged]);
@@ -144,15 +150,14 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
       if (newId) setLinked(id, prop, [...deps, newId]);
     } catch { toast.error(`Couldn’t add that ${noun}.`); onChanged(); }
   };
-  const addPhaseField = () => createPhaseField(database.id).then(onChanged).catch(() => toast.error('Couldn’t add the Phase field.'));
-  const addWaitsOn = () => createWaitsOn(database.id).then(onChanged).catch(() => toast.error('Couldn’t add the relation.'));
+  const addField = fieldAdders(database.id, onChanged);
 
   return (
     <div className="flex flex-col border border-border rounded-xl overflow-hidden">
       <MapToolbar {...toolbarFor({
         pinned: layout.handPlaced, cycles: cycleProjects.length, hasWaitsOn: Boolean(props.waitsOn), phase: panels.phase,
       }, {
-        tidy: layout.tidy, add: addProject, addWaitsOn, addPhaseField, open: setDialog,
+        tidy: layout.tidy, add: addProject, addWaitsOn: addField.waitsOn, addPhaseField: addField.phase, open: setDialog,
       })} noun={noun} backHref={fromProjects ? '/projects' : undefined} archived={{ count: archivedCount, shown: showArchived, toggle: () => setShowArchived((v) => !v) }} />
       <Dialogs open={dialog} dbId={database.id} model={model} phases={panels.phase?.options ?? []} cycleProjects={cycleProjects}
         selectedId={selected?.id ?? null} onClose={(changed) => { setDialog(null); if (changed) onChanged(); }} />
@@ -178,7 +183,7 @@ export function ProjectMap({ database, view, onChanged, onOpenPage }: Props) {
             tasks={panels.taskPanel(selected)} openHref={panels.openHref(selected.id)} onDelete={removeProject} noun={noun} onOpenPage={onOpenPage}
             onRename={(id, t) => panels.rename(id, t).then(onChanged).catch(() => toast.error('Couldn’t rename that.'))} onAddPrereq={addPrereq}
             openLabel={panels.openLabel(selected.id)}
-            onSet={setLinked} onSelect={setSelId} onUnpin={layout.unpin} />
+            onSet={setLinked} onSelect={setSelId} onUnpin={layout.unpin} onAddStatus={addField.status} />
         ) : null}
       </div>
     </div>

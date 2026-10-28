@@ -1,4 +1,5 @@
 import type { Saved } from './mapLayout';
+import { STATUS_OPTIONS } from './mapModel';
 
 async function send(url: string, method: string, body: unknown): Promise<Response> {
   const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -43,6 +44,10 @@ export function renamePage(pageId: string, title: string) {
 
 export function createPhaseField(databaseId: string) {
   return send(`/api/databases/${databaseId}/properties`, 'POST', { name: 'Phase', type: 'select', databaseId, formula: '[]' });
+}
+
+export function createStatusField(databaseId: string) {
+  return send(`/api/databases/${databaseId}/properties`, 'POST', { name: 'Status', type: 'select', databaseId, formula: JSON.stringify(STATUS_OPTIONS) });
 }
 
 export async function createWaitsOn(databaseId: string): Promise<{ id: string; name: string; type: string; formula: string }> {

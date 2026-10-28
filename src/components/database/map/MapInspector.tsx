@@ -22,6 +22,7 @@ type Props = {
   onSet: (pageId: string, prop: MapProp, value: unknown) => void;
   onSelect: (id: string) => void;
   onUnpin: (id: string) => void;
+  onAddStatus: () => void;
 };
 
 const fieldCls = 'w-full min-h-[40px] rounded-lg border border-border bg-bg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-accent';
@@ -116,7 +117,13 @@ export function MapInspector(p: Props) {
           All tasks done · Mark {p.noun} Done
         </button>
       ) : null}
-      {props.status ? <SelectField label={props.status.name} prop={props.status} value={node.rawStatus} onChange={(v) => onSet(node.id, props.status!, v)} /> : null}
+      {props.status ? <SelectField label={props.status.name} prop={props.status} value={node.rawStatus} onChange={(v) => onSet(node.id, props.status!, v)} /> : (
+        <div className="flex flex-col gap-1.5 text-sm">
+          <span className="font-semibold">Status</span>
+          <span>{`This list has no Status field, so a ${p.noun} can’t be marked done yet.`}</span>
+          <button type="button" onClick={p.onAddStatus} className="min-h-[40px] rounded-lg border border-border bg-surface font-semibold hover:bg-border">Add Status field</button>
+        </div>
+      )}
       {props.lane ? <SelectField label={props.lane.name} prop={props.lane} value={node.laneValue} onChange={(v) => onSet(node.id, props.lane!, v)} /> : null}
       {props.due ? <DateField label={props.due.name} value={node.due} onSave={(v) => onSet(node.id, props.due!, v)} /> : null}
       {props.owner ? <TextField id={node.id} label={props.owner.name} value={node.owner} onSave={(v) => onSet(node.id, props.owner!, v)} /> : null}
