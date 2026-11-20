@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { downloadFile } from '@/lib/jobs/download';
 import { slug } from './api';
+import { ATS } from '@/lib/jobs/atsProfiles';
 import type { AtsReport } from './types';
 
 type Files = { atsUrl: string | null; styledUrl: string | null; name: string };
@@ -44,6 +45,18 @@ function Checklist({ report }: { report: AtsReport }) {
   );
 }
 
+function Target({ ats }: { ats: NonNullable<AtsReport['ats']> }) {
+  const { name, tips } = ATS[ats.id] ?? ATS.generic;
+  const n = ats.yearOnlyDates;
+  const notes = [
+    ...tips,
+    ...ats.changes,
+    ...(n > 0 ? [`${n} date range${n === 1 ? ' gives' : 's give'} years with no months. ${name} asks for a month on every date, so add them to your resume or you will type them in by hand.`] : []),
+  ];
+  if (!notes.length) return null;
+  return <ul className="list-disc pl-5 space-y-0.5 text-sm">{notes.map((t) => <li key={t}>{t}</li>)}</ul>;
+}
+
 function Downloads({ atsUrl, styledUrl, name }: Files) {
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
@@ -72,9 +85,10 @@ function Downloads({ atsUrl, styledUrl, name }: Files) {
 
 export function AtsReportView({ report, atsUrl, styledUrl, company, title }: { report: AtsReport | null; atsUrl: string | null; styledUrl: string | null; company: string; title: string }) {
   const name = `${slug(company)}-${slug(title)}`;
+  const target = report?.ats && report.ats.id !== 'generic' ? report.ats : null;
   return (
     <section className="border border-border rounded p-3 bg-bg space-y-3">
-      <h4 className="text-sm font-semibold">ATS check</h4>
+      <h4 className="text-sm font-semibold">ATS check{target ? ` for ${ATS[target.id]?.name}` : ''}</h4>
       {report ? <Checklist report={report} /> : <p className="text-sm">Tailor again to run the ATS check and get the ATS-safe version.</p>}
       {report && report.hazards.length > 0 && (
         <div className="text-sm space-y-1">
@@ -82,6 +96,7 @@ export function AtsReportView({ report, atsUrl, styledUrl, company, title }: { r
           <ul className="list-disc pl-5 space-y-0.5">{report.hazards.map((h) => <li key={h.id}>{h.label}</li>)}</ul>
         </div>
       )}
+      {target && <Target ats={target} />}
       <p className="text-sm">
         Upload the <strong>ATS-safe</strong> version to application portals: one column, standard headings, contact details in the body. Send the styled one to people.
       </p>

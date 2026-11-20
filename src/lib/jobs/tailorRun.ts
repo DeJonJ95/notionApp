@@ -5,9 +5,11 @@
 import { tailorDocx, type Tweak } from './docx';
 import { docxBlocks, textBlocks, blocksText, type Block } from './docxBlocks';
 import { plainDocx } from './plainDocx';
-import { atsReport, docxHazards, type AtsReport } from './atsCheck';
+import { atsReport, docxHazards, type AtsReport, type Hazard } from './atsCheck';
 import { tweakSpan } from './textMatch';
 import { coverage } from './keywords';
+import { shapeForAts } from './atsShape';
+import type { AtsId } from './atsProfiles';
 
 export type TailorOutput = {
   styled: Buffer | null;
@@ -17,7 +19,13 @@ export type TailorOutput = {
   report: AtsReport;
 };
 
-type Job = { title: string; keywords: string[] };
+type Job = { title: string; keywords: string[]; ats?: AtsId };
+
+function atsCopy(blocks: Block[], job: Job, hazards: Hazard[] = []): { plain: Buffer; report: AtsReport } {
+  const id = job.ats ?? 'generic';
+  const { blocks: shaped, changes, yearOnlyDates } = shapeForAts(blocks, id);
+  return { plain: plainDocx(shaped), report: { ...atsReport(shaped, job, hazards), ats: { id, changes, yearOnlyDates } } };
+}
 
 function tailorBlocks(blocks: Block[], tweaks: Tweak[]): { blocks: Block[]; unmatched: Tweak[] } {
   const out = blocks.map((b) => ({ ...b }));
@@ -38,25 +46,14 @@ const countBefore = (base: Block[], job: Job) => coverage(blocksText(base), job.
 
 export function tailorFromDocx(original: Buffer, tweaks: Tweak[], job: Job): TailorOutput {
   const { bytes, applied, unmatched } = tailorDocx(original, tweaks);
-  const blocks = docxBlocks(bytes);
-  return {
-    styled: bytes,
-    plain: plainDocx(blocks),
-    applied,
-    unmatched,
-    report: { ...atsReport(blocks, job, docxHazards(bytes)), before: countBefore(docxBlocks(original), job) },
-  };
+  const { plain, report } = atsCopy(docxBlocks(bytes), job, docxHazards(bytes));
+  return { styled: bytes, plain, applied, unmatched, report: { ...report, before: countBefore(docxBlocks(original), job) } };
 }
 
 export function tailorFromText(parsedText: string, tweaks: Tweak[], job: Job): TailorOutput {
   const wanted = tweaks.filter((t) => t.original?.trim() && t.rewrite?.trim());
   const base = textBlocks(parsedText);
   const { blocks, unmatched } = tailorBlocks(base, wanted);
-  return {
-    styled: null,
-    plain: plainDocx(blocks),
-    applied: wanted.length - unmatched.length,
-    unmatched,
-    report: { ...atsReport(blocks, job), before: countBefore(base, job) },
-  };
+  const { plain, report } = atsCopy(blocks, job);
+  return { styled: null, plain, applied: wanted.length - unmatched.length, unmatched, report: { ...report, before: countBefore(base, job) } };
 }

@@ -7,6 +7,7 @@ import { callDeepSeek, RECRUITER_MSG_SYSTEM, buildRecruiterMsgUser } from '@/lib
 import { tailorFromDocx, tailorFromText, type TailorOutput } from '@/lib/jobs/tailorRun';
 import { plainDashes } from '@/lib/prose';
 import { DOCX_MIME } from '@/lib/jobs/resumeFiles';
+import { ATS_IDS, detectAts, type AtsId } from '@/lib/jobs/atsProfiles';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -18,6 +19,7 @@ const bodySchema = z.object({
     .array(z.object({ original: z.string(), rewrite: z.string() }))
     .max(40)
     .default([]),
+  ats: z.enum(ATS_IDS).optional(),
 });
 
 type Job = { title: string; company: string; description: string };
@@ -29,7 +31,7 @@ function keywordsOf(value: unknown): string[] {
   return Array.isArray(value) ? value.map(String) : [];
 }
 
-async function runTailor(resume: Resume, tweaks: z.infer<typeof bodySchema>['tweaks'], job: { title: string; keywords: string[] }) {
+async function runTailor(resume: Resume, tweaks: z.infer<typeof bodySchema>['tweaks'], job: { title: string; keywords: string[]; ats: AtsId }) {
   if (resume.fileType !== 'docx') return tailorFromText(resume.parsedText, tweaks, job);
   return tailorFromDocx(await getBytes(resume.r2Key), tweaks, job);
 }
@@ -68,7 +70,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const listing = await prisma.jobListing.findFirst({
     where: { id: params.id, userId },
-    select: { id: true, field: true, title: true, company: true, description: true, analysis: { select: { keywords: true } } },
+    select: { id: true, field: true, title: true, company: true, description: true, applyUrl: true, sourceUrl: true, analysis: { select: { keywords: true } } },
   });
   if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
 
@@ -77,6 +79,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
   const { resumeId, tweaks } = parsed.data;
+  const ats = parsed.data.ats ?? detectAts(listing.applyUrl, listing.sourceUrl);
 
   const resume = await prisma.resume.findFirst({ where: { id: resumeId, userId }, select: { r2Key: true, parsedText: true, fileType: true } });
   if (!resume) return NextResponse.json({ error: 'Resume not found' }, { status: 404 });
@@ -84,7 +87,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const pendingMessage = recruiterMessage(listing, resume.parsedText, userId);
   let out: TailorOutput;
   try {
-    out = await runTailor(resume, tweaks, { title: listing.title, keywords: keywordsOf(listing.analysis?.keywords) });
+    out = await runTailor(resume, tweaks, { title: listing.title, keywords: keywordsOf(listing.analysis?.keywords), ats });
   } catch {
     return NextResponse.json({ error: 'Could not tailor that resume' }, { status: 422 });
   }

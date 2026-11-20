@@ -6,6 +6,7 @@ import { TweakList, defaultApproved } from './TweakList';
 import { AtsReportView } from './AtsReportView';
 import { RecruiterMessage, CoverLetterSection } from './Outreach';
 import { postJson, errorText, fileUrl } from './api';
+import { ATS, ATS_IDS, detectAts, type AtsId } from '@/lib/jobs/atsProfiles';
 import type { Analysis, AtsReport, Listing, Resume, Tweak } from './types';
 
 type Props = { listing: Listing; analysis: Analysis; resumes: Resume[]; onChanged: () => void; reanalyze: () => void; analyzing: boolean };
@@ -67,7 +68,7 @@ function useTailorRun(listingId: string, onChanged: () => void) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [result, setResult] = useState<TailorResponse | null>(null);
-  const run = async (body: { resumeId: string; tweaks: { original: string; rewrite: string }[] }) => {
+  const run = async (body: { resumeId: string; ats: AtsId; tweaks: { original: string; rewrite: string }[] }) => {
     setErr(''); setBusy(true);
     try {
       setResult(await postJson<TailorResponse>(`/api/jobs/${listingId}/tailor`, body));
@@ -77,9 +78,21 @@ function useTailorRun(listingId: string, onChanged: () => void) {
   return { busy, err, result, run };
 }
 
+function AtsSelect({ value, detected, onChange }: { value: AtsId; detected: AtsId; onChange: (id: AtsId) => void }) {
+  return (
+    <select aria-label="Applicant system the resume is built for" value={value} onChange={(e) => onChange(e.target.value as AtsId)} className="px-2 py-1.5 rounded border border-border bg-bg text-sm">
+      {ATS_IDS.map((id) => (
+        <option key={id} value={id}>{ATS[id].name}{id === detected && id !== 'generic' ? ' (detected from apply link)' : ''}</option>
+      ))}
+    </select>
+  );
+}
+
 export function TailorFlow({ listing, analysis, resumes, onChanged, reanalyze, analyzing }: Props) {
   const app = listing.application;
   const [resumeId, setResumeId] = useState(analysis.recommendedResumeId || app?.resumeId || resumes[0]?.id || '');
+  const detected = detectAts(listing.applyUrl, listing.sourceUrl);
+  const [ats, setAts] = useState<AtsId>(app?.atsReport?.ats?.id ?? detected);
   const { approved, added, toggle, chosen } = useApproval(analysis, resumeId);
   const { busy, err, result, run } = useTailorRun(listing.id, onChanged);
   const { report, atsUrl, styledUrl, message } = outputs(app, result);
@@ -94,7 +107,8 @@ export function TailorFlow({ listing, analysis, resumes, onChanged, reanalyze, a
             <option key={r.id} value={r.id}>{r.label}{r.id === analysis.recommendedResumeId ? ' (recommended)' : ''}</option>
           ))}
         </select>
-        <button onClick={() => run({ resumeId, tweaks: chosen() })} disabled={busy || !resumeId} className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-accent text-white text-sm disabled:opacity-50">
+        <AtsSelect value={ats} detected={detected} onChange={setAts} />
+        <button onClick={() => run({ resumeId, ats, tweaks: chosen() })} disabled={busy || !resumeId} className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-accent text-white text-sm disabled:opacity-50">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />} Tailor &amp; check
         </button>
         <button onClick={reanalyze} disabled={analyzing} className="text-sm hover:text-accent">{analyzing ? 'Re-analyzing…' : 'Re-analyze'}</button>

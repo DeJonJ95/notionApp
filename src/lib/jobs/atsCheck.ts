@@ -5,6 +5,7 @@
 import PizZip from 'pizzip';
 import { coverage, coreTitle, hasKeyword, type Coverage } from './keywords';
 import { isSectionHeading, partBlocks, type Block } from './docxBlocks';
+import type { AtsId } from './atsProfiles';
 
 export type HazardId = 'tables' | 'textBoxes' | 'columns' | 'headerContact' | 'images' | 'symbols';
 
@@ -17,6 +18,8 @@ export type AtsReport = {
   contact: { email: boolean; phone: boolean };
   sections: { experience: boolean; education: boolean; skills: boolean };
   hazards: Hazard[];
+  /** The system the ATS-safe copy was shaped for; reports saved before this existed lack it. */
+  ats?: { id: AtsId; changes: string[]; yearOnlyDates: number };
 };
 
 const HAZARD_LABEL: Record<HazardId, string> = {
