@@ -3,7 +3,7 @@
 // profile holds only behaviour that is visible in the application flow itself.
 
 export const ATS_IDS = [
-  'workday', 'taleo', 'oracle', 'icims', 'successfactors', 'adp', 'ukg', 'eightfold',
+  'workday', 'taleo', 'oracle', 'icims', 'successfactors', 'adp', 'ukg', 'eightfold', 'avature',
   'greenhouse', 'lever', 'ashby', 'smartrecruiters', 'workable', 'bamboohr', 'jobvite',
   'pinpoint', 'breezy', 'recruitee', 'teamtailor', 'rippling',
   'generic',
@@ -49,6 +49,7 @@ export const ATS: Record<AtsId, AtsProfile> = {
   adp: formFill('ADP', /(^|\.)adp\.com$/),
   ukg: formFill('UKG', /(^|\.)(ultipro|ukg|entertimeonline)\.com$/),
   eightfold: formFill('Eightfold', /(^|\.)eightfold\.ai$/),
+  avature: formFill('Avature', /(^|\.)avature\.net$/),
   greenhouse: humanRead('Greenhouse', /(^|\.)greenhouse\.io$/),
   lever: humanRead('Lever', /(^|\.)lever\.co$/),
   ashby: humanRead('Ashby', /(^|\.)ashbyhq\.com$/),
@@ -74,8 +75,8 @@ function atsOfUrl(raw: string): AtsId | null {
   const host = url.hostname.toLowerCase();
   const hit = ATS_IDS.find((id) => ATS[id].hosts?.test(host));
   if (hit) return hit;
-  // Greenhouse boards embedded on an employer's own domain keep this parameter.
-  return url.searchParams.has('gh_jid') ? 'greenhouse' : null;
+  // Greenhouse boards embedded on an employer's own domain keep these parameters.
+  return ['gh_jid', 'gh_src'].some((k) => url.searchParams.has(k)) ? 'greenhouse' : null;
 }
 
 /** The first link that names a known system wins; pass the apply link first. */

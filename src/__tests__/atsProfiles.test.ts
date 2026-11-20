@@ -15,6 +15,8 @@ describe('detectAts', () => {
     ['https://eeho.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/1', 'oracle'],
     ['https://career5.successfactors.eu/career?company=acme', 'successfactors'],
     ['https://jobs.ashbyhq.com/acme/1', 'ashby'],
+    ['https://www.acme.com/careers/job?job_id=5&gh_src=abc', 'greenhouse'],
+    ['https://acme.avature.net/careers/JobDetail/1', 'avature'],
     ['https://notworkday.com.example.org/job', 'generic'],
     ['not a url', 'generic'],
   ])('%s is %s', (url, id) => expect(detectAts(url)).toBe(id));
