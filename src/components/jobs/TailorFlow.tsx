@@ -6,7 +6,7 @@ import { TweakList, defaultApproved } from './TweakList';
 import { AtsReportView } from './AtsReportView';
 import { RecruiterMessage, CoverLetterSection } from './Outreach';
 import { postJson, errorText, fileUrl } from './api';
-import { ATS, ATS_IDS, detectAts, type AtsId } from '@/lib/jobs/atsProfiles';
+import { ATS, ATS_IDS, asAtsId, detectAts, type AtsId } from '@/lib/jobs/atsProfiles';
 import type { Analysis, AtsReport, Listing, Resume, Tweak } from './types';
 
 type Props = { listing: Listing; analysis: Analysis; resumes: Resume[]; onChanged: () => void; reanalyze: () => void; analyzing: boolean };
@@ -78,11 +78,17 @@ function useTailorRun(listingId: string, onChanged: () => void) {
   return { busy, err, result, run };
 }
 
+function useAts(listing: Listing) {
+  const detected = asAtsId(listing.ats) ?? detectAts(listing.applyUrl, listing.sourceUrl);
+  const [ats, setAts] = useState<AtsId>(listing.application?.atsReport?.ats?.id ?? detected);
+  return { ats, setAts, detected };
+}
+
 function AtsSelect({ value, detected, onChange }: { value: AtsId; detected: AtsId; onChange: (id: AtsId) => void }) {
   return (
     <select aria-label="Applicant system the resume is built for" value={value} onChange={(e) => onChange(e.target.value as AtsId)} className="px-2 py-1.5 rounded border border-border bg-bg text-sm">
       {ATS_IDS.map((id) => (
-        <option key={id} value={id}>{ATS[id].name}{id === detected && id !== 'generic' ? ' (detected from apply link)' : ''}</option>
+        <option key={id} value={id}>{ATS[id].name}{id === detected && id !== 'generic' ? ' (detected)' : ''}</option>
       ))}
     </select>
   );
@@ -91,8 +97,7 @@ function AtsSelect({ value, detected, onChange }: { value: AtsId; detected: AtsI
 export function TailorFlow({ listing, analysis, resumes, onChanged, reanalyze, analyzing }: Props) {
   const app = listing.application;
   const [resumeId, setResumeId] = useState(analysis.recommendedResumeId || app?.resumeId || resumes[0]?.id || '');
-  const detected = detectAts(listing.applyUrl, listing.sourceUrl);
-  const [ats, setAts] = useState<AtsId>(app?.atsReport?.ats?.id ?? detected);
+  const { ats, setAts, detected } = useAts(listing);
   const { approved, added, toggle, chosen } = useApproval(analysis, resumeId);
   const { busy, err, result, run } = useTailorRun(listing.id, onChanged);
   const { report, atsUrl, styledUrl, message } = outputs(app, result);

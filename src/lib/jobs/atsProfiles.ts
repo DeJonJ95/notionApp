@@ -3,8 +3,9 @@
 // profile holds only behaviour that is visible in the application flow itself.
 
 export const ATS_IDS = [
-  'workday', 'taleo', 'oracle', 'icims', 'successfactors', 'adp', 'ukg',
+  'workday', 'taleo', 'oracle', 'icims', 'successfactors', 'adp', 'ukg', 'eightfold',
   'greenhouse', 'lever', 'ashby', 'smartrecruiters', 'workable', 'bamboohr', 'jobvite',
+  'pinpoint', 'breezy', 'recruitee', 'teamtailor', 'rippling',
   'generic',
 ] as const;
 
@@ -46,7 +47,8 @@ export const ATS: Record<AtsId, AtsProfile> = {
   icims: formFill('iCIMS', /(^|\.)icims\.com$/),
   successfactors: formFill('SAP SuccessFactors', /(^|\.)(successfactors\.(com|eu)|sapsf\.(com|eu)|jobs2web\.com)$/),
   adp: formFill('ADP', /(^|\.)adp\.com$/),
-  ukg: formFill('UKG', /(^|\.)(ultipro|ukg)\.com$/),
+  ukg: formFill('UKG', /(^|\.)(ultipro|ukg|entertimeonline)\.com$/),
+  eightfold: formFill('Eightfold', /(^|\.)eightfold\.ai$/),
   greenhouse: humanRead('Greenhouse', /(^|\.)greenhouse\.io$/),
   lever: humanRead('Lever', /(^|\.)lever\.co$/),
   ashby: humanRead('Ashby', /(^|\.)ashbyhq\.com$/),
@@ -54,6 +56,11 @@ export const ATS: Record<AtsId, AtsProfile> = {
   workable: humanRead('Workable', /(^|\.)workable\.com$/),
   bamboohr: humanRead('BambooHR', /(^|\.)bamboohr\.com$/),
   jobvite: humanRead('Jobvite', /(^|\.)jobvite\.com$/),
+  pinpoint: humanRead('Pinpoint', /(^|\.)pinpointhq\.com$/),
+  breezy: humanRead('Breezy', /(^|\.)breezy\.hr$/),
+  recruitee: humanRead('Recruitee', /(^|\.)recruitee\.com$/),
+  teamtailor: humanRead('Teamtailor', /(^|\.)teamtailor\.com$/),
+  rippling: humanRead('Rippling', /(^|\.)ats\.rippling\.com$/),
   generic: { name: 'Other or unknown', hosts: null, formFill: false, literalHeadings: false, asciiOnly: false, tips: [] },
 };
 
@@ -78,4 +85,13 @@ export function detectAts(...urls: (string | null | undefined)[]): AtsId {
     if (id) return id;
   }
   return 'generic';
+}
+
+export function asAtsId(value: unknown): AtsId | null {
+  return ATS_IDS.find((id) => id === value) ?? null;
+}
+
+/** Every absolute link in a fetched page, as hints for detectAts. */
+export function htmlHosts(html: string): string[] {
+  return [...new Set(html.match(/https?:\/\/[a-z0-9.-]+(\/[^"'\s<>]*gh_jid=\d+)?/gi) ?? [])].slice(0, 300);
 }

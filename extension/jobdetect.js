@@ -90,6 +90,25 @@
     return (clone.innerText || '').replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  // Other sites this page links to or loads from, apply buttons first. The app
+  // matches them against its applicant-system list, so a posting on an
+  // employer's own domain still reveals the system behind it.
+  function atsHints() {
+    const seen = new Set();
+    const add = (raw) => {
+      try {
+        const u = new URL(raw, location.href);
+        if (!/^https?:$/.test(u.protocol) || u.host === location.host) return;
+        seen.add(u.origin + (u.searchParams.has('gh_jid') ? '/?gh_jid=1' : ''));
+      } catch (e) { /* skip */ }
+    };
+    const links = Array.from(document.querySelectorAll('a[href]')).slice(0, 3000);
+    links.filter((a) => /apply/i.test(a.innerText || '')).forEach((a) => add(a.href));
+    document.querySelectorAll('iframe[src],form[action],script[src]').forEach((e) => add(e.src || e.action));
+    links.forEach((a) => add(a.href));
+    return Array.from(seen).slice(0, 80);
+  }
+
   // Pure ATS hosts: every page is effectively a job posting.
   const ATS_HOSTS = [
     /(^|\.)greenhouse\.io$/, /(^|\.)lever\.co$/, /(^|\.)ashbyhq\.com$/,
@@ -141,5 +160,5 @@
     return hostLooksLikeJob() || !!currentJsonLdJob() || careerPageLooksLikeJob();
   }
 
-  self.applykitJob = { currentJsonLdJob, readableText, looksLikeJob };
+  self.applykitJob = { currentJsonLdJob, readableText, looksLikeJob, atsHints };
 }

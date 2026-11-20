@@ -10,7 +10,7 @@
   if (window.__applykitJobCapture) return;
   window.__applykitJobCapture = true;
 
-  const { currentJsonLdJob, readableText, looksLikeJob } = self.applykitJob;
+  const { currentJsonLdJob, readableText, looksLikeJob, atsHints } = self.applykitJob;
 
   function toast(msg, kind) {
     let t = document.getElementById('applykit-jc-toast');
@@ -43,14 +43,14 @@
       if (jp) {
         await send('ingestJob', {
           sourceUrl: location.href, applyUrl: jp.applyUrl, company: jp.company,
-          title: jp.title, location: jp.location, description: jp.description,
+          title: jp.title, location: jp.location, description: jp.description, atsHints: atsHints(),
         });
         toast('Captured: ' + jp.title + ' @ ' + jp.company, 'ok');
       } else {
         const text = readableText();
         if (text.length < 200) throw new Error('No job description found on this page');
         await send('ingestJobText', {
-          sourceUrl: location.href, applyUrl: location.href, text: text.slice(0, 120000),
+          sourceUrl: location.href, applyUrl: location.href, text: text.slice(0, 120000), atsHints: atsHints(),
         });
         toast('Captured this job', 'ok');
       }

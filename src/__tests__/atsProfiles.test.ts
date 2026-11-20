@@ -74,3 +74,26 @@ describe('tailorFromText', () => {
     expect(out.report.sections.experience).toBe(true);
   });
 });
+
+describe('page hints', () => {
+  const { htmlHosts, asAtsId } = jest.requireActual<typeof import('@/lib/jobs/atsProfiles')>('@/lib/jobs/atsProfiles');
+
+  it('finds the system behind an employer domain from the links in its page', () => {
+    const html = '<a href="https://www.acmecareers.com/about">About</a><a href="https://acme.wd1.myworkdayjobs.com/apply/1">Apply</a>';
+    expect(detectAts('https://www.acmecareers.com/job/1', ...htmlHosts(html))).toBe('workday');
+  });
+
+  it('keeps the Greenhouse job parameter', () => {
+    expect(detectAts(...htmlHosts('<iframe src="https://careers.acme.com/embed?gh_jid=42">'))).toBe('greenhouse');
+  });
+
+  it('prefers the apply link over a page hint', () => {
+    expect(detectAts('https://jobs.lever.co/acme/1', 'https://boards.greenhouse.io')).toBe('lever');
+  });
+
+  it('accepts only known ids from the database', () => {
+    expect(asAtsId('icims')).toBe('icims');
+    expect(asAtsId('nope')).toBeNull();
+    expect(asAtsId(null)).toBeNull();
+  });
+});

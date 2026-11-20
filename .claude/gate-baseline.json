@@ -280,7 +280,6 @@
       "complexity": 18
     },
     "src/app/api/jobs/ingest-url/route.ts": {
-      "functionLoc": 91,
       "anyCount": 1,
       "castChain": 1
     },

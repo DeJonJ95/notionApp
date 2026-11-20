@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Notes Clipper",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Save images from Pinterest, Tumblr, and anywhere else into your notes with one click.",
   "permissions": ["storage", "contextMenus", "activeTab"],
   "host_permissions": ["<all_urls>"],

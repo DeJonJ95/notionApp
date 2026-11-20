@@ -7,7 +7,7 @@ import { callDeepSeek, RECRUITER_MSG_SYSTEM, buildRecruiterMsgUser } from '@/lib
 import { tailorFromDocx, tailorFromText, type TailorOutput } from '@/lib/jobs/tailorRun';
 import { plainDashes } from '@/lib/prose';
 import { DOCX_MIME } from '@/lib/jobs/resumeFiles';
-import { ATS_IDS, detectAts, type AtsId } from '@/lib/jobs/atsProfiles';
+import { ATS_IDS, asAtsId, detectAts, type AtsId } from '@/lib/jobs/atsProfiles';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   const listing = await prisma.jobListing.findFirst({
     where: { id: params.id, userId },
-    select: { id: true, field: true, title: true, company: true, description: true, applyUrl: true, sourceUrl: true, analysis: { select: { keywords: true } } },
+    select: { id: true, field: true, title: true, company: true, description: true, applyUrl: true, sourceUrl: true, ats: true, analysis: { select: { keywords: true } } },
   });
   if (!listing) return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 });
   }
   const { resumeId, tweaks } = parsed.data;
-  const ats = parsed.data.ats ?? detectAts(listing.applyUrl, listing.sourceUrl);
+  const ats = parsed.data.ats ?? asAtsId(listing.ats) ?? detectAts(listing.applyUrl, listing.sourceUrl);
 
   const resume = await prisma.resume.findFirst({ where: { id: resumeId, userId }, select: { r2Key: true, parsedText: true, fileType: true } });
   if (!resume) return NextResponse.json({ error: 'Resume not found' }, { status: 404 });

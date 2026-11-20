@@ -23,6 +23,7 @@ const bodySchema = z.object({
   company: z.string().max(200).optional().nullable(),
   location: z.string().max(200).optional().nullable(),
   text: z.string().min(20).max(120_000),
+  atsHints: z.array(z.string().max(500)).max(300).optional(),
 });
 
 export async function OPTIONS(req: NextRequest) {
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
     location: location ?? null,
     description: text.slice(0, 60_000),
     rawJson: { via: 'extension-text' },
+    atsHints: parsed.data.atsHints,
   });
   logCall('applykit', 'job-capture-text', { userId: ctx.userId });
   return jsonWithCors(req, { ok: true, listingId: listing.id });

@@ -55,6 +55,7 @@ export type Listing = {
   id: string;
   sourceUrl: string;
   applyUrl: string | null;
+  ats: string | null;
   company: string;
   title: string;
   location: string | null;

@@ -5,6 +5,7 @@
 
 import { prisma } from '@/lib/prisma';
 import { parseJob } from './parse';
+import { detectAts } from './atsProfiles';
 import { z } from 'zod';
 
 export const ingestSchema = z.object({
@@ -16,16 +17,20 @@ export const ingestSchema = z.object({
   location: z.string().max(200).optional().nullable(),
   field: z.string().max(100).optional().nullable(),
   rawJson: z.any().optional(),
+  atsHints: z.array(z.string().max(500)).max(300).optional(),
 });
 
 export type IngestInput = z.infer<typeof ingestSchema>;
 
 export async function upsertListing(userId: string, input: IngestInput) {
   const heur = parseJob(input.description);
+  const found = detectAts(input.applyUrl, input.sourceUrl, ...(input.atsHints ?? []));
+  const ats = found === 'generic' ? null : found;
   const data = {
     userId,
     sourceUrl: input.sourceUrl,
     applyUrl: input.applyUrl ?? null,
+    ats,
     company: input.company,
     title: input.title,
     description: input.description,
@@ -44,6 +49,7 @@ export async function upsertListing(userId: string, input: IngestInput) {
     // posting content and apply links on re-capture.
     update: {
       applyUrl: data.applyUrl,
+      ...(ats ? { ats } : {}),
       company: data.company,
       title: data.title,
       description: data.description,

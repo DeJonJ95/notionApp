@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { isOwner } from '@/lib/owner';
 import { upsertListing } from '@/lib/jobs/ingest';
+import { htmlHosts } from '@/lib/jobs/atsProfiles';
 import { parseJobPostingFromHtml, stripHtml } from '@/lib/jobs/jsonld';
 import {
   callDeepSeek, PARSE_PAGE_SYSTEM, buildParsePageUser, parseTitleCompany,
@@ -40,6 +41,23 @@ function parseTarget(body: unknown): URL | string {
   return target;
 }
 
+// Browser-like UA: many ATS block default fetch agents.
+async function fetchHtml(target: URL): Promise<{ html: string } | { error: string }> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12_000);
+    const res = await fetch(target.toString(), {
+      headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html,*/*' },
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    if (!res.ok) return { error: `The page returned ${res.status}` };
+    return { html: (await res.text()).slice(0, MAX_HTML) };
+  } catch {
+    return { error: "Couldn't reach that page. Some sites (e.g. LinkedIn) block server fetches — try the extension or paste the description." };
+  }
+}
+
 // Capture a job from any URL: fetch the page server-side, prefer schema.org
 // JobPosting JSON-LD (covers most ATS + company sites), fall back to cleaned
 // page text + a DeepSeek title/company extraction.
@@ -55,26 +73,10 @@ export async function POST(req: NextRequest) {
   const target = parseTarget(await req.json().catch(() => null));
   if (typeof target === 'string') return NextResponse.json({ error: target }, { status: 400 });
 
-  // Fetch the page (browser-like UA; many ATS block default fetch agents).
-  let html: string;
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12_000);
-    const res = await fetch(target.toString(), {
-      headers: { 'User-Agent': BROWSER_UA, Accept: 'text/html,*/*' },
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    if (!res.ok) {
-      return NextResponse.json({ error: `The page returned ${res.status}` }, { status: 502 });
-    }
-    html = (await res.text()).slice(0, MAX_HTML);
-  } catch {
-    return NextResponse.json(
-      { error: "Couldn't reach that page. Some sites (e.g. LinkedIn) block server fetches — try the extension or paste the description." },
-      { status: 502 },
-    );
-  }
+  const page = await fetchHtml(target);
+  if ('error' in page) return NextResponse.json({ error: page.error }, { status: 502 });
+  const { html } = page;
+  const atsHints = htmlHosts(html);
 
   const sourceUrl = target.toString();
 
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
       description: jp.description,
       location: jp.location,
       rawJson: { via: 'jsonld' },
+      atsHints,
     });
     return NextResponse.json({ listing, via: 'jsonld' });
   }
@@ -131,6 +134,7 @@ export async function POST(req: NextRequest) {
     title,
     description: text.slice(0, 60000),
     rawJson: { via: 'fallback' },
+    atsHints,
   });
   return NextResponse.json({ listing, via: 'fallback' });
 }

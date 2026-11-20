@@ -85,6 +85,7 @@ model JobListing {
   user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceUrl    String // hiring.cafe (or other) listing URL
   applyUrl     String? // employer ATS apply link if known
+  ats          String? // AtsId from lib/jobs/atsProfiles.ts, found at capture; null when unknown
   company      String
   title        String
   location     String?
