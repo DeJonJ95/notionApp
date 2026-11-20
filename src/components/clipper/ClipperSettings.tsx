@@ -200,14 +200,14 @@ export function ClipperSettings() {
         </h2>
         <ol className="text-sm text-muted space-y-2 list-decimal list-inside leading-relaxed">
           <li>
-            Download the latest extension zip from the repo&apos;s <code className="text-xs bg-bg px-1 py-0.5 rounded">extension/</code> folder.
+            <a href="/kove-extension.zip" download className="text-accent font-medium hover:underline">Download the extension</a> (zip, also covers job capture).
           </li>
-          <li>Extract it somewhere stable on your computer (not in Downloads — Chrome will lose track if you move it).</li>
+          <li>Unzip it and move the <code className="text-xs bg-bg px-1 py-0.5 rounded">kove-extension</code> folder somewhere stable (not Downloads; Chrome loses track if you move it).</li>
           <li>
             Open <code className="text-xs bg-bg px-1 py-0.5 rounded">chrome://extensions/</code>, enable
             <strong className="text-text"> Developer mode</strong> (top-right toggle).
           </li>
-          <li>Click <strong className="text-text">Load unpacked</strong> and select the extracted folder.</li>
+          <li>Click <strong className="text-text">Load unpacked</strong> and select the <code className="text-xs bg-bg px-1 py-0.5 rounded">kove-extension</code> folder.</li>
           <li>Click the extension icon in your toolbar, paste your token, and hit <strong className="text-text">Connect</strong>.</li>
         </ol>
         <p className="text-xs text-muted pt-2 border-t border-border">

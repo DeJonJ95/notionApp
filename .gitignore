@@ -14,6 +14,9 @@ node_modules
 .claude/INDEX.md
 .claude/plans/
 
+# Built from extension/ by scripts/pack-extension.mjs on every build
+public/kove-extension.zip
+
 # Budget assistant evals hold real figures from the owner's ledger; this repo is public.
 evals/budget-assistant/golden.json
 evals/budget-assistant/results/

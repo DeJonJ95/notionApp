@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --skip-generate && prisma db execute --file prisma/sql/budget-metrics.sql --schema prisma/schema.prisma && next build",
+    "pack:extension": "node scripts/pack-extension.mjs",
+    "build": "node scripts/pack-extension.mjs && prisma generate && prisma db push --skip-generate && prisma db execute --file prisma/sql/budget-metrics.sql --schema prisma/schema.prisma && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
